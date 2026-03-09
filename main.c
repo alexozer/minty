@@ -152,21 +152,22 @@ String LineIterNext(LineIter* iter) {
     char *data = iter->base.data;
     const u64 size = iter->base.size;
 
-    // Advance past line breaks
-    while (line_start < size && (data[line_start] == '\r')) {
-        line_start++;
-    }
-    if (line_start < size && (data[line_start] == '\n')) {
-        line_start++;
-    }
-
     // Advance until next line break
     u64 line_end = line_start;
     while (line_end < size && data[line_end] != '\r' && data[line_end] != '\n') {
         line_end++;
     }
 
-    iter->pos = line_end;
+    // Advance past line breaks
+    u64 next_line_start = line_end;
+    while (next_line_start < size && (data[next_line_start] == '\r')) {
+        next_line_start++;
+    }
+    if (next_line_start < size && (data[next_line_start] == '\n')) {
+        next_line_start++;
+    }
+
+    iter->pos = next_line_start;
     return (String){.data = iter->base.data + line_start, .size = line_end - line_start};
 }
 
