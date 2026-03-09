@@ -106,16 +106,6 @@ String StrFromCStr(Arena *arena, const char *cstr) {
     return (String){.data = data, .size = len};
 }
 
-u64 StrCountLines(String s) {
-    u64 line_count = 0;
-    for (u64 i = 0; i < s.size; i++) {
-        if (s.data[i] == '\n') {
-            line_count++;
-        }
-    }
-    return line_count;
-}
-
 String StrSliceUntil(String s, char c) {
     String substr = {.data = s.data, .size = 0};
     for (u64 i = 0; i < s.size && s.data[i] != c; i++) {
@@ -126,6 +116,68 @@ String StrSliceUntil(String s, char c) {
 
 bool StrIsEmpty(String s) {
     return s.size == 0;
+}
+
+// Validates utf8 basically.
+// Returns empty string on invalid utf8 lol
+String StrFromBytes(void *buf, u64 size) {
+    // TODO implement
+
+    // Skip utf8 BOM
+    char *s = (char *)buf;
+    if (size >= 3 && s[0] == '\xef' && s[1] == '\xbb' && s[2] == '\xbf') {
+        s += 3;
+        size -= 3;
+    }
+
+    return (String){.data = s, .size = size};
+}
+
+// Certainly possible to do this simply and w/o an iterator object, but just messin around
+typedef struct {
+    String base;
+    u64 pos;
+} LineIter;
+
+LineIter StrIterLines(String s) {
+     return (LineIter){.base = s, .pos = 0};
+}
+
+bool LineIterHasNext(LineIter* iter) {
+    return iter->pos < iter->base.size;
+}
+
+String LineIterNext(LineIter* iter) {
+    u64 line_start = iter->pos;
+    char *data = iter->base.data;
+    const u64 size = iter->base.size;
+
+    // Advance past line breaks
+    while (line_start < size && (data[line_start] == '\r')) {
+        line_start++;
+    }
+    if (line_start < size && (data[line_start] == '\n')) {
+        line_start++;
+    }
+
+    // Advance until next line break
+    u64 line_end = line_start;
+    while (line_end < size && data[line_end] != '\r' && data[line_end] != '\n') {
+        line_end++;
+    }
+
+    iter->pos = line_end;
+    return (String){.data = iter->base.data + line_start, .size = line_end - line_start};
+}
+
+u64 StrCountLines(String s) {
+    u64 line_count = 0;
+    LineIter iter = StrIterLines(s);
+    while (LineIterHasNext(&iter)) {
+        LineIterNext(&iter);
+        line_count++;
+    }
+    return line_count;
 }
 
 //
@@ -152,12 +204,10 @@ String MmapFileAsString(Arena *arena, String filepath) {
     }
     Defer(arena /* munmap(buf, st.st_size) */);
 
-    // TODO: validate UTF-8
-
-    return (String){.data = (char *)buf, .size = st.st_size};
+    return StrFromBytes(buf, st.st_size);
 }
 
-String CliGetArg(Arena *arena, int argc, char **argv, i64 idx) {
+String CliGetArg(Arena *arena, int argc, char **argv, u64 idx) {
     if (idx + 1 >= argc) {
         return (String){};
     }
@@ -181,8 +231,11 @@ int main(int argc, char **argv) {
     const u64 line_count = StrCountLines(f);
     printf("Opened file. Size: %lld, lines: %lld\n", f.size, line_count);
 
-    String first_line = StrSliceUntil(f, '\n');
-    printf("First line of file: '%s'\n", StrToCStr(&arena, first_line));
+    LineIter iter = StrIterLines(f);
+    for (u64 line_num = 0; LineIterHasNext(&iter) && line_num < 10; line_num++) {
+        String line = LineIterNext(&iter);
+        printf("%03lld: '%s'\n", line_num + 1, StrToCStr(&arena, line));
+    }
 
     printf("Arena size: %lld\n", arena.data_offset);
 
