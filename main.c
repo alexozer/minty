@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include <string.h>
 
 typedef uint8_t u8;
 typedef uint16_t u16;
@@ -17,9 +18,29 @@ typedef int64_t i64;
 typedef float f32;
 typedef double f64;
 
+//
+// Math
+//
+
 #define Kilobytes(n) (n * 1024)
 #define Megabytes(n) (n * 1024 * 1024)
 #define WordAlign(n) ((n + 7) & (~7))
+
+#define Min(a, b) (((a) < (b)) ? a : b)
+#define Max(a, b) (((a) > (b)) ? a : b)
+
+// https://jameshfisher.com/2018/03/30/round-up-power-2/
+u64 NextPow2(u64 x) {
+    x--;
+    x |= x>>1;
+    x |= x>>2;
+    x |= x>>4;
+    x |= x>>8;
+    x |= x>>16;
+    x |= x>>32;
+    x++;
+    return x;
+}
 
 //
 // Arenas
@@ -182,6 +203,37 @@ u64 StrCountLines(String s) {
 }
 
 //
+// Array
+//
+
+// Embedded into user defined array structs.
+#define _ArrayHeader_ struct { u64 count; u64 capacity; }
+typedef struct { u64 count; u64 capacity; } ArrayHeader;
+
+#define MIN_ARRAY_COUNT 8
+
+#define ArrayHeaderCast(a) ((ArrayHeader *)(&a))
+#define ArrayItemSize(a) (sizeof(*(a).v))
+
+void *ArrayGrow(Arena *arena, ArrayHeader *header, void *array, u64 item_size, u64 count) {
+    const u64 old_size = header->count * item_size;
+    const u64 new_size = (header->count + Max(count, MIN_ARRAY_COUNT)) * item_size;
+
+    if (new_size > header->capacity) {
+        header->capacity = NextPow2(new_size);
+        void *new_array = ArenaPush(arena, header->capacity);
+        memcpy(new_array, array, old_size);
+        return new_array;
+    }
+
+    return array;
+}
+
+#define ArrayPush(arena, a, value) \
+    (*((void **)&(a).v) = ArrayGrow((arena), ArrayHeaderCast(a), (a).v, ArrayItemSize(a), 1), \
+     (a).v[(a).count++] = (value))
+
+//
 // mmap
 //
 
@@ -215,30 +267,47 @@ String CliGetArg(Arena *arena, int argc, char **argv, u64 idx) {
     return StrFromCStr(arena, argv[idx + 1]);
 }
 
+//
+// LSS parse
+//
+
+typedef struct {
+    _ArrayHeader_;
+    String *v;
+} StringArray;
+
+StringArray GetStringArray(Arena *arena) {
+     StringArray arr = {};
+     ArrayPush(arena, arr, S("Hello"));
+     ArrayPush(arena, arr, S("World!"));
+     ArrayPush(arena, arr, S("How are you doing over there?"));
+     ArrayPush(arena, arr, S("Kids giving you too much trouble these days?"));
+     ArrayPush(arena, arr, S("Do you know where I can find a good lawyer?"));
+     return arr;
+}
+
 // Goal: count lines in file
 int main(int argc, char **argv) {
     Arena arena = {};
 
-    String fname = CliGetArg(&arena, argc, argv, 0);
-    // if (StrIsEmpty(fname)) {
-    //     fprintf(stderr, "Please provide a file to open\n");
-    //     return EXIT_FAILURE;
+    // String fname = CliGetArg(&arena, argc, argv, 0);
+    // String f = MmapFileAsString(&arena, fname);
+    // const u64 line_count = StrCountLines(f);
+    //
+    // LineIter iter = StrIterLines(f);
+    // for (u64 line_num = 0; LineIterHasNext(&iter) && line_num < 10; line_num++) {
+    //     String line = LineIterNext(&iter);
+    //     printf("%03lld: '%s'\n", line_num + 1, StrToCStr(&arena, line));
     // }
-    String f = MmapFileAsString(&arena, fname);
-    // if (StrIsEmpty(f)) {
-    //     fprintf(stderr, "Empty file, or something\n");
-    //     return EXIT_FAILURE;
-    // }
-    const u64 line_count = StrCountLines(f);
-    printf("Opened file. Size: %lld, lines: %lld\n", f.size, line_count);
-
-    LineIter iter = StrIterLines(f);
-    for (u64 line_num = 0; LineIterHasNext(&iter) && line_num < 10; line_num++) {
-        String line = LineIterNext(&iter);
-        printf("%03lld: '%s'\n", line_num + 1, StrToCStr(&arena, line));
+    //
+    // printf("Arena size: %lld\n", arena.data_offset);
+    
+    StringArray arr = GetStringArray(&arena);
+    for (u64 i = 0; i < arr.count; i++) {
+        printf("%lld: %s\n", i + 1, StrToCStr(&arena, arr.v[i]));
+        printf("Count: %lld, capacity: %lld\n", arr.count, arr.capacity);
     }
-
-    printf("Arena size: %lld\n", arena.data_offset);
+    printf("Final: count: %lld, capacity: %lld\n", arr.count, arr.capacity);
 
     return EXIT_SUCCESS;
 }
