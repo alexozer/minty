@@ -94,6 +94,39 @@ void Defer(Arena *arena) {
 }
 
 //
+// Array
+//
+
+// Embedded into user defined array structs.
+#define _ArrayHeader_ struct { u64 count; u64 capacity; }
+typedef struct { u64 count; u64 capacity; } ArrayHeader;
+
+#define MIN_ARRAY_COUNT 8
+
+#define ArrayHeaderCast(a) ((ArrayHeader *)(&a))
+#define ArrayItemSize(a) (sizeof(*(a).v))
+
+void *ArrayGrow(Arena *arena, ArrayHeader *header, void *array, u64 item_size, u64 count) {
+    const u64 old_size = header->count * item_size;
+    const u64 new_size = (header->count + Max(count, MIN_ARRAY_COUNT)) * item_size;
+
+    if (new_size > header->capacity) {
+        header->capacity = NextPow2(new_size);
+        void *new_array = ArenaPush(arena, header->capacity);
+        memcpy(new_array, array, old_size);
+        return new_array;
+    }
+
+    return array;
+}
+
+#define ArrayPush(arena, a, value) \
+    (*((void **)&(a).v) = ArrayGrow((arena), ArrayHeaderCast(a), (a).v, ArrayItemSize(a), 1), \
+     (a).v[(a).count++] = (value))
+
+#define ArrayClear(a) ((a).size = 0)
+
+//
 // Strings
 //
 
@@ -154,6 +187,29 @@ String StrFromBytes(void *buf, u64 size) {
     return (String){.data = s, .size = size};
 }
 
+typedef struct {
+    _ArrayHeader_;
+    String *v;
+} StringArray;
+
+void StrSplit(Arena *arena, String src, char delim, StringArray *out) {
+    u64 i = 0;
+    String substr = {.data = src.data, .size = 0};
+    while (i < src.size) {
+        if (src.data[i] == delim) {
+            ArrayPush(arena, *out, substr);
+            while (src.data[i] == delim) i++;
+            substr = (String){.data = src.data + i, .size = 0};
+        } else {
+            substr.size++;
+            i++;
+        }
+    }
+    if (substr.size > 0) {
+        ArrayPush(arena, *out, substr);
+    }
+}
+
 // Certainly possible to do this simply and w/o an iterator object, but just messin around
 typedef struct {
     String base;
@@ -203,37 +259,6 @@ u64 StrCountLines(String s) {
 }
 
 //
-// Array
-//
-
-// Embedded into user defined array structs.
-#define _ArrayHeader_ struct { u64 count; u64 capacity; }
-typedef struct { u64 count; u64 capacity; } ArrayHeader;
-
-#define MIN_ARRAY_COUNT 8
-
-#define ArrayHeaderCast(a) ((ArrayHeader *)(&a))
-#define ArrayItemSize(a) (sizeof(*(a).v))
-
-void *ArrayGrow(Arena *arena, ArrayHeader *header, void *array, u64 item_size, u64 count) {
-    const u64 old_size = header->count * item_size;
-    const u64 new_size = (header->count + Max(count, MIN_ARRAY_COUNT)) * item_size;
-
-    if (new_size > header->capacity) {
-        header->capacity = NextPow2(new_size);
-        void *new_array = ArenaPush(arena, header->capacity);
-        memcpy(new_array, array, old_size);
-        return new_array;
-    }
-
-    return array;
-}
-
-#define ArrayPush(arena, a, value) \
-    (*((void **)&(a).v) = ArrayGrow((arena), ArrayHeaderCast(a), (a).v, ArrayItemSize(a), 1), \
-     (a).v[(a).count++] = (value))
-
-//
 // mmap
 //
 
@@ -271,43 +296,24 @@ String CliGetArg(Arena *arena, int argc, char **argv, u64 idx) {
 // LSS parse
 //
 
-typedef struct {
-    _ArrayHeader_;
-    String *v;
-} StringArray;
-
-StringArray GetStringArray(Arena *arena) {
-     StringArray arr = {};
-     ArrayPush(arena, arr, S("Hello"));
-     ArrayPush(arena, arr, S("World!"));
-     ArrayPush(arena, arr, S("How are you doing over there?"));
-     ArrayPush(arena, arr, S("Kids giving you too much trouble these days?"));
-     ArrayPush(arena, arr, S("Do you know where I can find a good lawyer?"));
-     return arr;
-}
-
 // Goal: count lines in file
 int main(int argc, char **argv) {
     Arena arena = {};
 
-    // String fname = CliGetArg(&arena, argc, argv, 0);
-    // String f = MmapFileAsString(&arena, fname);
-    // const u64 line_count = StrCountLines(f);
-    //
-    // LineIter iter = StrIterLines(f);
-    // for (u64 line_num = 0; LineIterHasNext(&iter) && line_num < 10; line_num++) {
-    //     String line = LineIterNext(&iter);
-    //     printf("%03lld: '%s'\n", line_num + 1, StrToCStr(&arena, line));
-    // }
-    //
-    // printf("Arena size: %lld\n", arena.data_offset);
-    
-    StringArray arr = GetStringArray(&arena);
-    for (u64 i = 0; i < arr.count; i++) {
-        printf("%lld: %s\n", i + 1, StrToCStr(&arena, arr.v[i]));
-        printf("Count: %lld, capacity: %lld\n", arr.count, arr.capacity);
+    String fname = CliGetArg(&arena, argc, argv, 0);
+    String f = MmapFileAsString(&arena, fname);
+
+    LineIter iter = StrIterLines(f);
+    String line = LineIterNext(&iter);
+    printf("Line: '%s'\n", StrToCStr(&arena, line));
+
+    StringArray words = {};
+    StrSplit(&arena, line, ' ', &words);
+    printf("%lld words\n", words.count);
+    for (u64 i = 0; i < words.count; i++) {
+         printf("``%s`` ", StrToCStr(&arena, words.v[i]));
     }
-    printf("Final: count: %lld, capacity: %lld\n", arr.count, arr.capacity);
+    printf("\n");
 
     return EXIT_SUCCESS;
 }
