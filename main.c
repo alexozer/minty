@@ -22,9 +22,11 @@ typedef double f64;
 // Math
 //
 
-#define Kilobytes(n) (n * 1024)
-#define Megabytes(n) (n * 1024 * 1024)
-#define WordAlign(n) ((n + 7) & (~7))
+#define Kilobytes(n) (n * 1024LL)
+#define Megabytes(n) (Kilobytes(n) * 1024LL)
+
+#define AlignTo(n, a) (((n) + (a - 1)) & ~(a - 1))
+#define DEFAULT_ALIGNMENT 8
 
 #define Min(a, b) (((a) < (b)) ? a : b)
 #define Max(a, b) (((a) > (b)) ? a : b)
@@ -48,39 +50,36 @@ u64 NextPow2(u64 x) {
 
 typedef struct {
     void *data;
-    u64 data_reserved;
-    u64 data_offset;
-
-    // Resources cleanup commands
-    void *res;
-    u64 res_reserved;
-    u64 res_offset;
+    u64 reserved;
+    u64 offset;
 } Arena;
 
 void _ArenaEnsureInit(Arena *arena) {
     if (arena->data == nullptr) {
         const u64 data_size = Megabytes(16);
         arena->data = calloc(1, data_size);
-        arena->data_reserved = data_size;
-
-        const u64 res_size = Kilobytes(4);
-        arena->res = calloc(1, data_size);
-        arena->res_reserved = res_size;
+        arena->reserved = data_size;
     }
 }
 
-void *ArenaPush(Arena *arena, u64 size) {
+// TODO deal with e.g. string nonalignment
+void *_ArenaPush(Arena *arena, u64 size, u64 alignment) {
     _ArenaEnsureInit(arena);
 
-    void *pos = (void *)((u64)arena->data + arena->data_offset);
-    size = WordAlign(size);
-    arena->data_offset += size;
-    if (arena->data_offset > arena->data_reserved) {
+    void *pos = (void *)((u64)arena->data + arena->offset);
+    size = AlignTo(size, alignment);
+    arena->offset += size;
+    if (arena->offset > arena->reserved) {
          fprintf(stderr, "Arena over!\n");
          exit(EXIT_FAILURE);
     }
     return pos;
 }
+
+#define ArenaPush(arena, size) (ArenaPush((arena), size, DEFAULT_ALIGNMENT))
+#define ArenaPushStruct(arena, type) (((type)*)ArenaPush((arena), sizeof(type)))
+#define ArenaPushArray(arena, count, type) \
+    (((type)*)ArenaPush((arena), (count) * sizeof(type), alignof((type)[0])))
 
 void ArenaRelease(Arena *arena) {
     if (arena->data != nullptr) {
@@ -88,9 +87,6 @@ void ArenaRelease(Arena *arena) {
         free(arena->res);
         *arena = (Arena){};
     }
-}
-
-void Defer(Arena *arena) {
 }
 
 //
@@ -160,14 +156,6 @@ String StrFromCStr(Arena *arena, const char *cstr) {
     return (String){.data = data, .size = len};
 }
 
-String StrSliceUntil(String s, char c) {
-    String substr = {.data = s.data, .size = 0};
-    for (u64 i = 0; i < s.size && s.data[i] != c; i++) {
-        substr.size++;
-    }
-    return substr;
-}
-
 bool StrIsEmpty(String s) {
     return s.size == 0;
 }
@@ -208,6 +196,54 @@ void StrSplit(Arena *arena, String src, char delim, StringArray *out) {
     if (substr.size > 0) {
         ArrayPush(arena, *out, substr);
     }
+}
+
+// Super loose definition probably
+bool CharIsWhitespace(char c) {
+    return c == ' ' || c == '\r' || c == '\n';
+}
+
+String StrTrim(String s) {
+    u64 start = 0;
+    while (start < s.size && CharIsWhitespace(s.data[start])) {
+        start++;
+    }
+
+    i64 end = ((i64)s.size) - 1;
+    while (end >= 0 && CharIsWhitespace(s.data[end])) {
+        end--;
+    }
+    
+    return (String){.data = s.data + start, .size = (u64)(end + 1) - start};
+}
+
+String StrClone(Arena *arena, String s) {
+    void *data = ArenaPush(arena, s.size);
+    memcpy(data, s.data, s.size);
+    return (String){.data = data, .size = s.size};
+}
+
+typedef enum {
+    SSF_None = 0,
+    SSF_SearchBackwards = 1 << 1,
+} StringSearchFlags;
+
+String StrTrimUntil(String s, char c, StringSearchFlags flags) {
+    if (flags & SSF_SearchBackwards) {
+        i64 i = (i64)s.size;
+        for (; i >= 0 && s.data[i] != c; i--)
+            ;
+        return (String){.data = s.data, .size = (u64)(i + 1)};
+    } else {
+        u64 i = 0;
+        for (; i < s.size && s.data[i] != c; i++)
+            ;
+        return (String){.data = s.data + i, .size = s.size - i};
+    }
+}
+
+bool StrStartsWith(String s, String prefix) {
+    return prefix.size <= s.size && memcmp(s.data, prefix.data, prefix.size) == 0;
 }
 
 // Certainly possible to do this simply and w/o an iterator object, but just messin around
@@ -269,7 +305,7 @@ String MmapFileAsString(Arena *arena, String filepath) {
     if (fd == -1) {
         return (String){};
     }
-    Defer(arena /* , close(fd) */);
+    // Defer(arena /* , close(fd) */);
 
     struct stat st;
     if (fstat(fd, &st) == -1) {
@@ -280,10 +316,47 @@ String MmapFileAsString(Arena *arena, String filepath) {
     if (buf == MAP_FAILED) {
         return (String){};
     }
-    Defer(arena /* munmap(buf, st.st_size) */);
+    // Defer(arena /* munmap(buf, st.st_size) */);
 
     return StrFromBytes(buf, st.st_size);
 }
+
+//
+// LSS parse
+//
+
+typedef struct {
+    String game_name;
+    String category_name;
+    String attempt_count; // TODO parse u64
+} LivesplitSplits;
+
+String XmlParseElemText(String line) {
+    String start = StrTrimUntil(line, '>', SSF_None);
+    return StrTrimUntil(start, '<', SSF_SearchBackwards);
+}
+
+LivesplitSplits *ParseLss(Arena *arena, String lss) {
+    LivesplitSplits splits = {};
+
+    LineIter iter = StrIterLines(lss);
+    while (LineIterHasNext(&iter)) {
+        String line = StrTrim(LineIterNext(&iter));
+        if (StrStartsWith(line, S("<GameName>"))) {
+            splits.game_name = StrClone(arena, XmlParseElemText(line));
+        } else if (StrStartsWith(line, S("<CategoryName>"))) {
+            splits.game_name = StrClone(arena, XmlParseElemText(line));
+        } else if (StrStartsWith(line, S("<AttemptCount>"))) {
+            splits.game_name = StrClone(arena, XmlParseElemText(line));
+        }
+    }
+
+    return splits;
+}
+
+//
+// Main
+//
 
 String CliGetArg(Arena *arena, int argc, char **argv, u64 idx) {
     if (idx + 1 >= argc) {
@@ -291,10 +364,6 @@ String CliGetArg(Arena *arena, int argc, char **argv, u64 idx) {
     }
     return StrFromCStr(arena, argv[idx + 1]);
 }
-
-//
-// LSS parse
-//
 
 // Goal: count lines in file
 int main(int argc, char **argv) {
@@ -314,6 +383,12 @@ int main(int argc, char **argv) {
          printf("``%s`` ", StrToCStr(&arena, words.v[i]));
     }
     printf("\n");
+
+    LivesplitSplits* splits = ParseLss(&arena, f);
+    printf("name: '%s', cat: '%s', attempts: %lld\n", 
+            StrToCStr(&arena, splits.game_name), 
+            StrToCStr(&arena, splits.category_name),
+            splits.attempts);
 
     return EXIT_SUCCESS;
 }
