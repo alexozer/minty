@@ -76,7 +76,7 @@ void *_ArenaPush(Arena *arena, u64 size, u64 alignment) {
     return pos;
 }
 
-#define ArenaPush(arena, size) (ArenaPush((arena), size, DEFAULT_ALIGNMENT))
+#define ArenaPush(arena, size) (_ArenaPush((arena), size, DEFAULT_ALIGNMENT))
 #define ArenaPushStruct(arena, type) (((type)*)ArenaPush((arena), sizeof(type)))
 #define ArenaPushArray(arena, count, type) \
     (((type)*)ArenaPush((arena), (count) * sizeof(type), alignof((type)[0])))
@@ -84,7 +84,6 @@ void *_ArenaPush(Arena *arena, u64 size, u64 alignment) {
 void ArenaRelease(Arena *arena) {
     if (arena->data != nullptr) {
         free(arena->data);
-        free(arena->res);
         *arena = (Arena){};
     }
 }
@@ -96,7 +95,7 @@ void ArenaRelease(Arena *arena) {
 // Embedded into user defined array structs.
 #define _ArrayHeader_ struct { u64 count; u64 capacity; }
 typedef struct { u64 count; u64 capacity; } ArrayHeader;
-#define Array(t) ({ _ArrayHeader_; (t)* v; })
+#define Array(t) struct { _ArrayHeader_; (t)* v; }
 
 #define MIN_ARRAY_COUNT 8
 
@@ -118,12 +117,12 @@ void *ArrayGrow(Arena *arena, ArrayHeader *header, void *array, u64 item_size, u
 }
 
 #define ArrayPush(arena, a, value) \
-    (*((void **)&(a).v) = ArrayGrow((arena), ArrayHeaderCast(a), (a).v, ArrayItemSize(a), 1), \
+    (*((void **)&(a).v) = ArrayGrow((arena), ArrayHeaderCast((a)), (a).v, ArrayItemSize((a)), 1), \
      (a).v[(a).count++] = (value))
 
 #define ArrayExtend(arena, a, count, values) \
-    (*((void **)&(a).v) = ArrayGrow((arena), ArrayHeaderCast(a), (a).v, ArrayItemSize(a), count), \
-     memcpy((a).v, values, ArrayItemSize(a) * count), \
+    (*((void **)&(a).v) = ArrayGrow((arena), ArrayHeaderCast((a)), (a).v, ArrayItemSize((a)), count), \
+     memcpy((a).v, values, ArrayItemSize((a)) * count), \
      (a).count += count)
 
 #define ArrayClear(a) ((a).size = 0)
@@ -140,8 +139,7 @@ typedef struct {
 #define S(s) ((String){.data = (char *)(s), .size = (sizeof(s)) - 1})
 
 char *StrToCStr(Arena *arena, String s) {
-    const u64 cstr_size = WordAlign(s.size + 1);
-    char *cstr = (char *)ArenaPush(arena, cstr_size);
+    char *cstr = (char *)ArenaPush(arena, s.size + 1);
     // Compiler plz vectorize
     for (u64 i = 0; i < s.size; i++) {
         cstr[i] = s.data[i];
@@ -305,7 +303,7 @@ u64 StrCountLines(String s) {
 }
 
 typedef struct {
-    Array(char) arr;
+    struct { _ArrayHeader_; char *v; } arr;
 } StringBuilder;
 
 void SBPushStr(Arena *arena, StringBuilder *builder, String s) {
@@ -360,17 +358,17 @@ String XmlParseElemText(String line) {
 }
 
 LivesplitSplits *ParseLss(Arena *arena, String lss) {
-    LivesplitSplits splits = {};
+    LivesplitSplits *splits = ArenaPushStruct(arena, LivesplitSplits);
 
     LineIter iter = StrIterLines(lss);
     while (LineIterHasNext(&iter)) {
         String line = StrTrim(LineIterNext(&iter));
         if (StrStartsWith(line, S("<GameName>"))) {
-            splits.game_name = StrClone(arena, XmlParseElemText(line));
+            splits->game_name = StrClone(arena, XmlParseElemText(line));
         } else if (StrStartsWith(line, S("<CategoryName>"))) {
-            splits.game_name = StrClone(arena, XmlParseElemText(line));
+            splits->game_name = StrClone(arena, XmlParseElemText(line));
         } else if (StrStartsWith(line, S("<AttemptCount>"))) {
-            splits.game_name = StrClone(arena, XmlParseElemText(line));
+            splits->game_name = StrClone(arena, XmlParseElemText(line));
         }
     }
 
@@ -548,6 +546,58 @@ String JsonEncode(Arena *arena, JsonValue value) {
     StringBuilder builder = {};
     Json__EncodeValue(arena, &builder, value);
     return SBAsStr(&builder);
+}
+
+#define _ArrayHeader_ struct { u64 count; }
+#define ArrayAt(array, idx) \
+    (do { \
+        if ((idx) >= 0 && (idx) < (array).count) { ]
+            /* TODO: crash in debug mode */ \
+        } \
+    } while (false);)
+
+// TODO finish this macro
+
+#define Some(value) ((typeof(value)){ .present = true, .v = (value) })
+#define None(type) ((type){})
+
+// Optionals
+struct OptDuration {
+    bool present;
+    i64 v;
+};
+
+typedef struct {
+    OptDuration live_split;
+    OptDuration live_seg;
+    OptDuration live_delta;
+    OptDuration gained;
+
+    OptDuration pb_split;
+    OptDuration pb_seg;
+
+    OptDuration gold;
+    bool is_gold_new;
+} SegSummary;
+
+typedef struct {
+    _ArrayHeader_;
+    SegSummary *v;
+} SegSummaryArray;
+
+void calc_live_seg_times(SegSummaryArray summaries) {
+    for (u64 i = 0; i < summaries.count; i++) {
+        if (i == 0) {
+            At(summaries, i).live_seg = At(summaries, i).live_split
+        } else {
+            At(summaries, i).live_seg = None(OptDuration);
+            OptDuration prev_split = At(summaries, i - 1).live_split;
+            OptDuration curr_split = At(summaries, i).live_split;
+            if (prev_split.present && curr_split.present) {
+                At(summaries, i) = Some(curr_split.v - prev_split.v);
+            }
+        }
+    }
 }
 
 //
