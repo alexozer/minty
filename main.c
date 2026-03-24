@@ -1,3 +1,4 @@
+// TODO clean up includes
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/mman.h>
@@ -89,22 +90,21 @@ void ArenaRelease(Arena *arena) {
 }
 
 //
-// Array
+// Vec
 //
 
 // Embedded into user defined array structs.
-#define _ArrayHeader_ struct { u64 count; u64 capacity; }
-typedef struct { u64 count; u64 capacity; } ArrayHeader;
-#define Array(t) struct { _ArrayHeader_; (t)* v; }
+#define _VecHeader_ struct { u64 count; u64 capacity; }
+typedef struct { u64 count; u64 capacity; } VecHeader;
 
-#define MIN_ARRAY_COUNT 8
+#define MIN_VEC_CAPACITY 8
 
-#define ArrayHeaderCast(a) ((ArrayHeader *)(&a))
-#define ArrayItemSize(a) (sizeof(*(a).v))
+#define VecHeaderCast(a) ((VecHeader *)(&a))
+#define VecItemSize(a) (sizeof(*(a).v))
 
-void *ArrayGrow(Arena *arena, ArrayHeader *header, void *array, u64 item_size, u64 count) {
+void *VecGrow(Arena *arena, VecHeader *header, void *array, u64 item_size, u64 count) {
     const u64 old_size = header->count * item_size;
-    const u64 new_size = (header->count + Max(count, MIN_ARRAY_COUNT)) * item_size;
+    const u64 new_size = (header->count + Max(count, MIN_VEC_CAPACITY)) * item_size;
 
     if (new_size > header->capacity) {
         header->capacity = NextPow2(new_size);
@@ -116,27 +116,27 @@ void *ArrayGrow(Arena *arena, ArrayHeader *header, void *array, u64 item_size, u
     return array;
 }
 
-#define ArrayPush(arena, a, value) \
-    (*((void **)&(a).v) = ArrayGrow((arena), ArrayHeaderCast((a)), (a).v, ArrayItemSize((a)), 1), \
+#define VecPush(arena, a, value) \
+    (*((void **)&(a).v) = VecGrow((arena), VecHeaderCast((a)), (a).v, VecItemSize((a)), 1), \
      (a).v[(a).count++] = (value))
 
-#define ArrayExtend(arena, a, count, values) \
-    (*((void **)&(a).v) = ArrayGrow((arena), ArrayHeaderCast((a)), (a).v, ArrayItemSize((a)), count), \
-     memcpy((a).v, values, ArrayItemSize((a)) * count), \
+#define VecExtend(arena, a, count, values) \
+    (*((void **)&(a).v) = VecGrow((arena), VecHeaderCast((a)), (a).v, VecItemSize((a)), count), \
+     memcpy((a).v, values, VecItemSize((a)) * count), \
      (a).count += count)
 
-#define ArrayClear(a) ((a).size = 0)
+#define VecClear(a) ((a).size = 0)
 
 //
 // Strings
 //
 
 typedef struct {
-    char *data;
+    u8 *data;
     u64 size;
 } String;
 
-#define S(s) ((String){.data = (char *)(s), .size = (sizeof(s)) - 1})
+#define S(s) ((String){.data = (u8 *)(s), .size = (sizeof(s)) - 1})
 
 char *StrToCStr(Arena *arena, String s) {
     char *cstr = (char *)ArenaPush(arena, s.size + 1);
@@ -153,7 +153,7 @@ String StrFromCStr(Arena *arena, const char *cstr) {
     for (u64 i = 0; cstr[i] != '\0'; i++) {
         len++;
     }
-    char *data = (char *)ArenaPush(arena, len);
+    u8 *data = (u8 *)ArenaPush(arena, len);
     for (u64 i = 0; i < len; i++) {
          data[i] = cstr[i];
     }
@@ -164,14 +164,11 @@ bool StrIsEmpty(String s) {
     return s.size == 0;
 }
 
-// Validates utf8 basically.
-// Returns empty string on invalid utf8 lol
+// Returns a string from a utf8 byte buffer. Doesn't validate if it's actually utf8.
 String StrFromBytes(void *buf, u64 size) {
-    // TODO implement
-
     // Skip utf8 BOM
-    char *s = (char *)buf;
-    if (size >= 3 && s[0] == '\xef' && s[1] == '\xbb' && s[2] == '\xbf') {
+    u8 *s = (u8 *)buf;
+    if (size >= 3 && s[0] == u8'\xef' && s[1] == u8'\xbb' && s[2] == u8'\xbf') {
         s += 3;
         size -= 3;
     }
@@ -180,16 +177,16 @@ String StrFromBytes(void *buf, u64 size) {
 }
 
 typedef struct {
-    _ArrayHeader_;
+    _VecHeader_;
     String *v;
-} StringArray;
+} StringVec;
 
-void StrSplit(Arena *arena, String src, char delim, StringArray *out) {
+void StrSplit(Arena *arena, String src, u8 delim, StringVec *out) {
     u64 i = 0;
     String substr = {.data = src.data, .size = 0};
     while (i < src.size) {
         if (src.data[i] == delim) {
-            ArrayPush(arena, *out, substr);
+            VecPush(arena, *out, substr);
             while (src.data[i] == delim) i++;
             substr = (String){.data = src.data + i, .size = 0};
         } else {
@@ -198,13 +195,13 @@ void StrSplit(Arena *arena, String src, char delim, StringArray *out) {
         }
     }
     if (substr.size > 0) {
-        ArrayPush(arena, *out, substr);
+        VecPush(arena, *out, substr);
     }
 }
 
 // Super loose definition probably
-bool CharIsWhitespace(char c) {
-    return c == ' ' || c == '\r' || c == '\n';
+bool CharIsWhitespace(u8 c) {
+    return c == u8' ' || c == u8'\r' || c == u8'\n';
 }
 
 String StrTrim(String s) {
@@ -232,7 +229,7 @@ typedef enum {
     SSF_SearchBackwards = 1 << 1,
 } StringSearchFlags;
 
-String StrTrimUntil(String s, char c, StringSearchFlags flags) {
+String StrTrimUntil(String s, u8 c, StringSearchFlags flags) {
     if (flags & SSF_SearchBackwards) {
         i64 i = (i64)s.size;
         for (; i >= 0 && s.data[i] != c; i--)
@@ -270,7 +267,7 @@ bool LineIterHasNext(LineIter* iter) {
 
 String LineIterNext(LineIter* iter) {
     u64 line_start = iter->pos;
-    char *data = iter->base.data;
+    u8 *data = iter->base.data;
     const u64 size = iter->base.size;
 
     // Advance until next line break
@@ -302,18 +299,18 @@ u64 StrCountLines(String s) {
     return line_count;
 }
 
-typedef struct {
-    struct { _ArrayHeader_; char *v; } arr;
-} StringBuilder;
+// typedef struct {
+//     struct { _VecHeader_; u8 *v; } arr;
+// } StringBuilder;
 
-void SBPushStr(Arena *arena, StringBuilder *builder, String s) {
-    ArrayExtend(arena, builder->arr, s.size, s.data);
-}
-
-// Only works for single byte "characters"
-void SBPushChar(Arena *arena, StringBuilder *builder, char c) {
-    ArrayPush(arena, builder->arr, c);
-}
+// void SBPushStr(Arena *arena, StringBuilder *builder, String s) {
+//     VecExtend(arena, builder->arr, s.size, s.data);
+// }
+//
+// // Only works for single byte "characters"
+// void SBPushChar(Arena *arena, StringBuilder *builder, u8 c) {
+//     VecPush(arena, builder->arr, c);
+// }
 
 //
 // mmap
@@ -343,264 +340,6 @@ String MmapFileAsString(Arena *arena, String filepath) {
 }
 
 //
-// LSS parse
-//
-
-typedef struct {
-    String game_name;
-    String category_name;
-    String attempt_count; // TODO parse u64
-} LivesplitSplits;
-
-String XmlParseElemText(String line) {
-    String start = StrTrimUntil(line, '>', SSF_None);
-    return StrTrimUntil(start, '<', SSF_SearchBackwards);
-}
-
-LivesplitSplits *ParseLss(Arena *arena, String lss) {
-    LivesplitSplits *splits = ArenaPushStruct(arena, LivesplitSplits);
-
-    LineIter iter = StrIterLines(lss);
-    while (LineIterHasNext(&iter)) {
-        String line = StrTrim(LineIterNext(&iter));
-        if (StrStartsWith(line, S("<GameName>"))) {
-            splits->game_name = StrClone(arena, XmlParseElemText(line));
-        } else if (StrStartsWith(line, S("<CategoryName>"))) {
-            splits->game_name = StrClone(arena, XmlParseElemText(line));
-        } else if (StrStartsWith(line, S("<AttemptCount>"))) {
-            splits->game_name = StrClone(arena, XmlParseElemText(line));
-        }
-    }
-
-    return splits;
-}
-
-//
-// JSON
-//
-
-enum JsonKind {
-    JsonKind_Null,
-    JsonKind_Int,
-    JsonKind_Real,
-    JsonKind_Array,
-    JsonKind_Object,
-    JsonKind_String,
-    JsonKind_Bool,
-};
-
-typedef struct {
-    String key;
-    JsonValue value;
-} JsonObjectEntry;
-
-typedef Array(JsonValue) JsonArray;
-typedef Array(JsonObjectEntry) JsonObject;
-
-// Zero value is JSON null
-typedef struct {
-    JsonKind kind;
-    union {
-        i64 v_i64;
-        f64 v_f64;
-        JsonArray v_array;
-        JsonObject v_object;
-        String v_string;
-        bool v_bool;
-    };
-} JsonValue;
-
-Array(JsonValue) JsonAsArray(JsonValue value) {
-    if (value.kind == JsonKind_Array) { 
-        return value.v_array;
-    }
-    return (JsonArray){};
-}
-
-Array(JsonObjectEntry) JsonAsObject(JsonValue value) {
-    if (value.kind == JsonKind_Object) {
-         return value.v_object;
-    }
-    return (JsonObject){};
-}
-
-i64 JsonAsInt(JsonValue value) {
-     if (value.kind == JsonKind_Int) {
-          return value.v_i64;
-     }
-     return 0;
-}
-
-f64 JsonAsReal(JsonValue value) {
-     if (value.kind == JsonKind_Real) {
-          return value.v_f64;
-     }
-     return 0.0;
-}
-
-String JsonAsString(JsonValue value) {
-     if (value.kind == JsonKind_String) {
-          return value.v_string;
-     }
-     return (String){};
-}
-
-bool JsonAsBool(JsonValue value) {
-    if (value.kind == JsonKind_Bool) {
-        return value.v_bool;
-    }
-    return false;
-}
-
-bool JsonIsNull(JsonValue value) {
-     return value.kind == JsonKind_Null;
-}
-
-JsonValue JsonObjectGet(JsonObject object, String key) {
-    for (u64 i = 0; i < object.count; i++) {
-        if (StrEquals(key, object.v[i].key)) {
-             return object.v[i].value;
-        }
-    }
-    return (JsonValue){};
-}
-
-void Json__EncodeValue(Arena *arena, StringBuilder *builder, JsonValue value);
-
-void Json__EncodeNull(Arena *arena, StringBuilder *builder) {
-    SBPushStr(arena, builder, S("null"));
-}
-
-char ASCII_HEX_TABLE[] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f' };
-
-void Json__EncodeString(Arena *arena, StringBuilder *builder, String s) {
-    SBPushChar(arena, builder, '"');
-
-    for (u64 i = 0; i < s.size; i++) {
-        char c = s.data[i];
-        if (c == '\\') {
-            SBPushChar(arena, builder, '\\');
-        } else if (c == '"') {
-            SBPushChar(arena, builder, '\\');
-        } else if (c < '\x0020') { // TODO: use u8 instead to avoid signed char weirdness?
-            SBPushStr(arena, builder, "\\x00");
-            SBPushChar(arena, builder, ASCII_HEX_TABLE[c >> 4]);
-            SBPushChar(arena, builder, ASCII_HEX_TABLE[c & 0xf]);
-        }
-        SBPushChar(arena, builder, c);
-    }
-
-    SBPushChar(arena, builder, '"');
-}
-
-void Json__EncodeBool(Arena *arena, StringBuilder *builder, bool b) {
-    if (b) {
-        SBPushStr(arena, builder, S("true"));
-    } else {
-        SBPushStr(arena, builder, S("false"));
-    }
-}
-
-void Json__EncodeArray(Arena *arena, StringBuilder *builder, JsonArray arr) {
-    SBPushChar(arena, builder, '[');
-    for (u64 i = 0; i < arr.count; i++) {
-        Json__EncodeValue(arena, builder, arr.v[i]);
-        if (i != arr.count - 1) {
-            SBPushChar(arena, builder, ',');
-        }
-    }
-    SBPushChar(arena, builder, ']');
-}
-
-void Json__EncodeObject(Arena *arena, StringBuilder *builder, JsonObject obj) {
-    SBPushChar(arena, builder, '{');
-    for (u64 i = 0; i < obj.count; i++) {
-        Json__EncodeString(arena, builder, obj.v[i].key);
-        SBPushChar(arena, builder, ':');
-
-        Json__EncodeValue(arena, builder, obj.v[i].value);
-        if (i != obj.count - 1) {
-            SBPushChar(arena, builder, ',');
-        }
-    }
-    SBPushChar(arena, builder, '}');
-}
-
-void Json__EncodeValue(Arena *arena, StringBuilder *builder, JsonValue value) {
-    if (value.kind == JsonKind_Null) {
-        Json__EncodeNull(arena, &buf);
-    } else if (value.kind == JsonKind_String) {
-        Json__EncodeString(arena, builder, value.v_string);
-    } else if (value.kind == JsonKind_Bool) {
-        Json__EncodeBool(arena, builder, value.v_bool);
-    } else if (value.kind == JsonKind_Array) {
-        Json__EncodeArray(arena, builder, value.v_array);
-    } else if (value.kind == JsonKind_Object) {
-        Json__EncodeObject(arena, builder, value.v_object);
-    }
-}
-
-// As much as I'd like a streaming decoder, in C you need to use either a
-// callback or a state machine. Bleh.
-String JsonEncode(Arena *arena, JsonValue value) {
-    StringBuilder builder = {};
-    Json__EncodeValue(arena, &builder, value);
-    return SBAsStr(&builder);
-}
-
-#define _ArrayHeader_ struct { u64 count; }
-#define ArrayAt(array, idx) \
-    (do { \
-        if ((idx) >= 0 && (idx) < (array).count) { ]
-            /* TODO: crash in debug mode */ \
-        } \
-    } while (false);)
-
-// TODO finish this macro
-
-#define Some(value) ((typeof(value)){ .present = true, .v = (value) })
-#define None(type) ((type){})
-
-// Optionals
-struct OptDuration {
-    bool present;
-    i64 v;
-};
-
-typedef struct {
-    OptDuration live_split;
-    OptDuration live_seg;
-    OptDuration live_delta;
-    OptDuration gained;
-
-    OptDuration pb_split;
-    OptDuration pb_seg;
-
-    OptDuration gold;
-    bool is_gold_new;
-} SegSummary;
-
-typedef struct {
-    _ArrayHeader_;
-    SegSummary *v;
-} SegSummaryArray;
-
-void calc_live_seg_times(SegSummaryArray summaries) {
-    for (u64 i = 0; i < summaries.count; i++) {
-        if (i == 0) {
-            At(summaries, i).live_seg = At(summaries, i).live_split
-        } else {
-            At(summaries, i).live_seg = None(OptDuration);
-            OptDuration prev_split = At(summaries, i - 1).live_split;
-            OptDuration curr_split = At(summaries, i).live_split;
-            if (prev_split.present && curr_split.present) {
-                At(summaries, i) = Some(curr_split.v - prev_split.v);
-            }
-        }
-    }
-}
-
-//
 // Main
 //
 
@@ -622,19 +361,13 @@ int main(int argc, char **argv) {
     String line = LineIterNext(&iter);
     printf("Line: '%s'\n", StrToCStr(&arena, line));
 
-    StringArray words = {};
+    StringVec words = {};
     StrSplit(&arena, line, ' ', &words);
     printf("%lld words\n", words.count);
     for (u64 i = 0; i < words.count; i++) {
          printf("``%s`` ", StrToCStr(&arena, words.v[i]));
     }
     printf("\n");
-
-    LivesplitSplits* splits = ParseLss(&arena, f);
-    printf("name: '%s', cat: '%s', attempts: %lld\n", 
-            StrToCStr(&arena, splits.game_name), 
-            StrToCStr(&arena, splits.category_name),
-            splits.attempts);
 
     return EXIT_SUCCESS;
 }
