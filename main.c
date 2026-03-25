@@ -79,8 +79,13 @@ void *_ArenaPush(Arena *arena, u64 size, u64 alignment) {
 
 #define ArenaPush(arena, size) (_ArenaPush((arena), size, DEFAULT_ALIGNMENT))
 #define ArenaPushStruct(arena, type) (((type)*)ArenaPush((arena), sizeof(type)))
-#define ArenaPushArray(arena, count, type) \
-    (((type)*)ArenaPush((arena), (count) * sizeof(type), alignof((type)[0])))
+#define ArenaPushArray(arena, count_, type) \
+    ( \
+      (type##Array){ \
+      .v = _ArenaPush((arena), (count_) * sizeof(type), alignof(type)), \
+      .count = (count_), \
+      } \
+      )
 
 void ArenaRelease(Arena *arena) {
     if (arena->data != nullptr) {
@@ -88,6 +93,8 @@ void ArenaRelease(Arena *arena) {
         *arena = (Arena){};
     }
 }
+
+#define DefineArray(type) typedef struct { type *v; u64 count; } type##Array
 
 //
 // Vec
@@ -148,16 +155,12 @@ char *StrToCStr(Arena *arena, String s) {
     return cstr;
 }
 
-String StrFromCStr(Arena *arena, const char *cstr) {
+String StrFromCStr(char *cstr) {
     u64 len = 0;
     for (u64 i = 0; cstr[i] != '\0'; i++) {
         len++;
     }
-    u8 *data = (u8 *)ArenaPush(arena, len);
-    for (u64 i = 0; i < len; i++) {
-         data[i] = cstr[i];
-    }
-    return (String){.data = data, .size = len};
+    return (String){.data = (u8 *)cstr, .size = len};
 }
 
 bool StrIsEmpty(String s) {
@@ -343,19 +346,26 @@ String MmapFileAsString(Arena *arena, String filepath) {
 // Main
 //
 
-String CliGetArg(Arena *arena, int argc, char **argv, u64 idx) {
-    if (idx + 1 >= argc) {
-        return (String){};
+DefineArray(String);
+
+StringArray CliGetArgs(Arena *arena, int argc, char **argv) {
+    StringArray args = ArenaPushArray(arena, (u64)argc, String);
+    for (u64 i = 0; i < args.count; i++) {
+        args.v[i] = StrFromCStr(argv[i]);
     }
-    return StrFromCStr(arena, argv[idx + 1]);
+    return args;
 }
 
 // Goal: count lines in file
 int main(int argc, char **argv) {
     Arena arena = {};
 
-    String fname = CliGetArg(&arena, argc, argv, 0);
-    String f = MmapFileAsString(&arena, fname);
+    StringArray args = CliGetArgs(&arena, argc, argv);
+    if (args.count < 2) {
+        fprintf(stderr, "Expected arg\n");
+        return EXIT_FAILURE;
+    }
+    String f = MmapFileAsString(&arena, args.v[1]);
 
     LineIter iter = StrIterLines(f);
     String line = LineIterNext(&iter);
