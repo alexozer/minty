@@ -264,11 +264,11 @@ LineIter StrIterLines(String s) {
      return (LineIter){.base = s, .pos = 0};
 }
 
-bool LineIterHasNext(LineIter* iter) {
-    return iter->pos < iter->base.size;
-}
+bool LineIterNext(LineIter* iter, String *out_line) {
+    if (iter->pos >= iter->base.size) {
+        return false;
+    }
 
-String LineIterNext(LineIter* iter) {
     u64 line_start = iter->pos;
     u8 *data = iter->base.data;
     const u64 size = iter->base.size;
@@ -289,14 +289,19 @@ String LineIterNext(LineIter* iter) {
     }
 
     iter->pos = next_line_start;
-    return (String){.data = iter->base.data + line_start, .size = line_end - line_start};
+
+    if (out_line != nullptr) {
+        out_line->data = iter->base.data + line_start;
+        out_line->size = line_end - line_start;
+    }
+
+    return true;
 }
 
 u64 StrCountLines(String s) {
     u64 line_count = 0;
     LineIter iter = StrIterLines(s);
-    while (LineIterHasNext(&iter)) {
-        LineIterNext(&iter);
+    while (LineIterNext(&iter, nullptr)) {
         line_count++;
     }
     return line_count;
@@ -367,17 +372,21 @@ int main(int argc, char **argv) {
     }
     String f = MmapFileAsString(&arena, args.v[1]);
 
-    LineIter iter = StrIterLines(f);
-    String line = LineIterNext(&iter);
-    printf("Line: '%s'\n", StrToCStr(&arena, line));
-
-    StringVec words = {};
-    StrSplit(&arena, line, ' ', &words);
-    printf("%lld words\n", words.count);
-    for (u64 i = 0; i < words.count; i++) {
-         printf("``%s`` ", StrToCStr(&arena, words.v[i]));
+    LineIter line_iter = StrIterLines(f);
+    String line = {};
+    u64 line_num = 1;
+    while (LineIterNext(&line_iter, &line)) {
+        printf("%03lld: '%s'\n", line_num, StrToCStr(&arena, line));
+        line_num++;
     }
-    printf("\n");
+
+    // StringVec words = {};
+    // StrSplit(&arena, line, ' ', &words);
+    // printf("%lld words\n", words.count);
+    // for (u64 i = 0; i < words.count; i++) {
+    //      printf("``%s`` ", StrToCStr(&arena, words.v[i]));
+    // }
+    // printf("\n");
 
     return EXIT_SUCCESS;
 }
