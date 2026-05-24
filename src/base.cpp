@@ -5,8 +5,11 @@
 #include <fcntl.h>
 #include <time.h>
 
-void *os_alloc(u64 size);
-void os_free(void *buf, u64 size);
+extern "C" {
+#include "stb_sprintf.h"
+}
+
+#include "platform.hpp"
 
 void arena__ensure_init(Arena *arena) {
     if (arena->data == nullptr) {
@@ -46,10 +49,14 @@ char *str_to_c(Arena *arena, Str s) {
     return cstr.value;
 }
 
-Str str_from_c(char *cstr) {
+Str str_from_c(const char *cstr) {
     u64 count = 0;
     while (cstr[count] != '\0') count++;
     return (Str){ .value = (u8 *)cstr, .count = count };
+}
+
+Str str_from_c_len(const char *cstr, u64 len) {
+    return { . value = (u8 *)cstr, .count = len };
 }
 
 // Returns a string from a utf8 byte buffer. Doesn't validate if it's actually utf8.
@@ -158,6 +165,40 @@ Pair<Str, Str> str_split2(Str base, u8 delim) {
     return result;
 }
 
+struct StbspContext {
+    Arena *arena;
+    Vec<u8> *out_str;
+    char buf[STB_SPRINTF_MIN];
+};
+
+char *stbsp_callback(char const *buf, void *user, int len) {
+    StbspContext *ctx = (StbspContext *)user;
+    Str substr = { .value = (u8 *)buf, .count = (u64)len };
+    vec_extend(ctx->arena, ctx->out_str, substr);
+    return ctx->buf;
+}
+
+void str_format_append_v(Arena *arena, Vec<u8> *out_str, const char *format, va_list args) {
+    StbspContext ctx = { .arena = arena, .out_str = out_str };
+    stbsp_vsprintfcb(&stbsp_callback, &ctx, ctx.buf, format, args);
+}
+
+Str str_format(Arena *arena, const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    Vec<u8> out_str = {};
+    str_format_append_v(arena, &out_str, format, args);
+    va_end(args);
+    return vec_arr(&out_str);
+}
+
+void str_format_append(Arena *arena, Vec<u8>* out_str, const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    str_format_append_v(arena, out_str, format, args);
+    va_end(args);
+}
+
 //
 // Paths
 //
@@ -214,27 +255,36 @@ static struct {
     LogLevel level;
 } s_log;
 
-static const char *level_strings[] = {
-    "TRACE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL"
+static const Str level_strings[] = {
+    S("TRACE"), S("DEBUG"), S("INFO"), S("WARN"), S("ERROR"), S("FATAL")
 };
 
-static const char *level_colors[] = {
-    "\x1b[94m", "\x1b[36m", "\x1b[32m", "\x1b[33m", "\x1b[31m", "\x1b[35m"
+static const Str level_colors[] = {
+    S("\x1b[94m"), S("\x1b[36m"), S("\x1b[32m"), S("\x1b[33m"), S("\x1b[31m"), S("\x1b[35m")
 };
 
 static void stdout_callback(LogEvent *ev) {
-    char buf[16];
-    buf[strftime(buf, sizeof(buf), "%H:%M:%S", ev->time)] = '\0';
-    fprintf(
-            ev->out, "\x1b[90m%s %s%-5s \x1b[0m",
-            buf, level_colors[(int)ev->level], level_strings[(int)ev->level]);
-    vfprintf(ev->out, ev->fmt, ev->ap);
-    fprintf(ev->out, "\n");
-    fflush(ev->out);
-}
+    Arena scratch = {}; // TODO preallocate arenas
+    defer(arena_release(&scratch));
 
-const char* log_level_string(int level) {
-    return level_strings[level];
+    Vec<u8> out_str = {};
+
+    // Write date
+    char date_buf[16];
+    u64 date_size = strftime(date_buf, sizeof(date_buf), "%H:%M:%S", ev->time);
+    Str date_str = str_from_c_len(date_buf, date_size);
+    vec_extend(&scratch, &out_str, date_str);
+
+    str_format_append(
+            &scratch,
+            &out_str,
+            "\x1b[90m%s %s%-5s \x1b[0m",
+            level_colors[(int)ev->level],
+            level_strings[(int)ev->level]);
+    str_format_append_v(&scratch, &out_str, ev->fmt, ev->ap);
+    vec_push(&scratch, &out_str, C('\n'));
+
+    os_write_stderr(vec_arr(&out_str));
 }
 
 void log_set_level(LogLevel level) {

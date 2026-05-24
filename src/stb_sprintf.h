@@ -256,6 +256,12 @@ static stbsp__int32 stbsp__real_to_parts(stbsp__int64 *bits, stbsp__int32 *expo,
 #define STBSP__SPECIAL 0x7000
 #endif
 
+// PLEASE, have the same layout as our C++ Str type
+typedef struct {
+    char *value;
+    stbsp__uint64 count;
+} Str;
+
 static char stbsp__period = '.';
 static char stbsp__comma = ',';
 static struct
@@ -306,17 +312,17 @@ static void stbsp__lead_sign(stbsp__uint32 fl, char *sign)
    }
 }
 
-static STBSP__ASAN stbsp__uint32 stbsp__strlen_limited(char const *s, stbsp__uint32 limit)
+static STBSP__ASAN stbsp__uint32 stbsp__strlen_limited(Str s, stbsp__uint32 limit)
 {
-   char const * sn = s;
+   char const * sn = s.value;
 
    // get up to 4-byte alignment
    for (;;) {
       if (((stbsp__uintptr)sn & 3) == 0)
          break;
 
-      if (!limit || *sn == 0)
-         return (stbsp__uint32)(sn - s);
+      if (!limit || sn == s.value + s.count)
+         return (stbsp__uint32)(sn - s.value);
 
       ++sn;
       --limit;
@@ -343,7 +349,7 @@ static STBSP__ASAN stbsp__uint32 stbsp__strlen_limited(char const *s, stbsp__uin
       --limit;
    }
 
-   return (stbsp__uint32)(sn - s);
+   return (stbsp__uint32)(sn - s.value);
 }
 
 STBSP__PUBLICDEF int STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB *callback, void *user, char *buf, char const *fmt, va_list va)
@@ -574,6 +580,7 @@ STBSP__PUBLICDEF int STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB *callback,
          char num[STBSP__NUMSZ];
          char lead[8];
          char tail[8];
+         Str str;
          char *s;
          char const *h;
          stbsp__uint32 l, n, cs;
@@ -586,12 +593,11 @@ STBSP__PUBLICDEF int STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB *callback,
 
       case 's':
          // get the string
-         s = va_arg(va, char *);
-         if (s == 0)
-            s = (char *)"null";
+         str = va_arg(va, Str);
+         s = str.value;
          // get the length, limited to desired precision
          // always limit to ~0u chars since our counts are 32b
-         l = stbsp__strlen_limited(s, (pr >= 0) ? pr : ~0u);
+         l = stbsp__strlen_limited(str, (pr >= 0) ? pr : ~0u);
          lead[0] = 0;
          tail[0] = 0;
          pr = 0;

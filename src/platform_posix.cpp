@@ -1,6 +1,9 @@
 #include "base.hpp"
 
 #include <sys/mman.h>
+#include <unistd.h>
+
+#include "platform.hpp"
 
 void *os_alloc(u64 size) {
     void *buf = mmap(nullptr, (size_t)size, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0);
@@ -45,4 +48,8 @@ Arr<char *> cmd__build_env(Arena *arena, Cmd *cmd) {
     vec_push(arena, &env, (char *)nullptr);
 
     return vec_arr(&env);
+}
+
+void os_write_stderr(Arr<u8> buf) {
+    write(STDERR_FILENO, buf.value, buf.count);
 }

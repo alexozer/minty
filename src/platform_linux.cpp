@@ -6,6 +6,8 @@
 #include <fcntl.h>
 #include <errno.h>
 
+#include "platform.hpp"
+
 OSResult cmd_run(Cmd *cmd) {
     Arena scratch = {};
     defer(arena_release(&scratch));
@@ -57,7 +59,7 @@ OSResult cmd_run(Cmd *cmd) {
             return OSResult::OtherError;
         }
     }
-    
+
     int status = 0;
     if (waitpid(pid, &status, 0) == -1) {
         return OSResult::OtherError;

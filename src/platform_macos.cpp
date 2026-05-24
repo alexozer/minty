@@ -5,6 +5,8 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include "platform.hpp"
+
 OSResult cmd__check_file_action(int code) {
     switch (code) {
         case 0: return OSResult::Ok;

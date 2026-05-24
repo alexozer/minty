@@ -158,7 +158,8 @@ using Str = Arr<u8>;
 #define A(a) { .value = (a), .count = sizeof((a)) / sizeof((a)[0]) }
 
 char *str_to_c(Arena *arena, Str s);
-Str str_from_c(char *cstr);
+Str str_from_c(const char *cstr);
+Str str_from_c_len(const char *cstr);
 Str str_from_bytes(Arr<u8> bytes);
 bool char_is_whitespace(u8 c);
 Str str_trim(Str s);
@@ -185,7 +186,7 @@ struct Vec {
     T *value;
     u64 count; // Element count (not size in bytes)
     u64 cap; // Element capacity (not size capacity in bytes)
-    
+
     T& operator[](u64 i) {
         if (i >= count) {
             fprintf(stderr, "Bounds check fail! %" PRIu64 " >= %" PRIu64 "\n", i, count);
@@ -229,7 +230,7 @@ Arr<T> vec_extend(Arena *arena, Vec<T> *vec, Arr<T> arr) {
     vec->count += arr.count;
     Arr<T> a = arr_slice(vec_arr(vec), start, vec->count);
     arr_copy(a, arr);
-    
+
     return a;
 }
 
