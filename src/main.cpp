@@ -104,8 +104,8 @@ int main(int argc, char **argv, char **envp) {
     g_envp = arr_from_null_terminated(envp);
 
     log_info("Hello, world!");
-    // log_fatal("Okay then...");
-    // log_error("Why is this showing up?");
+    log_fatal("Okay then...");
+    log_error("Why is this showing up?");
 
     return 0;
 }

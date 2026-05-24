@@ -272,15 +272,18 @@ static void log_stderr_callback(LogEvent *ev) {
     Str date_str = str_from_c_len(date_buf, date_size);
     vec_extend(&scratch, &out_str, date_str);
 
+    // Write level
     str_format_append(
             &scratch,
             &out_str,
-            "\x1b[90m%s %s%-5s \x1b[0m",
+            "\x1b[90m %s%-5s \x1b[0m",
             level_colors[(int)ev->level],
             level_strings[(int)ev->level]);
-    str_format_append_v(&scratch, &out_str, ev->fmt, ev->ap);
-    vec_push(&scratch, &out_str, C('\n'));
 
+    // Write message
+    str_format_append_v(&scratch, &out_str, ev->fmt, ev->ap);
+
+    vec_push(&scratch, &out_str, C('\n'));
     os_write_stderr(vec_arr(&out_str));
 }
 
