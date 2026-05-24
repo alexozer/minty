@@ -104,6 +104,7 @@ int main(int argc, char **argv, char **envp) {
     g_envp = arr_from_null_terminated(envp);
 
     log_info("Hello, world!");
+    log_debug("Debug logging... int = %d, string = \"%s\", float = %.3f", -23, S("okay then..."), 3.14159);
     log_fatal("Okay then...");
     log_error("Why is this showing up?");
 
