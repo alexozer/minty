@@ -1,7 +1,5 @@
 #include "base.hpp"
 
-#include <stdlib.h>
-
 // Nanosconds. Signed so that we can use the same type for diffs.
 using Duration = i64;
 
@@ -105,5 +103,9 @@ Arr<SegSummary> calc_seg_summary(Arena *arena, TimerState *timer) {
 int main(int argc, char **argv, char **envp) {
     g_envp = arr_from_null_terminated(envp);
 
-    return EXIT_SUCCESS;
+    log_info("Hello, world!");
+    // log_fatal("Okay then...");
+    // log_error("Why is this showing up?");
+
+    return 0;
 }

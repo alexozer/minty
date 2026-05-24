@@ -8,8 +8,7 @@
 void *os_alloc(u64 size) {
     void *buf = mmap(nullptr, (size_t)size, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0);
     if (buf == nullptr) {
-        fprintf(stderr, "mmap failed\n");
-        exit(EXIT_FAILURE);
+        log_fatal("mmap failed");
     }
     return buf;
 }
@@ -52,4 +51,8 @@ Arr<char *> cmd__build_env(Arena *arena, Cmd *cmd) {
 
 void os_write_stderr(Arr<u8> buf) {
     write(STDERR_FILENO, buf.value, buf.count);
+}
+
+[[noreturn]] void os_exit() {
+    _exit(1);
 }

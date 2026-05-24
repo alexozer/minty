@@ -1,7 +1,5 @@
 #include "base.hpp"
 
-#include <stdio.h>
-#include <stdlib.h>
 #include <fcntl.h>
 #include <time.h>
 
@@ -26,8 +24,7 @@ void *arena__push_bytes(Arena *arena, u64 size, u64 alignment) {
     size = align_to(size, alignment);
     arena->offset += size;
     if (arena->offset > arena->reserved) {
-         fprintf(stderr, "Arena over!\n");
-         exit(EXIT_FAILURE);
+         log_fatal("Arena over! offset = %ull, reserved = %ull", arena->offset, arena->reserved);
     }
     return pos;
 }
@@ -227,15 +224,16 @@ Str env_get(Str key) {
     Arena scratch = {};
     defer(arena_release(&scratch));
 
-    char *key_cstr = str_to_c(&scratch, key);
-    char *value_cstr = getenv(key_cstr);
-
-    Str result = {};
-    if (value_cstr != nullptr) {
-        result = str_from_c(value_cstr);
+    for (u64 i = 0; i < g_envp.count; i++) {
+        Str env_pair = str_from_c(g_envp[i]);
+        if (str_starts_with(env_pair, key)) {
+            if (env_pair.count > key.count && env_pair[key.count] == C('=')) {
+                return arr_slice(env_pair, key.count + 1, env_pair.count);
+            }
+        }
     }
 
-    return result;
+    return {};
 }
 
 //
@@ -246,7 +244,6 @@ struct LogEvent {
     va_list ap;
     const char *fmt;
     struct tm *time;
-    FILE *out;
     LogLevel level;
 };
 
@@ -263,7 +260,7 @@ static const Str level_colors[] = {
     S("\x1b[94m"), S("\x1b[36m"), S("\x1b[32m"), S("\x1b[33m"), S("\x1b[31m"), S("\x1b[35m")
 };
 
-static void stdout_callback(LogEvent *ev) {
+static void log_stderr_callback(LogEvent *ev) {
     Arena scratch = {}; // TODO preallocate arenas
     defer(arena_release(&scratch));
 
@@ -291,12 +288,25 @@ void log_set_level(LogLevel level) {
     s_log.level = level;
 }
 
-static void init_event(LogEvent *ev, FILE *out) {
+static void init_event(LogEvent *ev) {
     if (!ev->time) {
         time_t t = time(NULL);
         ev->time = localtime(&t);
     }
-    ev->out = out;
+}
+
+[[noreturn]] void log_fatal(const char *fmt, ...) {
+    LogEvent ev = {
+        .fmt   = fmt,
+        .level = LogLevel::Fatal,
+    };
+
+    init_event(&ev);
+    va_start(ev.ap, fmt);
+    log_stderr_callback(&ev);
+    va_end(ev.ap);
+
+    os_exit();
 }
 
 void log_log(LogLevel level, const char *fmt, ...) {
@@ -306,9 +316,9 @@ void log_log(LogLevel level, const char *fmt, ...) {
     };
 
     if ((int)level >= (int)s_log.level) {
-        init_event(&ev, stderr);
+        init_event(&ev);
         va_start(ev.ap, fmt);
-        stdout_callback(&ev);
+        log_stderr_callback(&ev);
         va_end(ev.ap);
     }
 }

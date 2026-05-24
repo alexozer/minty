@@ -1,10 +1,7 @@
 #pragma once
 
-#include <stdio.h>
-#include <stdlib.h>
 #include <stdarg.h>
 #include <stdint.h>
-#include <inttypes.h>
 
 typedef uint8_t u8;
 typedef uint16_t u16;
@@ -44,6 +41,22 @@ constexpr u64 next_pow2(u64 x) {
 }
 
 //
+// Logging
+//
+
+enum class LogLevel { Trace, Debug, Info, Warn, Error, Fatal };
+
+#define log_trace(...) log_log(LogLevel::Trace, __VA_ARGS__)
+#define log_debug(...) log_log(LogLevel::Debug, __VA_ARGS__)
+#define log_info(...)  log_log(LogLevel::Info, __VA_ARGS__)
+#define log_warn(...)  log_log(LogLevel::Warn, __VA_ARGS__)
+#define log_error(...) log_log(LogLevel::Error, __VA_ARGS__)
+[[noreturn]] void log_fatal(const char *fmt, ...);
+
+void log_set_level(LogLevel level);
+void log_log(LogLevel level, const char *fmt, ...);
+
+//
 // Arenas
 //
 
@@ -54,8 +67,7 @@ struct Arr {
 
     T& operator[](u64 i) {
         if (i >= count) {
-            fprintf(stderr, "Bounds check fail! i = %" PRIu64 " count = %" PRIu64 "\n", i, count);
-            exit(EXIT_FAILURE);
+            log_fatal("Bounds check fail! i = %ull, count = %ull", i, count);
         }
         return value[i];
     }
@@ -97,8 +109,7 @@ Arr<T> arr_from_null_terminated(T *v) {
 template <typename T>
 Arr<T> arr_slice(Arr<T> arr, u64 start, u64 end) {
     if (start > arr.count || end > arr.count || end < start) {
-        fprintf(stderr, "Invalid array slice: count = %" PRIu64 ", start = %" PRIu64 ", end = %" PRIu64 "\n", arr.count, start, end);
-        exit(EXIT_FAILURE);
+        log_fatal("Invalid array slice: count = %ull, start = %ull, end = %ull", arr.count, start, end);
     }
 
     return {
@@ -123,8 +134,7 @@ bool arr_eq(Arr<T> a, Arr<T> b) {
 template <typename T>
 void arr_copy(Arr<T> dest, Arr<T> source) {
     if (dest.count != source.count) {
-        fprintf(stderr, "Unequal array lengths: dest = %" PRIu64 ", source = %" PRIu64 "\n", dest.count, source.count);
-        exit(EXIT_FAILURE);
+        log_fatal("Unequal array lengths: dest = %ull, source = %ull", dest.count, source.count);
     }
     for (u64 i = 0; i < dest.count; i++) {
         dest[i] = source[i];
@@ -189,8 +199,7 @@ struct Vec {
 
     T& operator[](u64 i) {
         if (i >= count) {
-            fprintf(stderr, "Bounds check fail! %" PRIu64 " >= %" PRIu64 "\n", i, count);
-            exit(EXIT_FAILURE);
+            log_fatal("Bounds check fail! %ull >= %ull", i, count);
         }
         return value[i];
     }
@@ -325,18 +334,3 @@ OSResult cmd_run(Cmd *cmd);
 Arr<char *> cmd__build_args(Arena *arena, Cmd *cmd);
 Arr<char *> cmd__build_env(Arena *arena, Cmd *cmd);
 
-//
-// Logging
-//
-
-enum class LogLevel { Trace, Debug, Info, Warn, Error, Fatal };
-
-#define log_trace(...) log_log(LogLevel::Trace, __VA_ARGS__)
-#define log_debug(...) log_log(LogLevel::Debug, __VA_ARGS__)
-#define log_info(...)  log_log(LogLevel::Info, __VA_ARGS__)
-#define log_warn(...)  log_log(LogLevel::Warn, __VA_ARGS__)
-#define log_error(...) log_log(LogLevel::Error, __VA_ARGS__)
-#define log_fatal(...) log_log(LogLevel::Fatal, __VA_ARGS__)
-
-void log_set_level(LogLevel level);
-void log_log(LogLevel level, const char *fmt, ...);
