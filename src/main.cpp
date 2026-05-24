@@ -26,13 +26,6 @@ Opt<Duration> operator-(const Opt<Duration>& d1, const Opt<Duration>& d2) {
     };
 }
 
-Opt<Duration> duration_min(const Opt<Duration>& d1, const Opt<Duration>& d2) {
-    return {
-        .present = d1.present || d2.present,
-        .value = min(d1.value, d2.value),
-    };
-}
-
 struct TimerState {
     Arr<Opt<Duration>> splits;
 
