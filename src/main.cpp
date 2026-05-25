@@ -102,6 +102,39 @@ Arr<SegSummary> calc_seg_summary(Arena *arena, TimerState *timer) {
     return summary;
 }
 
+Str format_duration(Arena *arena, Duration duration, u32 ms_digits, bool show_plus_prefix) {
+    Str sign_str = show_plus_prefix ? S("+") : S("");
+    if (duration < 0) {
+        sign_str = S("-");
+        duration = -duration;
+    }
+
+    constexpr i64 MILLISECOND = 1000000;
+    constexpr i64 SECOND = 1000 * MILLISECOND;
+    constexpr i64 MINUTE = 60 * SECOND;
+    constexpr i64 HOUR = 60 * MINUTE;
+    constexpr i64 DAY = 24 * HOUR;
+
+    u64 days = duration / DAY;
+    u64 hours = (duration % DAY) / HOUR;
+    u64 minutes = (duration % HOUR) / MINUTE;
+    u64 seconds = (duration % MINUTE) / SECOND;
+    u64 milliseconds = (duration % SECOND) / MILLISECOND;
+
+    Str result = {};
+    if (days == 0 && hours == 0 && minutes == 0) {
+        result = str_format(arena, "%s%llu.%03llu", sign_str, seconds, milliseconds);
+    } else if (days == 0 && hours == 0) {
+        result = str_format(arena, "%s%llu:%02llu.%03llu", sign_str, minutes, seconds, milliseconds);
+    } else if (days == 0) {
+        result = str_format(arena, "%s%llu:%02llu:%02llu.%03llu", sign_str, hours, minutes, seconds, milliseconds);
+    } else {
+        result = str_format(arena, "%s%llu:%02llu:%02llu:%02llu.%03llu", sign_str, days, hours, minutes, seconds, milliseconds);
+    }
+
+    return arr_slice(result, 0, result.count - (3 - ms_digits));
+}
+
 int main(int argc, char **argv, char **envp) {
     g_envp = arr_from_null_terminated(envp);
     arena_pool_init();

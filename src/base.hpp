@@ -178,6 +178,7 @@ bool char_is_whitespace(u8 c);
 Str str_trim(Str s);
 Str str_clone(Arena *arena, Str s);
 bool str_starts_with(Str s, Str prefix);
+Str str_format(Arena *arena, const char *format, ...);
 
 // Certainly possible to do this simply and w/o an iterator object, but just messin around
 struct StrLineIter {
