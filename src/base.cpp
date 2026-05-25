@@ -2,6 +2,7 @@
 
 #include <fcntl.h>
 #include <time.h>
+#include <string.h>
 
 extern "C" {
 #include "stb_sprintf.h"
@@ -36,13 +37,16 @@ void arena_release(Arena *arena) {
     }
 }
 
+void arena_reset(Arena *arena) {
+    if (arena->data != nullptr) {
+        memset(arena->data, 0, arena->offset);
+        arena->offset = 0;
+    }
+}
+
 char *str_to_c(Arena *arena, Str s) {
     Arr<char> cstr = arena_push_arr<char>(arena, s.count + 1);
-    // Compiler plz vectorize
-    for (u64 i = 0; i < s.count; i++) {
-        cstr[i] = s[i];
-    }
-    // Arena allocation is already zeroed, so null terminator is in place
+    memcpy(cstr.value, s.value, s.count);
     return cstr.value;
 }
 
@@ -88,9 +92,7 @@ Str str_trim(Str s) {
 
 Str str_clone(Arena *arena, Str s) {
     Str clone = arena_push_arr<u8>(arena, s.count);
-    for (u64 i = 0; i < s.count; i++) {
-        clone[i] = s[i];
-    }
+    memcpy(clone.value, s.value, s.count);
     return clone;
 }
 
