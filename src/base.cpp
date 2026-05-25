@@ -10,17 +10,8 @@ extern "C" {
 
 #include "platform.hpp"
 
-void arena__ensure_init(Arena *arena) {
-    if (arena->data == nullptr) {
-        arena->reserved = megabytes(16);
-        arena->data = os_alloc(arena->reserved);
-    }
-}
-
 // TODO deal with e.g. string nonalignment
 void *arena__push_bytes(Arena *arena, u64 size, u64 alignment) {
-    arena__ensure_init(arena);
-
     void *pos = (void *)((u64)arena->data + arena->offset);
     size = align_to(size, alignment);
     arena->offset += size;
@@ -30,18 +21,37 @@ void *arena__push_bytes(Arena *arena, u64 size, u64 alignment) {
     return pos;
 }
 
-void arena_release(Arena *arena) {
-    if (arena->data != nullptr) {
-        os_free(arena->data, arena->reserved);
-        *arena = (Arena){};
+// TODO sane arena sizing/lifetime scheme
+static constexpr u64 ARENA_POOL_MAX = 16;
+static constexpr u64 ARENA_SIZE = megabytes(16);
+static Arena s_arena_pool[ARENA_POOL_MAX];
+static Arena *s_arena_stack[ARENA_POOL_MAX];
+static u64 s_arena_stack_top;
+
+void arena_pool_init() {
+    for (u64 i = 0; i < ARENA_POOL_MAX; i++) {
+        s_arena_pool[i].reserved = ARENA_SIZE;
+        s_arena_pool[i].data = os_alloc(s_arena_pool[i].reserved);
+        s_arena_stack[i] = &s_arena_pool[i];
     }
 }
 
-void arena_reset(Arena *arena) {
-    if (arena->data != nullptr) {
-        memset(arena->data, 0, arena->offset);
-        arena->offset = 0;
+Arena *arena_acquire() {
+    if (s_arena_stack_top >= ARENA_POOL_MAX) {
+        os_write_stderr(S("FATAL: out of arenas!\n"));
+        os_exit();
     }
+    return s_arena_stack[s_arena_stack_top++];
+}
+
+void arena_release(Arena *arena) {
+    if (s_arena_stack_top == 0) {
+        os_write_stderr(S("FATAL: tried to release too many arenas!\n"));
+        os_exit();
+    }
+    s_arena_stack[--s_arena_stack_top] = arena;
+    memset(arena->data, 0, arena->offset);
+    arena->offset = 0;
 }
 
 char *str_to_c(Arena *arena, Str s) {
@@ -223,9 +233,6 @@ Str path_join(Arena *arena, Str left_path, Str right_path) {
 Arr<char *> g_envp;
 
 Str env_get(Str key) {
-    Arena scratch = {};
-    defer(arena_release(&scratch));
-
     for (u64 i = 0; i < g_envp.count; i++) {
         Str env_pair = str_from_c(g_envp[i]);
         if (str_starts_with(env_pair, key)) {
@@ -263,8 +270,8 @@ static const Str level_colors[] = {
 };
 
 static void log_stderr_callback(LogEvent *ev) {
-    Arena scratch = {}; // TODO preallocate arenas
-    defer(arena_release(&scratch));
+    Arena *scratch = arena_acquire();
+    defer(arena_release(scratch));
 
     Vec<u8> out_str = {};
 
@@ -272,20 +279,20 @@ static void log_stderr_callback(LogEvent *ev) {
     char date_buf[16];
     u64 date_size = strftime(date_buf, sizeof(date_buf), "%H:%M:%S", ev->time);
     Str date_str = str_from_c_len(date_buf, date_size);
-    vec_extend(&scratch, &out_str, date_str);
+    vec_extend(scratch, &out_str, date_str);
 
     // Write level
     str_format_append(
-            &scratch,
+            scratch,
             &out_str,
             "\x1b[90m %s%-5s \x1b[0m",
             level_colors[(int)ev->level],
             level_strings[(int)ev->level]);
 
     // Write message
-    str_format_append_v(&scratch, &out_str, ev->fmt, ev->ap);
+    str_format_append_v(scratch, &out_str, ev->fmt, ev->ap);
 
-    vec_push(&scratch, &out_str, C('\n'));
+    vec_push(scratch, &out_str, C('\n'));
     os_write_stderr(vec_arr(&out_str));
 }
 

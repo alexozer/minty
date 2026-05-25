@@ -9,8 +9,8 @@
 #include "platform.hpp"
 
 OSResult cmd_run(Cmd *cmd) {
-    Arena scratch = {};
-    defer(arena_release(&scratch));
+    Arena *scratch = arena_acquire();
+    defer(arena_release(scratch));
 
     int stdin_pipe[2] = { -1, -1 };
     defer(close(stdin_pipe[0]));
@@ -26,10 +26,10 @@ OSResult cmd_run(Cmd *cmd) {
         }
     }
 
-    char *name = str_to_c(&scratch, cmd->name);
-    Arr<char *> args = cmd__build_args(&scratch, cmd);
-    Arr<char *> env = cmd__build_env(&scratch, cmd);
-    char *cwd = str_to_c(&scratch, cmd->cwd);
+    char *name = str_to_c(scratch, cmd->name);
+    Arr<char *> args = cmd__build_args(scratch, cmd);
+    Arr<char *> env = cmd__build_env(scratch, cmd);
+    char *cwd = str_to_c(scratch, cmd->cwd);
 
     pid_t pid = fork();
     if (pid == -1) {

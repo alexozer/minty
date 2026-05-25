@@ -80,6 +80,9 @@ struct Arena {
 };
 
 void *arena__push_bytes(Arena *arena, u64 size, u64 alignment = DEFAULT_ALIGNMENT);
+
+void arena_pool_init();
+Arena *arena_acquire();
 void arena_release(Arena *arena);
 
 template <typename T>
