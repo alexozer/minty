@@ -1,16 +1,14 @@
 #!/usr/bin/env bash
+set -eou pipefail
 
-set -e
-
-SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
-cd "$SCRIPT_DIR"
+cd "$( dirname -- "${BASH_SOURCE[0]}" )"
 
 mkdir -p out
 rm -f out/*.pdb
 
-if [[ "$1" == "debug" ]]; then
+if [[ "${1:-}" == "debug" ]]; then
     PROFILE_ARGS="-O0"
-elif [[ "$1" == "release" || "$1" == "" ]]; then
+elif [[ "${1:-}" == "release" || "${1:-}" == "" ]]; then
     PROFILE_ARGS="-O2 -s"
 else
     echo "Invalid profile: $1"
