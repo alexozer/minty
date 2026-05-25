@@ -115,21 +115,21 @@ Str format_duration(Arena *arena, Duration duration, u32 ms_digits, bool show_pl
     constexpr i64 HOUR = 60 * MINUTE;
     constexpr i64 DAY = 24 * HOUR;
 
-    u64 days = duration / DAY;
-    u64 hours = (duration % DAY) / HOUR;
-    u64 minutes = (duration % HOUR) / MINUTE;
-    u64 seconds = (duration % MINUTE) / SECOND;
-    u64 milliseconds = (duration % SECOND) / MILLISECOND;
+    i64 days = duration / DAY;
+    i64 hours = (duration % DAY) / HOUR;
+    i64 minutes = (duration % HOUR) / MINUTE;
+    i64 seconds = (duration % MINUTE) / SECOND;
+    i64 milliseconds = (duration % SECOND) / MILLISECOND;
 
     Str result = {};
     if (days == 0 && hours == 0 && minutes == 0) {
-        result = str_format(arena, "%s%llu.%03llu", sign_str, seconds, milliseconds);
+        result = str_format(arena, "%s%ll.%03ll", sign_str, seconds, milliseconds);
     } else if (days == 0 && hours == 0) {
-        result = str_format(arena, "%s%llu:%02llu.%03llu", sign_str, minutes, seconds, milliseconds);
+        result = str_format(arena, "%s%ll:%02ll.%03ll", sign_str, minutes, seconds, milliseconds);
     } else if (days == 0) {
-        result = str_format(arena, "%s%llu:%02llu:%02llu.%03llu", sign_str, hours, minutes, seconds, milliseconds);
+        result = str_format(arena, "%s%ll:%02ll:%02ll.%03ll", sign_str, hours, minutes, seconds, milliseconds);
     } else {
-        result = str_format(arena, "%s%llu:%02llu:%02llu:%02llu.%03llu", sign_str, days, hours, minutes, seconds, milliseconds);
+        result = str_format(arena, "%s%ll:%02ll:%02ll:%02ll.%03ll", sign_str, days, hours, minutes, seconds, milliseconds);
     }
 
     return arr_slice(result, 0, result.count - (3 - ms_digits));
