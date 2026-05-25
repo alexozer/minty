@@ -33,21 +33,32 @@ OSResult cmd_run(Cmd *cmd) {
 
     pid_t pid = fork();
     if (pid == -1) {
-        return OSResult::OtherError;
+        switch (errno) {
+            case ENOMEM: return OSResult::AllocationFailed;
+            default: return OSResult::OtherError;
+        }
     }
     if (pid == 0) {
         // Am child
 
         if (!arr_is_empty(cmd->input)) {
-            dup2(stdin_pipe[0], STDIN_FILENO);
-            close(stdin_pipe[0]);
+            if (dup2(stdin_pipe[0], STDIN_FILENO) == -1) {
+                _exit(1);
+            }
+            if (close(stdin_pipe[0]) == -1) {
+                _exit(1);
+            }
         }
 
         if (!arr_is_empty(cmd->cwd)) {
-            chdir(cwd);
+            if (chdir(cwd) == -1) {
+                _exit(1);
+            }
         }
 
-        execve(name, args.value, env.value);
+        if (execve(name, args.value, env.value) == -1) {
+            _exit(1);
+        }
     }
 
     // Am parent
