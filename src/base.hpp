@@ -67,7 +67,7 @@ struct Arr {
 
     T& operator[](u64 i) {
         if (i >= count) {
-            log_fatal("Bounds check fail! i = %ull, count = %ull", i, count);
+            log_fatal("Bounds check fail! i = %llu, count = %llu", i, count);
         }
         return value[i];
     }
@@ -109,7 +109,7 @@ Arr<T> arr_from_null_terminated(T *v) {
 template <typename T>
 Arr<T> arr_slice(Arr<T> arr, u64 start, u64 end) {
     if (start > arr.count || end > arr.count || end < start) {
-        log_fatal("Invalid array slice: count = %ull, start = %ull, end = %ull", arr.count, start, end);
+        log_fatal("Invalid array slice: count = %llu, start = %llu, end = %llu", arr.count, start, end);
     }
 
     return {
@@ -134,7 +134,7 @@ bool arr_eq(Arr<T> a, Arr<T> b) {
 template <typename T>
 void arr_copy(Arr<T> dest, Arr<T> source) {
     if (dest.count != source.count) {
-        log_fatal("Unequal array lengths: dest = %ull, source = %ull", dest.count, source.count);
+        log_fatal("Unequal array lengths: dest = %llu, source = %llu", dest.count, source.count);
     }
     for (u64 i = 0; i < dest.count; i++) {
         dest[i] = source[i];
@@ -199,7 +199,7 @@ struct Vec {
 
     T& operator[](u64 i) {
         if (i >= count) {
-            log_fatal("Bounds check fail! %ull >= %ull", i, count);
+            log_fatal("Bounds check fail! %llu >= %llu", i, count);
         }
         return value[i];
     }
