@@ -49,10 +49,6 @@ Arr<char *> cmd__build_env(Arena *arena, Cmd *cmd) {
     return vec_arr(&env);
 }
 
-void os_write_stderr(Arr<u8> buf) {
-    write(STDERR_FILENO, buf.value, buf.count);
-}
-
 [[noreturn]] void os_exit() {
     _exit(1);
 }

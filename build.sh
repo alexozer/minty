@@ -17,6 +17,6 @@ else
     exit 1
 fi
 
-zig c++ src/main.cpp src/base.cpp src/stb_sprintf.cpp src/platform_posix.cpp src/platform_macos.cpp -std=c++20 -nostdinc++ -fno-exceptions -fno-rtti $PROFILE_ARGS -target aarch64-macos-none -o out/blitter_macos
-zig c++ src/main.cpp src/base.cpp src/stb_sprintf.cpp src/platform_posix.cpp src/platform_linux.cpp -std=c++20 -nostdinc++ -fno-exceptions -fno-rtti $PROFILE_ARGS -target x86_64-linux-gnu -o out/blitter_linux
-zig c++ src/main.cpp src/base.cpp src/stb_sprintf.cpp src/platform_windows.cpp -std=c++20 -nostdinc++ -fno-exceptions -fno-rtti $PROFILE_ARGS -target x86_64-windows -o out/blitter_windows.exe
+zig c++ src/main.cpp src/base.cpp src/platform_posix.cpp src/platform_macos.cpp -std=c++20 -nostdinc++ -fno-exceptions -fno-rtti $PROFILE_ARGS -target aarch64-macos-none -o out/blitter_macos
+zig c++ src/main.cpp src/base.cpp src/platform_posix.cpp src/platform_linux.cpp -std=c++20 -nostdinc++ -fno-exceptions -fno-rtti $PROFILE_ARGS -target x86_64-linux-gnu -o out/blitter_linux
+zig c++ src/main.cpp src/base.cpp src/platform_windows.cpp -std=c++20 -nostdinc++ -fno-exceptions -fno-rtti $PROFILE_ARGS -target x86_64-windows -o out/blitter_windows.exe

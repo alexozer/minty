@@ -3,10 +3,7 @@
 #include <fcntl.h>
 #include <time.h>
 #include <string.h>
-
-extern "C" {
-#include "stb_sprintf.h"
-}
+#include <stdio.h>
 
 #include "platform.hpp"
 
@@ -16,7 +13,7 @@ void *arena__push_bytes(Arena *arena, u64 size, u64 alignment) {
     size = align_to(size, alignment);
     arena->offset += size;
     if (arena->offset > arena->reserved) {
-         log_fatal("Arena over! offset = %ull, reserved = %ull", arena->offset, arena->reserved);
+         log_fatal("Arena over! offset = %" PRIu64 ", reserved = %" PRIu64, arena->offset, arena->reserved);
     }
     return pos;
 }
@@ -38,16 +35,14 @@ void arena_pool_init() {
 
 Arena *arena_acquire() {
     if (s_arena_stack_top >= ARENA_POOL_MAX) {
-        os_write_stderr(S("FATAL: out of arenas!\n"));
-        os_exit();
+        log_fatal("FATAL: out of arenas");
     }
     return s_arena_stack[s_arena_stack_top++];
 }
 
 void arena_release(Arena *arena) {
     if (s_arena_stack_top == 0) {
-        os_write_stderr(S("FATAL: tried to release too many arenas!\n"));
-        os_exit();
+        log_fatal("FATAL: tried to release too many arenas!");
     }
     s_arena_stack[--s_arena_stack_top] = arena;
     memset(arena->data, 0, arena->offset);
@@ -174,38 +169,22 @@ Pair<Str, Str> str_split2(Str base, u8 delim) {
     return result;
 }
 
-struct StbspContext {
-    Arena *arena;
-    Vec<u8> *out_str;
-    char buf[STB_SPRINTF_MIN];
-};
-
-char *stbsp_callback(char const *buf, void *user, int len) {
-    StbspContext *ctx = (StbspContext *)user;
-    Str substr = { .value = (u8 *)buf, .count = (u64)len };
-    vec_extend(ctx->arena, ctx->out_str, substr);
-    return ctx->buf;
-}
-
-void str_format_append_v(Arena *arena, Vec<u8> *out_str, const char *format, va_list args) {
-    StbspContext ctx = { .arena = arena, .out_str = out_str };
-    stbsp_vsprintfcb(&stbsp_callback, &ctx, ctx.buf, format, args);
-}
-
+__attribute__((format(printf, 2, 3)))
 Str str_format(Arena *arena, const char *format, ...) {
-    va_list args;
-    va_start(args, format);
-    Vec<u8> out_str = {};
-    str_format_append_v(arena, &out_str, format, args);
-    va_end(args);
-    return vec_arr(&out_str);
-}
+    char buf[kilobytes(8)];
 
-void str_format_append(Arena *arena, Vec<u8>* out_str, const char *format, ...) {
     va_list args;
     va_start(args, format);
-    str_format_append_v(arena, out_str, format, args);
+    int n = vsnprintf(buf, sizeof(buf), format, args);
     va_end(args);
+
+    if (n < 0) {
+        return S("<formatting error>");
+    }
+
+    Str s = { .value = (u8 *)buf, .count = (u64)n };
+    // TODO try to allocate directly on tip of arena?
+    return str_clone(arena, s);
 }
 
 //
@@ -253,6 +232,7 @@ struct LogEvent {
     va_list ap;
     const char *fmt;
     struct tm *time;
+    FILE *out;
     LogLevel level;
 };
 
@@ -261,59 +241,45 @@ static struct {
     LogLevel level;
 } s_log;
 
-static const Str level_strings[] = {
-    S("TRACE"), S("DEBUG"), S("INFO"), S("WARN"), S("ERROR"), S("FATAL")
+static const char *level_strings[] = {
+    "TRACE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL"
 };
 
-static const Str level_colors[] = {
-    S("\x1b[94m"), S("\x1b[36m"), S("\x1b[32m"), S("\x1b[33m"), S("\x1b[31m"), S("\x1b[35m")
+static const char *level_colors[] = {
+    "\x1b[94m", "\x1b[36m", "\x1b[32m", "\x1b[33m", "\x1b[31m", "\x1b[35m"
 };
 
 static void log_stderr_callback(LogEvent *ev) {
-    Arena *scratch = arena_acquire();
-    defer(arena_release(scratch));
-
-    Vec<u8> out_str = {};
-
-    // Write date
-    char date_buf[16];
-    u64 date_size = strftime(date_buf, sizeof(date_buf), "%H:%M:%S", ev->time);
-    Str date_str = str_from_c_len(date_buf, date_size);
-    vec_extend(scratch, &out_str, date_str);
-
-    // Write level
-    str_format_append(
-            scratch,
-            &out_str,
-            "\x1b[90m %s%-5s \x1b[0m",
-            level_colors[(int)ev->level],
-            level_strings[(int)ev->level]);
-
-    // Write message
-    str_format_append_v(scratch, &out_str, ev->fmt, ev->ap);
-
-    vec_push(scratch, &out_str, C('\n'));
-    os_write_stderr(vec_arr(&out_str));
+    char buf[16];
+    buf[strftime(buf, sizeof(buf), "%H:%M:%S", ev->time)] = '\0';
+    fprintf(
+            ev->out, "\x1b[90m%s %s%-5s \x1b[0m",
+            buf, level_colors[(int)ev->level], level_strings[(int)ev->level]);
+    vfprintf(ev->out, ev->fmt, ev->ap);
+    fprintf(ev->out, "\n");
+    fflush(ev->out);
 }
 
 void log_set_level(LogLevel level) {
     s_log.level = level;
 }
 
-static void init_event(LogEvent *ev) {
+static void init_event(LogEvent *ev, FILE *out) {
     if (!ev->time) {
         time_t t = time(NULL);
         ev->time = localtime(&t);
+        ev->out = out;
     }
 }
 
+__attribute__((format(printf, 1, 2)))
 [[noreturn]] void log_fatal(const char *fmt, ...) {
     LogEvent ev = {
         .fmt   = fmt,
         .level = LogLevel::Fatal,
     };
 
-    init_event(&ev);
+    init_event(&ev, stderr);
     va_start(ev.ap, fmt);
     log_stderr_callback(&ev);
     va_end(ev.ap);
@@ -321,6 +287,7 @@ static void init_event(LogEvent *ev) {
     os_exit();
 }
 
+__attribute__((format(printf, 2, 3)))
 void log_log(LogLevel level, const char *fmt, ...) {
     LogEvent ev = {
         .fmt   = fmt,
@@ -328,7 +295,7 @@ void log_log(LogLevel level, const char *fmt, ...) {
     };
 
     if ((int)level >= (int)s_log.level) {
-        init_event(&ev);
+        init_event(&ev, stderr);
         va_start(ev.ap, fmt);
         log_stderr_callback(&ev);
         va_end(ev.ap);

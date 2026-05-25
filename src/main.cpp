@@ -123,13 +123,17 @@ Str format_duration(Arena *arena, Duration duration, u32 ms_digits, bool show_pl
 
     Str result = {};
     if (days == 0 && hours == 0 && minutes == 0) {
-        result = str_format(arena, "%s%ll.%03ll", sign_str, seconds, milliseconds);
+        result = str_format(arena, "%.*s%" PRIi64 ".%03" PRIi64,
+                FS(sign_str), seconds, milliseconds);
     } else if (days == 0 && hours == 0) {
-        result = str_format(arena, "%s%ll:%02ll.%03ll", sign_str, minutes, seconds, milliseconds);
+        result = str_format(arena, "%.*s%" PRIi64 ":%02" PRIi64 ".%03" PRIi64,
+                FS(sign_str), minutes, seconds, milliseconds);
     } else if (days == 0) {
-        result = str_format(arena, "%s%ll:%02ll:%02ll.%03ll", sign_str, hours, minutes, seconds, milliseconds);
+        result = str_format(arena, "%.*s%" PRIi64 ":%02" PRIi64 ":%02" PRIi64 ".%03" PRIi64,
+                FS(sign_str), hours, minutes, seconds, milliseconds);
     } else {
-        result = str_format(arena, "%s%ll:%02ll:%02ll:%02ll.%03ll", sign_str, days, hours, minutes, seconds, milliseconds);
+        result = str_format(arena, "%.*s%" PRIi64 ":%02" PRIi64 ":%02" PRIi64 ":%02" PRIi64 ".%03" PRIi64,
+                FS(sign_str), days, hours, minutes, seconds, milliseconds);
     }
 
     return arr_slice(result, 0, result.count - (3 - ms_digits));
@@ -138,6 +142,10 @@ Str format_duration(Arena *arena, Duration duration, u32 ms_digits, bool show_pl
 int main(int argc, char **argv, char **envp) {
     g_envp = arr_from_null_terminated(envp);
     arena_pool_init();
+
+    log_info("Hello world! pi = %.2f", 3.14159);
+    Str my_str = S("okay then");
+    log_warn("pi = %.2f, uh oh! Here's a string for you: '%.*s'", 3.14159f, FS(my_str));
 
     return 0;
 }

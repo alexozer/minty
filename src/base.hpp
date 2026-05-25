@@ -2,6 +2,7 @@
 
 #include <stdarg.h>
 #include <stdint.h>
+#include <inttypes.h>
 
 typedef uint8_t u8;
 typedef uint16_t u16;
@@ -51,9 +52,11 @@ enum class LogLevel { Trace, Debug, Info, Warn, Error, Fatal };
 #define log_info(...)  log_log(LogLevel::Info, __VA_ARGS__)
 #define log_warn(...)  log_log(LogLevel::Warn, __VA_ARGS__)
 #define log_error(...) log_log(LogLevel::Error, __VA_ARGS__)
+__attribute__((format(printf, 1, 2)))
 [[noreturn]] void log_fatal(const char *fmt, ...);
 
 void log_set_level(LogLevel level);
+__attribute__((format(printf, 2, 3)))
 void log_log(LogLevel level, const char *fmt, ...);
 
 //
@@ -67,7 +70,7 @@ struct Arr {
 
     T& operator[](u64 i) {
         if (i >= count) {
-            log_fatal("Bounds check fail! i = %llu, count = %llu", i, count);
+            log_fatal("Bounds check fail! i = %" PRIu64 ", count = %" PRIu64, i, count);
         }
         return value[i];
     }
@@ -112,7 +115,7 @@ Arr<T> arr_from_null_terminated(T *v) {
 template <typename T>
 Arr<T> arr_slice(Arr<T> arr, u64 start, u64 end) {
     if (start > arr.count || end > arr.count || end < start) {
-        log_fatal("Invalid array slice: count = %llu, start = %llu, end = %llu", arr.count, start, end);
+        log_fatal("Invalid array slice: count = %" PRIu64 ", start = %" PRIu64 ", end = %" PRIu64, arr.count, start, end);
     }
 
     return {
@@ -137,7 +140,7 @@ bool arr_eq(Arr<T> a, Arr<T> b) {
 template <typename T>
 void arr_copy(Arr<T> dest, Arr<T> source) {
     if (dest.count != source.count) {
-        log_fatal("Unequal array lengths: dest = %llu, source = %llu", dest.count, source.count);
+        log_fatal("Unequal array lengths: dest = %" PRIu64 ", source = %" PRIu64, dest.count, source.count);
     }
     for (u64 i = 0; i < dest.count; i++) {
         dest[i] = source[i];
@@ -167,6 +170,7 @@ using Str = Arr<u8>;
 // }
 
 #define S(s) ((Str){ .value = (u8 *)(s), .count = (sizeof(s)) - 1 })
+#define FS(s) (int)(s).count, (char *)(s).value
 #define C(c) ((u8)(c))
 #define A(a) { .value = (a), .count = sizeof((a)) / sizeof((a)[0]) }
 
@@ -178,6 +182,7 @@ bool char_is_whitespace(u8 c);
 Str str_trim(Str s);
 Str str_clone(Arena *arena, Str s);
 bool str_starts_with(Str s, Str prefix);
+__attribute__((format(printf, 2, 3)))
 Str str_format(Arena *arena, const char *format, ...);
 
 // Certainly possible to do this simply and w/o an iterator object, but just messin around
@@ -203,7 +208,7 @@ struct Vec {
 
     T& operator[](u64 i) {
         if (i >= count) {
-            log_fatal("Bounds check fail! %llu >= %llu", i, count);
+            log_fatal("Bounds check fail! %" PRIu64 " >= %" PRIu64, i, count);
         }
         return value[i];
     }
