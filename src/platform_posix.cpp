@@ -2,6 +2,7 @@
 
 #include <sys/mman.h>
 #include <unistd.h>
+#include <time.h>
 
 #include "platform.hpp"
 
@@ -17,7 +18,7 @@ void os_free(void *buf, u64 size) {
     munmap(buf, (size_t)size);
 }
 
-Arr<char *> cmd__build_args(Arena *arena, Cmd *cmd) {
+Arr<char *> posix_build_args(Arena *arena, Cmd *cmd) {
     Arr<char *> args = arena_push_arr<char *>(arena, cmd->args.count + 2);
     char *name = str_to_c(arena, cmd->name);
     args[0] = name;
@@ -27,7 +28,7 @@ Arr<char *> cmd__build_args(Arena *arena, Cmd *cmd) {
     return args;
 }
 
-Arr<char *> cmd__build_env(Arena *arena, Cmd *cmd) {
+Arr<char *> posix_build_env(Arena *arena, Cmd *cmd) {
     Vec<char *> env = {};
 
     for (u64 i = 0; i < cmd->env.count; i++) {
@@ -49,6 +50,28 @@ Arr<char *> cmd__build_env(Arena *arena, Cmd *cmd) {
     return vec_arr(&env);
 }
 
-[[noreturn]] void os_exit() {
-    _exit(1);
+Instant os_get_monotonic_time() {
+    struct timespec tp = {};
+    if (clock_gettime(CLOCK_MONOTONIC, &tp) != 0) {
+        log_fatal("clock_gettime() failed");
+    }
+    return {
+        .seconds = (i64)tp.tv_sec,
+        .nanoseconds = (u32)tp.tv_nsec,
+    };
+}
+
+void os_sleep(Duration duration) {
+    // To prevent time drift when sleep is interrupted, calculate an expected final time
+
+    Duration wakeup_time = os_get_monotonic_time() + duration;
+    Duration sleep_duration = duration;
+    while (true) {
+    }
+
+    struct timespec tp = {
+        .tv_sec = duration / DURATION_SECOND,
+        .tv_nsec = duration % DURATION_SECOND,
+    };
+    nanosleep(&tp);
 }

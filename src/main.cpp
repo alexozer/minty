@@ -1,9 +1,7 @@
 #include "base.hpp"
+#include "platform.hpp"
 
 #include <stdio.h>
-
-// Nanosconds. Signed so that we can use the same type for diffs.
-using Duration = i64;
 
 // World's crappiest optional type
 template <typename T>
@@ -26,7 +24,7 @@ Opt<Duration> operator-(const Opt<Duration>& d1, const Opt<Duration>& d2) {
     };
 }
 
-struct TimerState {
+struct DurationrState {
     Arr<Opt<Duration>> splits;
 
     // Current records as they appear in splits file
@@ -41,7 +39,7 @@ struct SegSummary {
     // How far ahead/behind this split is compared to PB
     Opt<Duration> live_delta;
 
-    // Time gained or lost this split relative to PB
+    // Duration gained or lost this split relative to PB
     Opt<Duration> gained;
 
     Opt<Duration> pb_split;
@@ -50,7 +48,7 @@ struct SegSummary {
     bool is_new_gold;
 };
 
-Arr<SegSummary> calc_seg_summary(Arena *arena, TimerState *timer) {
+Arr<SegSummary> calc_seg_summary(Arena *arena, DurationrState *timer) {
     Arr<SegSummary> summary = arena_push_arr<SegSummary>(arena, timer->splits.count);
 
     // Calc PB splits
@@ -104,35 +102,36 @@ Arr<SegSummary> calc_seg_summary(Arena *arena, TimerState *timer) {
 
 Str format_duration(Arena *arena, Duration duration, u32 ms_digits, bool show_plus_prefix) {
     Str sign_str = show_plus_prefix ? S("+") : S("");
-    if (duration < 0) {
+    if (duration < TIME_ZERO) {
         sign_str = S("-");
-        duration = -duration;
     }
 
-    constexpr i64 MILLISECOND = 1000000;
-    constexpr i64 SECOND = 1000 * MILLISECOND;
-    constexpr i64 MINUTE = 60 * SECOND;
-    constexpr i64 HOUR = 60 * MINUTE;
-    constexpr i64 DAY = 24 * HOUR;
+    constexpr u64 DAY_SECS = 60 * 60 * 24;
+    constexpr u64 HOUR_SECS = 60 * 60;
+    constexpr u64 MINUTE_SECS = 60;
+    constexpr u64 MILLISEC_NS = 1'000'000;
 
-    i64 days = duration / DAY;
-    i64 hours = (duration % DAY) / HOUR;
-    i64 minutes = (duration % HOUR) / MINUTE;
-    i64 seconds = (duration % MINUTE) / SECOND;
-    i64 milliseconds = (duration % SECOND) / MILLISECOND;
+    u64 total_seconds = duration_seconds(duration);
+    u32 subsec_nanos = duration_subsec_nanos(duration);
+
+    u64 days = total_seconds / DAY_SECS;
+    u64 hours = total_seconds % DAY_SECS / HOUR_SECS;
+    u64 minutes = total_seconds % HOUR_SECS / MINUTE_SECS;
+    u64 seconds = total_seconds % MINUTE_SECS;
+    u64 milliseconds = subsec_nanos / MILLISEC_NS;
 
     Str result = {};
     if (days == 0 && hours == 0 && minutes == 0) {
-        result = str_format(arena, "%.*s%" PRIi64 ".%03" PRIi64,
+        result = str_format(arena, "%.*s%" PRIu64 ".%03" PRIu64,
                 FS(sign_str), seconds, milliseconds);
     } else if (days == 0 && hours == 0) {
-        result = str_format(arena, "%.*s%" PRIi64 ":%02" PRIi64 ".%03" PRIi64,
+        result = str_format(arena, "%.*s%" PRIu64 ":%02" PRIu64 ".%03" PRIu64,
                 FS(sign_str), minutes, seconds, milliseconds);
     } else if (days == 0) {
-        result = str_format(arena, "%.*s%" PRIi64 ":%02" PRIi64 ":%02" PRIi64 ".%03" PRIi64,
+        result = str_format(arena, "%.*s%" PRIu64 ":%02" PRIu64 ":%02" PRIu64 ".%03" PRIu64,
                 FS(sign_str), hours, minutes, seconds, milliseconds);
     } else {
-        result = str_format(arena, "%.*s%" PRIi64 ":%02" PRIi64 ":%02" PRIi64 ":%02" PRIi64 ".%03" PRIi64,
+        result = str_format(arena, "%.*s%" PRIu64 ":%02" PRIu64 ":%02" PRIu64 ":%02" PRIu64 ".%03" PRIu64,
                 FS(sign_str), days, hours, minutes, seconds, milliseconds);
     }
 
@@ -143,9 +142,20 @@ int main(int argc, char **argv, char **envp) {
     g_envp = arr_from_null_terminated(envp);
     arena_pool_init();
 
+    Arena *scratch = arena_acquire();
+    defer(arena_release(scratch));
+
     log_info("Hello world! pi = %.2f", 3.14159);
     Str my_str = S("okay then");
     log_warn("pi = %.2f, uh oh! Here's a string for you: '%.*s'", 3.14159f, FS(my_str));
+
+    Instant start = os_get_monotonic_time();
+    os_sleep(milliseconds(256));
+    Instant end = os_get_monotonic_time();
+    Str time_str = format_duration(scratch, raw_time, 2, true);
+
+    log_debug("Raw OS monotonic time: %" PRIi64, raw_time);
+    log_debug("Raw OS monotonic duration: %.*s", FS(time_str));
 
     return 0;
 }

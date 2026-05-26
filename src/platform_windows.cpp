@@ -17,6 +17,6 @@ OSResult cmd_run(Cmd *cmd) {
     return OSResult::OtherError;
 }
 
-[[noreturn]] void os_exit() {
-    _exit(1);
+Duration os_get_monotonic_time() {
+    return 0;
 }

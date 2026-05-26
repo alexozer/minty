@@ -19,14 +19,20 @@ typedef double f64;
 // Math
 //
 
-#define kilobytes(n) (n * 1024LL)
-#define megabytes(n) (kilobytes(n) * 1024LL)
+constexpr u64 kilobytes(u64 n) { return n * 1024LL; }
+constexpr u64 megabytes(u64 n) { return kilobytes(n) * 1024LL; }
+constexpr u64 align_to(u64 n, u64 a) { return ((n) + (a - 1)) & ~(a - 1); }
 
-#define align_to(n, a) (((n) + (a - 1)) & ~(a - 1))
-#define DEFAULT_ALIGNMENT 8
+template <typename T>
+constexpr T min(T a, T b) { return a < b ? a : b; }
 
-#define min(a, b) (((a) < (b)) ? a : b)
-#define max(a, b) (((a) > (b)) ? a : b)
+template <typename T>
+constexpr T max(T a, T b) { return a > b ? a : b; }
+
+template <typename T>
+constexpr T abs(T v) { return v < 0 ? -v : v; }
+
+constexpr u64 DEFAULT_ALIGNMENT = 8;
 
 // https://jameshfisher.com/2018/03/30/round-up-power-2/
 constexpr u64 next_pow2(u64 x) {
@@ -83,6 +89,7 @@ struct Arena {
 };
 
 void *arena__push_bytes(Arena *arena, u64 size, u64 alignment = DEFAULT_ALIGNMENT);
+void *arena__realloc(Arena *arena, u64 old_size, u64 new_size, u64 alignment = DEFAULT_ALIGNMENT);
 
 void arena_pool_init();
 Arena *arena_acquire();
@@ -214,7 +221,7 @@ struct Vec {
     }
 };
 
-#define MIN_VEC_CAPACITY 8
+constexpr u64 MIN_VEC_CAPACITY = 8;
 
 template <typename T>
 void vec__grow(Arena *arena, Vec<T> *vec, u64 new_cap) {
@@ -339,7 +346,84 @@ enum class [[nodiscard]] OSResult {
     OtherError,
 };
 
-OSResult cmd_run(Cmd *cmd);
-Arr<char *> cmd__build_args(Arena *arena, Cmd *cmd);
-Arr<char *> cmd__build_env(Arena *arena, Cmd *cmd);
+//
+// Time
+//
 
+struct Duration {
+    i64 seconds;
+    u32 nanoseconds;
+};
+
+struct Instant {
+    i64 seconds;
+    u32 nanoseconds;
+};
+
+// Nanosconds. Signed so that we can use the same type for diffs.
+constexpr Duration DURATION_NANOSECOND = { .nanoseconds = 1 };
+constexpr Duration DURATION_MICROSECOND = { .nanoseconds = 1'000 };
+constexpr Duration DURATION_MILLISECOND = { .nanoseconds = 1'000'000 };
+constexpr Duration DURATION_SECOND = { .seconds = 1 };
+constexpr Duration DURATION_ZERO = {};
+
+constexpr Duration operator+(const Duration &t1, const Duration &t2) {
+    i64 ns_sum = t1.nanoseconds + t2.nanoseconds;
+    i64 sec_sum = t1.seconds + t2.seconds + (ns_sum / 1'000'000'000);
+    return { .seconds = sec_sum, .nanoseconds = (u32)(ns_sum % 1'000'000'000) };
+}
+
+constexpr Duration operator-(const Duration &t1, const Duration &t2) {
+    i64 ns_diff = (i64)t1.nanoseconds - (i64)t2.nanoseconds;
+    i64 sec_diff = t1.seconds - t2.seconds;
+    if (ns_diff < 0) {
+        // Carry the 1...
+        sec_diff--;
+        ns_diff += 1'000'000'000;
+    }
+    return { .seconds = sec_diff, .nanoseconds = (u32)(ns_diff) };
+}
+
+constexpr Duration operator-(const Duration &t) {
+    return DURATION_ZERO - t;
+}
+
+constexpr bool operator==(const Duration &t1, const Duration &t2) {
+    return t1.seconds == t2.seconds && t1.nanoseconds == t2.nanoseconds;
+}
+
+constexpr bool operator<(const Duration &t1, const Duration &t2) {
+    if (t1.seconds < t2.seconds) {
+        return true;
+    }
+    if (t1.seconds > t2.seconds) {
+        return false;
+    }
+    return (t1.seconds < 0) ^ (t1.nanoseconds < t2.nanoseconds);
+}
+
+constexpr bool operator<=(const Duration &t1, const Duration &t2) {
+    return (t1 < t2) || t1 == t2;
+}
+
+constexpr bool operator>(const Duration &t1, const Duration &t2) {
+    return !(t1 <= t2);
+}
+
+constexpr bool operator>=(const Duration &t1, const Duration &t2) {
+    return !(t1 < t2);
+}
+
+constexpr u64 duration_seconds(Duration duration) {
+    return abs(duration.seconds);
+}
+
+constexpr u32 duration_subsec_nanos(Duration duration) {
+    return duration.nanoseconds;
+}
+
+constexpr Duration operator-(const Instant &t1, const Instant &t2) {
+    Duration d1 = { .seconds = t1.seconds, .nanoseconds = t1.nanoseconds };
+    Duration d2 = { .seconds = t2.seconds, .nanoseconds = t2.nanoseconds };
+    return d1 - d2;
+}

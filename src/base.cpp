@@ -4,18 +4,40 @@
 #include <time.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "platform.hpp"
 
 // TODO deal with e.g. string nonalignment
 void *arena__push_bytes(Arena *arena, u64 size, u64 alignment) {
+    arena->offset = align_to(arena->offset, alignment);
     void *pos = (void *)((u64)arena->data + arena->offset);
-    size = align_to(size, alignment);
-    arena->offset += size;
+    arena->offset += align_to(size, alignment);
     if (arena->offset > arena->reserved) {
          log_fatal("Arena over! offset = %" PRIu64 ", reserved = %" PRIu64, arena->offset, arena->reserved);
     }
     return pos;
+}
+
+void *arena__realloc(Arena *arena, void *old_ptr, u64 old_size, u64 new_size, u64 alignment) {
+    new_size = align_to(new_size, alignment);
+
+    u64 start = (u64)old_ptr - (u64)arena->data;
+    if (start + old_size == arena->offset) {
+        // Allocation is at end of arena, can resize cheaply
+        arena->offset -= old_size;
+        return arena__push_bytes(arena, new_size, alignment);
+    }
+
+    // Allocation is not at end of arena, need to memcpy
+    if (new_size > old_size) {
+        void *new_ptr = arena__push_bytes(arena, new_size, alignment);
+        memcpy(new_ptr, old_ptr, old_size);
+        return new_ptr;
+    }
+
+    // New size is smaller but not at end of arena, can't do anything
+    return old_ptr;
 }
 
 // TODO sane arena sizing/lifetime scheme
@@ -284,7 +306,7 @@ __attribute__((format(printf, 1, 2)))
     log_stderr_callback(&ev);
     va_end(ev.ap);
 
-    os_exit();
+    exit(EXIT_FAILURE);
 }
 
 __attribute__((format(printf, 2, 3)))
