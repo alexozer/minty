@@ -2,6 +2,7 @@
 #include "platform.hpp"
 
 #include <stdio.h>
+#include <assert.h>
 
 // World's crappiest optional type
 template <typename T>
@@ -24,7 +25,7 @@ Opt<Duration> operator-(const Opt<Duration>& d1, const Opt<Duration>& d2) {
     };
 }
 
-struct DurationrState {
+struct DurationState {
     Arr<Opt<Duration>> splits;
 
     // Current records as they appear in splits file
@@ -48,7 +49,7 @@ struct SegSummary {
     bool is_new_gold;
 };
 
-Arr<SegSummary> calc_seg_summary(Arena *arena, DurationrState *timer) {
+Arr<SegSummary> calc_seg_summary(Arena *arena, DurationState *timer) {
     Arr<SegSummary> summary = arena_push_arr<SegSummary>(arena, timer->splits.count);
 
     // Calc PB splits
@@ -94,22 +95,25 @@ Arr<SegSummary> calc_seg_summary(Arena *arena, DurationrState *timer) {
     for (u64 i = 0; i < timer->splits.count; i++) {
         Opt<Duration> prev_gold = timer->golds[i];
         Opt<Duration> live_seg = summary[i].live_seg;
-        summary[i].is_new_gold = prev_gold.present && live_seg.present && live_seg.value < prev_gold.value;
+        summary[i].is_new_gold = prev_gold.present && live_seg.present && \
+                                 live_seg.value < prev_gold.value;
     }
 
     return summary;
 }
 
 Str format_duration(Arena *arena, Duration duration, u32 ms_digits, bool show_plus_prefix) {
+    assert(ms_digits <= 3);
+
     Str sign_str = show_plus_prefix ? S("+") : S("");
-    if (duration < TIME_ZERO) {
+    if (duration < DURATION_ZERO) {
         sign_str = S("-");
     }
 
     constexpr u64 DAY_SECS = 60 * 60 * 24;
     constexpr u64 HOUR_SECS = 60 * 60;
     constexpr u64 MINUTE_SECS = 60;
-    constexpr u64 MILLISEC_NS = 1'000'000;
+    constexpr u64 MILLISEC_NSECS = 1'000'000;
 
     u64 total_seconds = duration_seconds(duration);
     u32 subsec_nanos = duration_subsec_nanos(duration);
@@ -118,21 +122,21 @@ Str format_duration(Arena *arena, Duration duration, u32 ms_digits, bool show_pl
     u64 hours = total_seconds % DAY_SECS / HOUR_SECS;
     u64 minutes = total_seconds % HOUR_SECS / MINUTE_SECS;
     u64 seconds = total_seconds % MINUTE_SECS;
-    u64 milliseconds = subsec_nanos / MILLISEC_NS;
+    u64 milliseconds = subsec_nanos / MILLISEC_NSECS;
 
     Str result = {};
     if (days == 0 && hours == 0 && minutes == 0) {
         result = str_format(arena, "%.*s%" PRIu64 ".%03" PRIu64,
-                FS(sign_str), seconds, milliseconds);
+                SF(sign_str), seconds, milliseconds);
     } else if (days == 0 && hours == 0) {
         result = str_format(arena, "%.*s%" PRIu64 ":%02" PRIu64 ".%03" PRIu64,
-                FS(sign_str), minutes, seconds, milliseconds);
+                SF(sign_str), minutes, seconds, milliseconds);
     } else if (days == 0) {
         result = str_format(arena, "%.*s%" PRIu64 ":%02" PRIu64 ":%02" PRIu64 ".%03" PRIu64,
-                FS(sign_str), hours, minutes, seconds, milliseconds);
+                SF(sign_str), hours, minutes, seconds, milliseconds);
     } else {
         result = str_format(arena, "%.*s%" PRIu64 ":%02" PRIu64 ":%02" PRIu64 ":%02" PRIu64 ".%03" PRIu64,
-                FS(sign_str), days, hours, minutes, seconds, milliseconds);
+                SF(sign_str), days, hours, minutes, seconds, milliseconds);
     }
 
     return arr_slice(result, 0, result.count - (3 - ms_digits));
@@ -147,15 +151,13 @@ int main(int argc, char **argv, char **envp) {
 
     log_info("Hello world! pi = %.2f", 3.14159);
     Str my_str = S("okay then");
-    log_warn("pi = %.2f, uh oh! Here's a string for you: '%.*s'", 3.14159f, FS(my_str));
+    log_warn("pi = %.2f, uh oh! Here's a string for you: '%.*s'", 3.14159f, SF(my_str));
 
     Instant start = os_get_monotonic_time();
-    os_sleep(milliseconds(256));
     Instant end = os_get_monotonic_time();
-    Str time_str = format_duration(scratch, raw_time, 2, true);
-
-    log_debug("Raw OS monotonic time: %" PRIi64, raw_time);
-    log_debug("Raw OS monotonic duration: %.*s", FS(time_str));
+    Duration duration = end - start;
+    Str time_str = format_duration(scratch, duration, 2, true);
+    log_debug("Raw OS monotonic duration: %.*s", SF(time_str));
 
     return 0;
 }

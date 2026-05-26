@@ -89,7 +89,6 @@ struct Arena {
 };
 
 void *arena__push_bytes(Arena *arena, u64 size, u64 alignment = DEFAULT_ALIGNMENT);
-void *arena__realloc(Arena *arena, u64 old_size, u64 new_size, u64 alignment = DEFAULT_ALIGNMENT);
 
 void arena_pool_init();
 Arena *arena_acquire();
@@ -177,7 +176,7 @@ using Str = Arr<u8>;
 // }
 
 #define S(s) ((Str){ .value = (u8 *)(s), .count = (sizeof(s)) - 1 })
-#define FS(s) (int)(s).count, (char *)(s).value
+#define SF(s) (int)(s).count, (char *)(s).value
 #define C(c) ((u8)(c))
 #define A(a) { .value = (a), .count = sizeof((a)) / sizeof((a)[0]) }
 
@@ -269,33 +268,6 @@ Arr<T> vec_arr(Vec<T> *vec) {
 //
 
 Str path_join(Arena *arena, Str left_path, Str right_path);
-
-//
-// Maps
-//
-
-// TODO make not shit
-
-// template <typename K, typename V>
-// using Map = Vec<Pair<K, V>>;
-//
-// template <typename K, typename V>
-// void map_set(Arena *arena, Map<K, V> *map, K key, V value) {
-//
-// }
-//
-// template <typename K, typename V>
-// V map_get(Map<K, V> *map, K key) {
-//     V ret = {};
-//     for (u64 i = 0; i < map->n; i++) {
-//
-//     }
-// }
-//
-// template <typename K, typename V>
-// Arr<Pair<K, V>> map_entries(Map<K, V> *map) {
-//     return vec_arr(map);
-// }
 
 //
 // Defer

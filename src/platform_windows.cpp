@@ -4,19 +4,17 @@
 #include <process.h>
 
 void *os_alloc(u64 size) {
-    // TODO
-    return nullptr;
+    log_fatal("Unimplemented");
 }
 
 void os_free(void *buf, u64 size) {
-    // TODO
+    log_fatal("Unimplemented");
 }
 
 OSResult cmd_run(Cmd *cmd) {
-    // TODO
-    return OSResult::OtherError;
+    log_fatal("Unimplemented");
 }
 
-Duration os_get_monotonic_time() {
-    return 0;
+Instant os_get_monotonic_time() {
+    log_fatal("Unimplemented");
 }
