@@ -60,18 +60,3 @@ Instant os_get_monotonic_time() {
         .nanoseconds = (u32)tp.tv_nsec,
     };
 }
-
-void os_sleep(Duration duration) {
-    // // To prevent time drift when sleep is interrupted, calculate an expected final time
-    //
-    // Duration wakeup_time = os_get_monotonic_time() + duration;
-    // Duration sleep_duration = duration;
-    // while (true) {
-    // }
-    //
-    // struct timespec tp = {
-    //     .tv_sec = duration / DURATION_SECOND,
-    //     .tv_nsec = duration % DURATION_SECOND,
-    // };
-    // nanosleep(&tp);
-}

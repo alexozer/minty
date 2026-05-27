@@ -3,6 +3,7 @@
 #include <stdarg.h>
 #include <stdint.h>
 #include <inttypes.h>
+#include <assert.h>
 
 typedef uint8_t u8;
 typedef uint16_t u16;
@@ -28,9 +29,6 @@ constexpr T min(T a, T b) { return a < b ? a : b; }
 
 template <typename T>
 constexpr T max(T a, T b) { return a > b ? a : b; }
-
-template <typename T>
-constexpr T abs(T v) { return v < 0 ? -v : v; }
 
 constexpr u64 DEFAULT_ALIGNMENT = 8;
 
@@ -75,9 +73,7 @@ struct Arr {
     u64 count;
 
     T& operator[](u64 i) {
-        if (i >= count) {
-            log_fatal("Bounds check fail! i = %" PRIu64 ", count = %" PRIu64, i, count);
-        }
+        assert(i < count);
         return value[i];
     }
 };
@@ -120,9 +116,9 @@ Arr<T> arr_from_null_terminated(T *v) {
 
 template <typename T>
 Arr<T> arr_slice(Arr<T> arr, u64 start, u64 end) {
-    if (start > arr.count || end > arr.count || end < start) {
-        log_fatal("Invalid array slice: count = %" PRIu64 ", start = %" PRIu64 ", end = %" PRIu64, arr.count, start, end);
-    }
+    assert(start <= arr.count);
+    assert(end <= arr.count);
+    assert(start <= end);
 
     return {
         .value = arr.value + start,
@@ -170,10 +166,6 @@ struct Pair {
 //
 
 using Str = Arr<u8>;
-
-// Str operator ""_s(const char* s, unsigned long count) {
-//     return (Str) { .value = (u8 *)(s), .count = count };
-// }
 
 #define S(s) ((Str){ .value = (u8 *)(s), .count = (sizeof(s)) - 1 })
 #define SF(s) (int)(s).count, (char *)(s).value
@@ -247,6 +239,12 @@ T *vec_push(Arena *arena, Vec<T> *vec, T val) {
 }
 
 template <typename T>
+void vec_pop(Vec<T> *vec) {
+    assert(vec->count > 0);
+    vec->count--;
+}
+
+template <typename T>
 Arr<T> vec_extend(Arena *arena, Vec<T> *vec, Arr<T> arr) {
     vec__grow(arena, vec, vec->count + arr.count);
 
@@ -261,6 +259,11 @@ Arr<T> vec_extend(Arena *arena, Vec<T> *vec, Arr<T> arr) {
 template <typename T>
 Arr<T> vec_arr(Vec<T> *vec) {
     return { .value = vec->value, .count = vec->count };
+}
+
+template <typename T>
+void vec_reset(Vec<T> *vec) {
+    vec->count = 0;
 }
 
 //
@@ -360,6 +363,14 @@ constexpr Duration operator-(const Duration &t) {
     return DURATION_ZERO - t;
 }
 
+constexpr void operator+=(Duration& t1, const Duration &t2) {
+    t1 = t1 + t2;
+}
+
+constexpr void operator-=(Duration& t1, const Duration &t2) {
+    t1 = t1 - t2;
+}
+
 constexpr bool operator==(const Duration &t1, const Duration &t2) {
     return t1.seconds == t2.seconds && t1.nanoseconds == t2.nanoseconds;
 }
@@ -387,7 +398,7 @@ constexpr bool operator>=(const Duration &t1, const Duration &t2) {
 }
 
 constexpr u64 duration_seconds(Duration duration) {
-    return abs(duration.seconds);
+    return duration.seconds < 0 ? (u64)-duration.seconds : (u64)duration.seconds;
 }
 
 constexpr u32 duration_subsec_nanos(Duration duration) {
@@ -399,3 +410,16 @@ constexpr Duration operator-(const Instant &t1, const Instant &t2) {
     Duration d2 = { .seconds = t2.seconds, .nanoseconds = t2.nanoseconds };
     return d1 - d2;
 }
+
+//
+// World's crappiest optional type
+//
+
+template <typename T>
+struct Opt {
+    bool present;
+    T value;
+};
+
+template <typename T>
+constexpr Opt<T> some(T v) { return { .present = true, .value = v }; }
