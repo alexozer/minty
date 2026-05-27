@@ -1,8 +1,12 @@
 #include "base.hpp"
 
 #include <sys/mman.h>
+#include <sys/unistd.h>
+#include <sys/stat.h>
+#include <sys/fcntl.h>
 #include <unistd.h>
 #include <time.h>
+#include <string.h>
 
 #include "platform.hpp"
 
@@ -59,4 +63,36 @@ Instant os_get_monotonic_time() {
         .seconds = (i64)tp.tv_sec,
         .nanoseconds = (u32)tp.tv_nsec,
     };
+}
+
+OSResult os_read_file(Arena *arena, Str path, Arr<u8> *out_buf) {
+    // TODO: mmap without memcpy - associate a "destructor" with the arena?
+
+    Arena *scratch = arena_acquire();
+    defer(arena_release(scratch));
+
+    char *path_cstr = str_to_c(scratch, path);
+
+    int fd = open(path_cstr, O_RDONLY);
+    if (fd == -1) {
+        return OSResult::OtherError;
+    }
+    defer(close(fd));
+
+    struct stat st = {};
+    if (fstat(fd, &st) == -1) {
+        return OSResult::OtherError;
+    }
+    u64 size = (u64)st.st_size;
+
+    void *buf = mmap(nullptr, size, PROT_READ, MAP_PRIVATE, fd, 0);
+    if (buf == nullptr) {
+        return OSResult::OtherError;
+    }
+    defer(munmap(buf, size));
+
+    *out_buf = arena_push_arr<u8>(arena, size);
+    memcpy(out_buf->value, buf, size);
+
+    return OSResult::Ok;
 }

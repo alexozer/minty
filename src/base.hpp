@@ -84,7 +84,7 @@ struct Arena {
     u64 offset;
 };
 
-void *arena__push_bytes(Arena *arena, u64 size, u64 alignment = DEFAULT_ALIGNMENT);
+void *arena__push_bytes(Arena *arena, u64 size, u64 alignment);
 
 void arena_pool_init();
 Arena *arena_acquire();
@@ -92,13 +92,13 @@ void arena_release(Arena *arena);
 
 template <typename T>
 T *arena_push(Arena *arena) {
-    return arena__push_bytes(arena, sizeof(T));
+    return (T *)arena__push_bytes(arena, sizeof(T), 8);
 }
 
 template <typename T>
 Arr<T> arena_push_arr(Arena *arena, u64 count) {
     return {
-        .value = (T *)arena__push_bytes(arena, sizeof(T) * count),
+        .value = (T *)arena__push_bytes(arena, sizeof(T) * count, 8),
         .count = count,
     };
 }
@@ -193,6 +193,7 @@ StrLineIter str_lines(Str s);
 bool str_lines_next(StrLineIter* iter, Str *line);
 u64 str_count_lines(Str s);
 Pair<Str, Str> str_split2(Str base, u8 delim);
+constexpr bool str_is_empty(Str s) { return s.count == 0; }
 
 //
 // Vec
@@ -398,11 +399,19 @@ constexpr bool operator>=(const Duration &t1, const Duration &t2) {
 }
 
 constexpr u64 duration_seconds(Duration duration) {
-    return duration.seconds < 0 ? (u64)-duration.seconds : (u64)duration.seconds;
+    if (duration.seconds < 0) {
+        return (u64)(-duration).seconds;
+    } else {
+        return (u64)duration.seconds;
+    }
 }
 
 constexpr u32 duration_subsec_nanos(Duration duration) {
-    return duration.nanoseconds;
+    if (duration.seconds < 0) {
+        return (-duration).nanoseconds;
+    } else {
+        return duration.nanoseconds;
+    }
 }
 
 constexpr Duration operator-(const Instant &t1, const Instant &t2) {
@@ -423,3 +432,31 @@ struct Opt {
 
 template <typename T>
 constexpr Opt<T> some(T v) { return { .present = true, .value = v }; }
+
+
+//
+// XML parser
+//
+
+enum class XmlThing {
+    ElementTag,
+    ElementAttrName,
+    ElementAttrValue,
+    ElementContent,
+    Error,
+};
+
+struct XmlValue {
+    u8 *start; u8 *end;
+    XmlThing type;
+    i32 depth;
+};
+
+struct XmlReader {
+    u8 *data; u8 *curr; u8 *end;
+    i32 depth;
+    Str error;
+};
+
+XmlValue xml__read(XmlReader *r);
+XmlReader xml_reader(Str document);

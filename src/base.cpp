@@ -302,3 +302,80 @@ void log_log(LogLevel level, const char *fmt, ...) {
         va_end(ev.ap);
     }
 }
+
+//
+// XML parser
+//
+
+bool xml__is_whitespace(u8 c) {
+    return c == C(' ') || c == C('\r') || c == C('\n');
+}
+
+XmlValue xml__read(XmlReader *r) {
+    XmlValue res = {};
+top:
+    if (str_is_empty(r->error)) {
+        return { .start = r->data, .end = r->curr, .type = XmlThing::Error };
+    }
+    if (r->curr == r->end) {
+        r->error = S("unexpected EOF"); goto top;
+    }
+    res.start = r->curr;
+
+    if (xml__is_whitespace(*r->curr)) {
+        r->curr++;
+        goto top;
+    }
+
+    // Tag start
+    if (*r->curr == C('<')) {
+        res.type = XmlThing::ElementTag;
+        res.start = ++r->curr;
+        while (true) {
+            if (r->curr == r->end) { r->error = S("unfinished tag"); goto top; }
+            if (xml__is_whitespace(*r->curr)  || *r->curr == C('>')) break;
+            r->curr++;
+        }
+        res.end = r->curr;
+        return res;
+    }
+
+    // Attr value start
+    if (*r->curr == C('=')) {
+        r->curr++;
+        if (r->curr == r->end) { r->error = S("unfinished attr value"); goto top; }
+        if (*r->curr != C('"')) { r->error = S("unquoted attr value"); goto top; }
+
+        r->curr++;
+        if (r->curr == r->end) { r->error = S("unfinished attr value"); goto top; }
+
+        res.type = XmlThing::ElementAttrValue;
+        res.start = r->curr;
+        while (true) {
+            if (r->curr == r->end) { r->error = S("unfinished attr value"); goto top; }
+            if (*r->curr == C('"')) break;
+        }
+        res.end = r->curr++;
+        return res;
+    }
+
+    // Idk, assume attr name start for now
+    res.start = r->curr;
+    while (true) {
+        if (r->curr == r->end) { r->error = S("unfinished attr name"); goto top; }
+        if (*r->curr == C('=')) break;
+        r->curr++;
+    }
+    res.end = r->curr;
+    return res;
+}
+
+XmlReader xml_reader(Str document) {
+    return {
+        .data = document.value,
+        .curr = document.value,
+        .end = document.value + document.count,
+        .depth = 0,
+        .error = S(""),
+    };
+}

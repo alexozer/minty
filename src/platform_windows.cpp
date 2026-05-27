@@ -18,3 +18,7 @@ OSResult cmd_run(Cmd *cmd) {
 Instant os_get_monotonic_time() {
     log_fatal("Unimplemented");
 }
+
+OSResult os_read_file(Arena *arena, Str path, Arr<u8> *out_buf) {
+    log_fatal("Unimplemented");
+}

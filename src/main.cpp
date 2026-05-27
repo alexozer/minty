@@ -23,10 +23,17 @@ struct SplitRecord {
     Arr<Opt<Duration>> splits;
 };
 
+struct Segment {
+    Str name;
+    Str icon; // TODO a proper decode or something
+};
+
 struct SplitsFile {
+    Str game_name;
+    Str category_name;
     u64 total_attempts;
     u64 completed_attempts;
-    Arr<Str> split_names;
+    Arr<Segment> segments;
     Opt<SplitRecord> personal_best;
     Arr<Opt<Duration>> golds;
 };
@@ -192,7 +199,7 @@ void timer_apply_action(Arena *arena, TimerState *timer, SplitsFile *file, Timer
             Duration elapsed = timer_get_elapsed(timer);
             vec_push(arena, &timer->live_splits, some(elapsed));
 
-            if (timer->live_splits.count == file->split_names.count) {
+            if (timer->live_splits.count == file->segments.count) {
                 timer->mode = TimerMode::Finished;
             }
 
@@ -258,6 +265,25 @@ void timer_apply_action(Arena *arena, TimerState *timer, SplitsFile *file, Timer
     assert(false);
 }
 
+OSResult parse_livesplit_lss(Arena *arena, Str lss_path, SplitsFile *out) {
+    Arena *scratch = arena_acquire();
+    defer(arena_release(scratch));
+
+    Str lss = {};
+    OSResult result = os_read_file(scratch, lss_path, &lss);
+    if (result != OSResult::Ok) return result;
+
+    StrLineIter iter = str_lines(lss);
+    Str line = {};
+    u64 lineno = 0;
+    while (str_lines_next(&iter, &line)) {
+        log_debug("Line %03" PRIu64 ": %.*s", lineno + 1, SF(line));
+        lineno++;
+    }
+
+    return OSResult::Ok;
+}
+
 int main(int argc, char **argv, char **envp) {
     g_envp = arr_from_null_terminated(envp);
     arena_pool_init();
@@ -280,6 +306,13 @@ int main(int argc, char **argv, char **envp) {
     Arr<SegSummary> summary = calc_seg_summary(scratch, &timer, &file);
 
     log_debug("Summary length: %" PRIu64, summary.count);
+
+    SplitsFile *splits = arena_push<SplitsFile>(scratch);
+    Str path = S("silksong-blank.lss");
+    OSResult result = parse_livesplit_lss(scratch, path, splits);
+    if (result != OSResult::Ok) {
+        log_fatal("Failed to parse LSS '%.*s'", SF(path));
+    }
 
     return 0;
 }
