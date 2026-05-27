@@ -273,13 +273,16 @@ OSResult parse_livesplit_lss(Arena *arena, Str lss_path, SplitsFile *out) {
     OSResult result = os_read_file(scratch, lss_path, &lss);
     if (result != OSResult::Ok) return result;
 
-    StrLineIter iter = str_lines(lss);
-    Str line = {};
-    u64 lineno = 0;
-    while (str_lines_next(&iter, &line)) {
-        log_debug("Line %03" PRIu64 ": %.*s", lineno + 1, SF(line));
-        lineno++;
+    XmlReader reader = xml_reader(lss);
+    u64 i = 0;
+    while (i < 10 && str_is_empty(reader.error)) {
+        XmlValue value = xml__read(&reader);
+        Str content = { .value = value.start, .count = (u64)(value.end - value.start) };
+        log_debug("XML value: type = %d, content = '%.*s', depth = %d",
+                (i32)value.type, SF(content), value.depth);
+        i++;
     }
+    log_debug("XML error: %.*s", SF(reader.error));
 
     return OSResult::Ok;
 }
@@ -290,22 +293,6 @@ int main(int argc, char **argv, char **envp) {
 
     Arena *scratch = arena_acquire();
     defer(arena_release(scratch));
-
-    log_info("Hello world! pi = %.2f", 3.14159);
-    Str my_str = S("okay then");
-    log_warn("pi = %.2f, uh oh! Here's a string for you: '%.*s'", 3.14159f, SF(my_str));
-
-    Instant start = os_get_monotonic_time();
-    Instant end = os_get_monotonic_time();
-    Duration duration = end - start;
-    Str time_str = format_duration(scratch, duration, 2, true);
-    log_debug("Raw OS monotonic duration: %.*s", SF(time_str));
-
-    TimerState timer = {};
-    SplitsFile file = {};
-    Arr<SegSummary> summary = calc_seg_summary(scratch, &timer, &file);
-
-    log_debug("Summary length: %" PRIu64, summary.count);
 
     SplitsFile *splits = arena_push<SplitsFile>(scratch);
     Str path = S("silksong-blank.lss");
