@@ -312,7 +312,7 @@ bool xml__is_whitespace(u8 c) {
 }
 
 XmlValue xml__read(XmlReader *r) {
-    XmlValue res = {};
+    XmlValue res = { .depth = r->depth };
 top:
     if (!str_is_empty(r->error)) {
         return { .start = r->data, .end = r->curr, .type = XmlThing::Error };
@@ -320,23 +320,65 @@ top:
     if (r->curr == r->end) {
         r->error = S("unexpected eof"); goto top;
     }
-    res.start = r->curr;
 
-    if (xml__is_whitespace(*r->curr) || *r->curr == C('>')) {
-        r->curr++;
-        goto top;
-    }
+    if (r->in_tag) {
+        if (xml__is_whitespace(*r->curr)) { r->curr++; goto top; }
+        if (*r->curr == C('>')) { r->curr++; r->in_tag = false; goto top; }
 
-    // Element start, maybe
-    if (*r->curr == C('<')) {
-        r->curr++;
-        if (r->curr == r->end) { r->error = S("unfinished tag"); goto top; }
-        if (*r->curr == C('/')) goto top; // Closing tag
+        // Element end
+        if (*r->curr == C('?') || *r->curr == C('/')) {
+            while (true) {
+                if (r->curr == r->end) { r->error = S("unfinished tag"); goto top; }
+                if (*r->curr == C('>')) { r->depth--; r->curr++; r->in_tag = false; goto top; }
+                r->curr++;
+            }
+        }
 
-        res.type = XmlThing::ElementTag;
+        // Attr value
+        if (*r->curr == C('=')) {
+            r->curr++;
+
+            // Eat '"'
+            if (r->curr == r->end) { r->error = S("unfinished attr value"); goto top; }
+            if (*r->curr != C('"')) { r->error = S("unquoted attr value"); goto top; }
+            r->curr++;
+
+            res.type = XmlThing::AttrValue;
+            res.start = r->curr;
+            while (true) {
+                if (r->curr == r->end) { r->error = S("unfinished attr value"); goto top; }
+                if (*r->curr == C('"')) break;
+                r->curr++;
+            }
+            res.end = r->curr++;
+            return res;
+        }
+
+        // Attr name
         res.start = r->curr;
         while (true) {
-            if (r->curr == r->end) { r->error = S("unfinished tag"); goto top; }
+            if (r->curr == r->end) { r->error = S("unfinished attr name"); goto top; }
+            if (*r->curr == C('=')) break;
+            r->curr++;
+        }
+        res.end = r->curr;
+        res.type = XmlThing::AttrName;
+        return res;
+    }
+
+    // In element body
+
+    // Element opening or closing tag
+    if (*r->curr == C('<')) {
+        r->curr++;
+        if (r->curr == r->end) { r->error = S("unfinished tag name"); goto top; }
+        if (*r->curr == C('/')) { r->in_tag = true; goto top; } // Closing tag
+
+        res.type = XmlThing::OpeningTagName;
+        r->in_tag = true;
+        res.start = r->curr;
+        while (true) {
+            if (r->curr == r->end) { r->error = S("unfinished tag name"); goto top; }
             if (xml__is_whitespace(*r->curr) || *r->curr == C('>')) break;
             r->curr++;
         }
@@ -345,44 +387,15 @@ top:
         return res;
     }
 
-    // Element end
-    if (*r->curr == C('?') || *r->curr == C('/')) {
-        while (true) {
-            if (r->curr == r->end) { r->error = S("unfinished tag"); goto top; }
-            if (*r->curr == C('>')) { r->depth--; r->curr++; goto top; }
-            r->curr++;
-        }
-    }
-
-    // Attr value start
-    if (*r->curr == C('=')) {
-        r->curr++;
-
-        // Eat '"'
-        if (r->curr == r->end) { r->error = S("unfinished attr value"); goto top; }
-        if (*r->curr != C('"')) { r->error = S("unquoted attr value"); goto top; }
-        r->curr++;
-
-        res.type = XmlThing::ElementAttrValue;
-        res.start = r->curr;
-        while (true) {
-            if (r->curr == r->end) { r->error = S("unfinished attr value"); goto top; }
-            if (*r->curr == C('"')) break;
-            r->curr++;
-        }
-        res.end = r->curr++;
-        return res;
-    }
-
-    // Idk, assume attr name start for now
+    // Content
+    res.type = XmlThing::Content;
     res.start = r->curr;
     while (true) {
-        if (r->curr == r->end) { r->error = S("unfinished attr name"); goto top; }
-        if (*r->curr == C('=')) break;
+        if (r->curr == r->end) { r->error = S("unfinished content"); goto top; }
+        if (*r->curr == C('<')) break;
         r->curr++;
     }
     res.end = r->curr;
-    res.type = XmlThing::ElementAttrName;
     return res;
 }
 
@@ -391,7 +404,5 @@ XmlReader xml_reader(Str document) {
         .data = document.value,
         .curr = document.value,
         .end = document.value + document.count,
-        .depth = 0,
-        .error = S(""),
     };
 }

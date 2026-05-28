@@ -439,10 +439,10 @@ constexpr Opt<T> some(T v) { return { .present = true, .value = v }; }
 //
 
 enum class XmlThing {
-    ElementTag,
-    ElementAttrName,
-    ElementAttrValue,
-    ElementContent,
+    OpeningTagName,
+    AttrName,
+    AttrValue,
+    Content,
     Error,
 };
 
@@ -455,6 +455,7 @@ struct XmlValue {
 struct XmlReader {
     u8 *data; u8 *curr; u8 *end;
     i32 depth;
+    bool in_tag;
     Str error;
 };
 
