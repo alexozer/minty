@@ -314,91 +314,91 @@ void log_log(LogLevel level, const char *fmt, ...) {
 // Separate C99 library
 // Code golf it a bit
 
-bool xml__is_whitespace(u8 c) {
-    return c == C(' ') || c == C('\r') || c == C('\n');
+bool xao__is_whitespace(u8 c) {
+    return c == C(' ') || c == C('\r') || c == C('\n') || c == C('\t');
 }
 
-bool xml__is_string(const u8 *cur, const u8 *end, const char *expect) {
+bool xao__is_string(const u8 *cur, const u8 *end, const char *expect) {
     while (*expect) {
-        if (cur == end || *cur != *expect) {
-            return false;
-        }
+        if (cur == end || *cur != *expect) return false;
         expect++, cur++;
     }
     return true;
 }
 
-bool xml__advance_till(XmlReader *r, const char *s) {
-    // TODO use memchr()
-    for (; r->curr != r->end; r->curr++) {
-        if (xml__is_string(r->curr, r->end, s)) return true;
+bool xao__advance_till(XaoReader *r, const char *s) {
+    while (true) {
+        r->curr = (u8 *)memchr(r->curr, s[0], (size_t)(r->end - r->curr));
+        if (r->curr == nullptr) return false;
+        if (xao__is_string(r->curr, r->end, s)) return true;
+        r->curr++;
     }
     return false;
 }
 
-XmlValue xml__read(XmlReader *r) {
+XaoValue xao__read(XaoReader *r) {
 top:
-    XmlValue res = { .type = XmlThing::Error, .depth = r->depth };
+    XaoValue res = { .type = XaoThing::Error, .depth = r->depth };
     if (!str_is_empty(r->error)) { res.start = r->curr; res.end = r->end; return res; }
     if (r->curr == r->end) { r->error = S("unexpected eof"); goto top; }
 
     if (r->in_tag) {
-        if (xml__is_whitespace(*r->curr)) { r->curr++; goto top; }
+        if (xao__is_whitespace(*r->curr)) { r->curr++; goto top; }
         if (*r->curr == C('>')) { r->curr++; r->in_tag = false; goto top; }
 
         // Element end
         if (*r->curr == C('?') || *r->curr == C('/')) {
-            if (!xml__advance_till(r, ">")) { r->error = S("unfinished tag"); goto top; }
+            if (!xao__advance_till(r, ">")) { r->error = S("unfinished tag"); goto top; }
             r->depth--; r->curr++; r->in_tag = false; goto top;
         }
 
         // Attr value
-        if (xml__is_string(r->curr, r->end, "=\"")) {
+        if (xao__is_string(r->curr, r->end, "=\"")) {
             r->curr += 2;
-            res.type = XmlThing::AttrValue;
+            res.type = XaoThing::AttrValue;
             res.start = r->curr;
-            if (!xml__advance_till(r, "\"")) { r->error = S("unfinished attr value"); goto top; }
+            if (!xao__advance_till(r, "\"")) { r->error = S("unfinished attr value"); goto top; }
             res.end = r->curr++;
             return res;
         }
 
         // Attr name
-        res.type = XmlThing::AttrName;
+        res.type = XaoThing::AttrName;
         res.start = r->curr;
-        if (!xml__advance_till(r, "=")) { r->error = S("unfinished attr name"); goto top; }
+        if (!xao__advance_till(r, "=")) { r->error = S("unfinished attr name"); goto top; }
         res.end = r->curr;
         return res;
     }
 
     // In element body
 
-    if (xml__is_string(r->curr, r->end, "</")) { r->curr += 1; r->in_tag = true; goto top; }
+    if (xao__is_string(r->curr, r->end, "</")) { r->curr += 1; r->in_tag = true; goto top; }
 
     // Element opening or closing tag
     if (*r->curr == C('<')) {
         // Comment
-        if (xml__is_string(r->curr, r->end, "<!--")) {
-            if (!xml__advance_till(r, "-->")) { r->error = S("unfinished comment"); goto top; }
+        if (xao__is_string(r->curr, r->end, "<!--")) {
+            if (!xao__advance_till(r, "-->")) { r->error = S("unfinished comment"); goto top; }
             r->curr += 4;
             goto top;
         }
 
         // CDATA content
-        if (xml__is_string(r->curr, r->end, "<![CDATA[")) {
-            res.type = XmlThing::Content;
+        if (xao__is_string(r->curr, r->end, "<![CDATA[")) {
+            res.type = XaoThing::Content;
             res.start = r->curr += 9;
-            if (!xml__advance_till(r, "]]>")) { r->error = S("unfinished CDATA"); goto top; }
+            if (!xao__advance_till(r, "]]>")) { r->error = S("unfinished CDATA"); goto top; }
             res.end = r->curr;
             r->curr += 3;
             return res;
         }
 
-        res.type = XmlThing::OpeningTagName;
+        res.type = XaoThing::OpeningTagName;
         r->in_tag = true;
         res.start = ++r->curr;
         while (true) {
             if (r->curr == r->end) { r->error = S("unfinished tag name"); goto top; }
-            if (xml__is_whitespace(*r->curr) || *r->curr == C('>')) break;
+            if (xao__is_whitespace(*r->curr) || *r->curr == C('>')) break;
             r->curr++;
         }
         res.end = r->curr;
@@ -407,14 +407,14 @@ top:
     }
 
     // Content
-    res.type = XmlThing::Content;
+    res.type = XaoThing::Content;
     res.start = r->curr;
-    if (!xml__advance_till(r, "<")) { r->error = S("unfinished content"); goto top; }
+    if (!xao__advance_till(r, "<")) { r->error = S("unfinished content"); goto top; }
     res.end = r->curr;
     return res;
 }
 
-XmlReader xml_reader(Str document) {
+XaoReader xao_reader(Str document) {
     return {
         .data = document.value,
         .curr = document.value,

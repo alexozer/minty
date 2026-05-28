@@ -438,7 +438,7 @@ constexpr Opt<T> some(T v) { return { .present = true, .value = v }; }
 // XML parser
 //
 
-enum class XmlThing {
+enum class XaoThing {
     OpeningTagName,
     AttrName,
     AttrValue,
@@ -446,18 +446,18 @@ enum class XmlThing {
     Error,
 };
 
-struct XmlValue {
+struct XaoValue {
     u8 *start; u8 *end;
-    XmlThing type;
+    XaoThing type;
     i32 depth;
 };
 
-struct XmlReader {
+struct XaoReader {
     u8 *data; u8 *curr; u8 *end;
     i32 depth;
     bool in_tag;
     Str error;
 };
 
-XmlValue xml__read(XmlReader *r);
-XmlReader xml_reader(Str document);
+XaoValue xao__read(XaoReader *r);
+XaoReader xao_reader(Str document);
