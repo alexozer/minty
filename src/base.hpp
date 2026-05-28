@@ -442,7 +442,7 @@ enum class XmlThing {
     OpeningTagName,
     AttrName,
     AttrValue,
-    Content,
+    Content, // Normal or CDATA
     Error,
 };
 

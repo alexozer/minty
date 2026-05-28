@@ -307,8 +307,33 @@ void log_log(LogLevel level, const char *fmt, ...) {
 // XML parser
 //
 
+// TODO:
+// Special tags (comments, cdata, metadata header)
+// Escape codes (escape in-place?)
+//
+// Separate C99 library
+// Code golf it a bit
+
 bool xml__is_whitespace(u8 c) {
     return c == C(' ') || c == C('\r') || c == C('\n');
+}
+
+bool xml__is_string(const u8 *cur, const u8 *end, const char *expect) {
+    while (*expect) {
+        if (cur == end || *cur != *expect) {
+            return false;
+        }
+        expect++, cur++;
+    }
+    return true;
+}
+
+bool xml__advance_till(XmlReader *r, const char *s) {
+    // TODO use memchr()
+    for (; r->curr != r->end; r->curr++) {
+        if (xml__is_string(r->curr, r->end, s)) return true;
+    }
+    return false;
 }
 
 XmlValue xml__read(XmlReader *r) {
@@ -323,29 +348,16 @@ top:
 
         // Element end
         if (*r->curr == C('?') || *r->curr == C('/')) {
-            while (true) {
-                if (r->curr == r->end) { r->error = S("unfinished tag"); goto top; }
-                if (*r->curr == C('>')) { r->depth--; r->curr++; r->in_tag = false; goto top; }
-                r->curr++;
-            }
+            if (!xml__advance_till(r, ">")) { r->error = S("unfinished tag"); goto top; }
+            r->depth--; r->curr++; r->in_tag = false; goto top;
         }
 
         // Attr value
-        if (*r->curr == C('=')) {
-            r->curr++;
-
-            // Eat '"'
-            if (r->curr == r->end) { r->error = S("unfinished attr value"); goto top; }
-            if (*r->curr != C('"')) { r->error = S("unquoted attr value"); goto top; }
-            r->curr++;
-
+        if (xml__is_string(r->curr, r->end, "=\"")) {
+            r->curr += 2;
             res.type = XmlThing::AttrValue;
             res.start = r->curr;
-            while (true) {
-                if (r->curr == r->end) { r->error = S("unfinished attr value"); goto top; }
-                if (*r->curr == C('"')) break;
-                r->curr++;
-            }
+            if (!xml__advance_till(r, "\"")) { r->error = S("unfinished attr value"); goto top; }
             res.end = r->curr++;
             return res;
         }
@@ -353,26 +365,37 @@ top:
         // Attr name
         res.type = XmlThing::AttrName;
         res.start = r->curr;
-        while (true) {
-            if (r->curr == r->end) { r->error = S("unfinished attr name"); goto top; }
-            if (*r->curr == C('=')) break;
-            r->curr++;
-        }
+        if (!xml__advance_till(r, "=")) { r->error = S("unfinished attr name"); goto top; }
         res.end = r->curr;
         return res;
     }
 
     // In element body
 
+    if (xml__is_string(r->curr, r->end, "</")) { r->curr += 1; r->in_tag = true; goto top; }
+
     // Element opening or closing tag
     if (*r->curr == C('<')) {
-        r->curr++;
-        if (r->curr == r->end) { r->error = S("unfinished tag name"); goto top; }
-        if (*r->curr == C('/')) { r->in_tag = true; goto top; } // Closing tag
+        // Comment
+        if (xml__is_string(r->curr, r->end, "<!--")) {
+            if (!xml__advance_till(r, "-->")) { r->error = S("unfinished comment"); goto top; }
+            r->curr += 4;
+            goto top;
+        }
 
-        r->in_tag = true;
+        // CDATA content
+        if (xml__is_string(r->curr, r->end, "<![CDATA[")) {
+            res.type = XmlThing::Content;
+            res.start = r->curr += 9;
+            if (!xml__advance_till(r, "]]>")) { r->error = S("unfinished CDATA"); goto top; }
+            res.end = r->curr;
+            r->curr += 3;
+            return res;
+        }
+
         res.type = XmlThing::OpeningTagName;
-        res.start = r->curr;
+        r->in_tag = true;
+        res.start = ++r->curr;
         while (true) {
             if (r->curr == r->end) { r->error = S("unfinished tag name"); goto top; }
             if (xml__is_whitespace(*r->curr) || *r->curr == C('>')) break;
@@ -386,11 +409,7 @@ top:
     // Content
     res.type = XmlThing::Content;
     res.start = r->curr;
-    while (true) {
-        if (r->curr == r->end) { r->error = S("unfinished content"); goto top; }
-        if (*r->curr == C('<')) break;
-        r->curr++;
-    }
+    if (!xml__advance_till(r, "<")) { r->error = S("unfinished content"); goto top; }
     res.end = r->curr;
     return res;
 }
