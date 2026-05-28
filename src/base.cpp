@@ -318,7 +318,7 @@ top:
         return { .start = r->data, .end = r->curr, .type = XmlThing::Error };
     }
     if (r->curr == r->end) {
-        r->error = S("unexpected EOF"); goto top;
+        r->error = S("unexpected eof"); goto top;
     }
     res.start = r->curr;
 
@@ -327,16 +327,21 @@ top:
         goto top;
     }
 
-    // Element start
+    // Element start, maybe
     if (*r->curr == C('<')) {
+        r->curr++;
+        if (r->curr == r->end) { r->error = S("unfinished tag"); goto top; }
+        if (*r->curr == C('/')) goto top; // Closing tag
+
         res.type = XmlThing::ElementTag;
-        res.start = ++r->curr;
+        res.start = r->curr;
         while (true) {
             if (r->curr == r->end) { r->error = S("unfinished tag"); goto top; }
-            if (xml__is_whitespace(*r->curr)  || *r->curr == C('>')) break;
+            if (xml__is_whitespace(*r->curr) || *r->curr == C('>')) break;
             r->curr++;
         }
         res.end = r->curr;
+        res.depth = ++r->depth;
         return res;
     }
 
@@ -344,7 +349,7 @@ top:
     if (*r->curr == C('?') || *r->curr == C('/')) {
         while (true) {
             if (r->curr == r->end) { r->error = S("unfinished tag"); goto top; }
-            if (*r->curr == C('>')) { r->curr++; goto top; }
+            if (*r->curr == C('>')) { r->depth--; r->curr++; goto top; }
             r->curr++;
         }
     }
