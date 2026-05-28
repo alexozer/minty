@@ -308,7 +308,7 @@ void log_log(LogLevel level, const char *fmt, ...) {
 //
 
 // TODO:
-// Special tags (comments, cdata, metadata header)
+// Iterator functions
 // Escape codes (escape in-place?)
 //
 // Separate C99 library
@@ -339,7 +339,7 @@ bool xao__advance_till(XaoReader *r, const char *s) {
 XaoValue xao__read(XaoReader *r) {
 top:
     XaoValue res = { .type = XaoThing::Error, .depth = r->depth };
-    if (!str_is_empty(r->error)) { res.start = r->curr; res.end = r->end; return res; }
+    if (!str_is_empty(r->error)) { res.start = r->end; res.end = r->end; return res; }
     if (r->curr == r->end) { r->error = S("unexpected eof"); goto top; }
 
     if (r->in_tag) {
@@ -374,7 +374,7 @@ top:
 
     if (xao__is_string(r->curr, r->end, "</")) { r->curr += 1; r->in_tag = true; goto top; }
 
-    // Element opening or closing tag
+    // Element opening tag
     if (*r->curr == C('<')) {
         // Comment
         if (xao__is_string(r->curr, r->end, "<!--")) {
@@ -393,6 +393,7 @@ top:
             return res;
         }
 
+        // Opening tag (just the name)
         res.type = XaoThing::OpeningTagName;
         r->in_tag = true;
         res.start = ++r->curr;
@@ -420,4 +421,16 @@ XaoReader xao_reader(Str document) {
         .curr = document.value,
         .end = document.value + document.count,
     };
+}
+
+bool xao_iter_tags(XaoReader *reader, XaoValue tag, XaoValue *child_tag) {
+    return false;
+}
+
+bool xao_iter_content(XaoReader *reader, XaoValue tag, XaoValue *content) {
+    return false;
+}
+
+bool xao_iter_attrs(XaoReader *reader, XaoValue tag, XaoValue *attr_name, XaoValue *attr_value) {
+    return false;
 }

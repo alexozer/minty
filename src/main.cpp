@@ -273,10 +273,10 @@ OSResult parse_livesplit_lss(Arena *arena, Str lss_path, SplitsFile *out) {
     OSResult result = os_read_file(scratch, lss_path, &lss);
     if (result != OSResult::Ok) return result;
 
-    XmlReader reader = xml_reader(lss);
+    XaoReader reader = xao_reader(lss);
     u64 i = 0;
     while (i < 1000 && str_is_empty(reader.error)) {
-        XmlValue value = xml__read(&reader);
+        XaoValue value = xao__read(&reader);
         Str value_str = { .value = value.start, .count = (u64)(value.end - value.start) };
         log_debug("XML value: type = %d, depth = %d, str = '%.*s'",
                 (i32)value.type, value.depth, SF(value_str));
@@ -297,7 +297,8 @@ int main(int argc, char **argv, char **envp) {
     defer(arena_release(scratch));
 
     SplitsFile *splits = arena_push<SplitsFile>(scratch);
-    Str path = S("silksong-blank.lss");
+    // Str path = S("silksong-blank.lss");
+    Str path = S("smb2smal-autosplit.lss");
     OSResult result = parse_livesplit_lss(scratch, path, splits);
     if (result != OSResult::Ok) {
         log_fatal("Failed to parse LSS '%.*s'", SF(path));
