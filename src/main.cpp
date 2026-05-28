@@ -278,12 +278,8 @@ OSResult parse_livesplit_lss(Arena *arena, Str lss_path, SplitsFile *out) {
     while (i < 30 && str_is_empty(reader.error)) {
         XmlValue value = xml__read(&reader);
         Str value_str = { .value = value.start, .count = (u64)(value.end - value.start) };
-        if (value.type == XmlThing::Content) {
-            log_info("XML content: size = %" PRIu64, value_str.count);
-        } else {
-            log_debug("XML value: type = %d, content = '%.*s', depth = %d",
-                    (i32)value.type, SF(value_str), value.depth);
-        }
+        log_debug("XML value: type = %d, content = '%.*s', depth = %d",
+                (i32)value.type, SF(value_str), value.depth);
         i++;
     }
     if (!str_is_empty(reader.error)) {

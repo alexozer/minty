@@ -312,14 +312,10 @@ bool xml__is_whitespace(u8 c) {
 }
 
 XmlValue xml__read(XmlReader *r) {
-    XmlValue res = { .depth = r->depth };
 top:
-    if (!str_is_empty(r->error)) {
-        return { .start = r->data, .end = r->curr, .type = XmlThing::Error };
-    }
-    if (r->curr == r->end) {
-        r->error = S("unexpected eof"); goto top;
-    }
+    XmlValue res = { .type = XmlThing::Error, .depth = r->depth };
+    if (!str_is_empty(r->error)) { res.start = r->curr; res.end = r->end; return res; }
+    if (r->curr == r->end) { r->error = S("unexpected eof"); goto top; }
 
     if (r->in_tag) {
         if (xml__is_whitespace(*r->curr)) { r->curr++; goto top; }
@@ -355,6 +351,7 @@ top:
         }
 
         // Attr name
+        res.type = XmlThing::AttrName;
         res.start = r->curr;
         while (true) {
             if (r->curr == r->end) { r->error = S("unfinished attr name"); goto top; }
@@ -362,7 +359,6 @@ top:
             r->curr++;
         }
         res.end = r->curr;
-        res.type = XmlThing::AttrName;
         return res;
     }
 
@@ -374,8 +370,8 @@ top:
         if (r->curr == r->end) { r->error = S("unfinished tag name"); goto top; }
         if (*r->curr == C('/')) { r->in_tag = true; goto top; } // Closing tag
 
-        res.type = XmlThing::OpeningTagName;
         r->in_tag = true;
+        res.type = XmlThing::OpeningTagName;
         res.start = r->curr;
         while (true) {
             if (r->curr == r->end) { r->error = S("unfinished tag name"); goto top; }
