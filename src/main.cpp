@@ -1,8 +1,12 @@
 #include "base.hpp"
-#include "platform.hpp"
 
 #include <stdio.h>
 #include <assert.h>
+
+#include "platform.hpp"
+extern "C" {
+#include "xao.h"
+}
 
 Opt<Duration> operator+(const Opt<Duration>& d1, const Opt<Duration>& d2) {
     return {
@@ -273,17 +277,17 @@ OSResult parse_livesplit_lss(Arena *arena, Str lss_path, SplitsFile *out) {
     OSResult result = os_read_file(scratch, lss_path, &lss);
     if (result != OSResult::Ok) return result;
 
-    XaoReader reader = xao_reader(lss);
+    xao_Reader reader = xao_reader((char *)lss.value, lss.count);
     u64 i = 0;
-    while (i < 1000 && str_is_empty(reader.error)) {
-        XaoValue value = xao__read(&reader);
-        Str value_str = { .value = value.start, .count = (u64)(value.end - value.start) };
+    while (i < 1000 && reader.error == nullptr) {
+        xao_Value value = xao__read(&reader);
+        Str value_str = { .value = (u8 *)value.start, .count = (u64)(value.end - value.start) };
         log_debug("XML value: type = %d, depth = %d, str = '%.*s'",
-                (i32)value.type, value.depth, SF(value_str));
+                value.type, value.depth, SF(value_str));
         i++;
     }
-    if (!str_is_empty(reader.error)) {
-        log_debug("XML error: %.*s", SF(reader.error));
+    if (reader.error != nullptr) {
+        log_debug("XML error: %s", reader.error);
     }
 
     return OSResult::Ok;

@@ -432,32 +432,3 @@ struct Opt {
 
 template <typename T>
 constexpr Opt<T> some(T v) { return { .present = true, .value = v }; }
-
-
-//
-// XML parser
-//
-
-enum class XaoThing {
-    OpeningTagName,
-    AttrName,
-    AttrValue,
-    Content, // Normal or CDATA
-    Error,
-};
-
-struct XaoValue {
-    u8 *start; u8 *end;
-    XaoThing type;
-    i32 depth;
-};
-
-struct XaoReader {
-    u8 *data; u8 *curr; u8 *end;
-    i32 depth;
-    bool in_tag;
-    Str error;
-};
-
-XaoValue xao__read(XaoReader *r);
-XaoReader xao_reader(Str document);
