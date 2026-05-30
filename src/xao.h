@@ -108,7 +108,7 @@ top: {
 
     if (xao__is_string(r->curr, r->end, "</")) {
         r->state = xao__advance_until(r, ">") ? XAO_S_END_ELEM : XAO_S_ERROR;
-        r->curr++; return res;
+        r->curr++; r->depth--; return res;
     }
 
     // Comment
@@ -138,7 +138,7 @@ top: {
             r->curr++;
         }
         res.end = r->curr;
-        res.depth = ++r->depth;
+        res.depth = r->depth;
         return res;
     }
 

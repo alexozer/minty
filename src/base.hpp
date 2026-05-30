@@ -299,6 +299,7 @@ Defer(F) -> Defer<F>;
 // Subprocesses
 //
 
+extern Arr<char *> g_argv;
 extern Arr<char *> g_envp;
 
 Str env_get(Str key);

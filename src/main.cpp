@@ -294,6 +294,7 @@ OSResult parse_livesplit_lss(Arena *arena, Str lss_path, SplitsFile *out) {
 }
 
 int main(int argc, char **argv, char **envp) {
+    g_argv = { .value = argv, .count = (u64)argc };
     g_envp = arr_from_null_terminated(envp);
     arena_pool_init();
 
@@ -301,8 +302,7 @@ int main(int argc, char **argv, char **envp) {
     defer(arena_release(scratch));
 
     SplitsFile *splits = arena_push<SplitsFile>(scratch);
-    // Str path = S("silksong-blank.lss");
-    Str path = S("smb2smal-autosplit.lss");
+    Str path = str_from_c(g_argv[1]);
     OSResult result = parse_livesplit_lss(scratch, path, splits);
     if (result != OSResult::Ok) {
         log_fatal("Failed to parse LSS '%.*s'", SF(path));

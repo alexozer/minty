@@ -9,21 +9,22 @@ rm -f out/*.pdb
 C_FLAGS="-std=c99 -Wall -Wshadow"
 CPP_FLAGS="-std=c++20 -nostdinc++ -fno-exceptions -fno-rtti -Wall -Wshadow -Wconversion"
 
-# if [[ "${1:-}" == "debug" ]]; then
-#     PROFILE_ARGS="-O0"
-# elif [[ "${1:-}" == "release" || "${1:-}" == "" ]]; then
-#     PROFILE_ARGS="-O2 -s -Werror"
-# else
-#     echo "Invalid profile: $1"
-#     exit 1
-# fi
+if [[ "${1:-}" == "debug" ]]; then
+    PROFILE_FLAGS="-O0"
+elif [[ "${1:-}" == "release" || "${1:-}" == "" ]]; then
+    # TODO strip
+    PROFILE_FLAGS="-O2 -Werror -UNDEBUG"
+else
+    echo "Invalid profile: $1"
+    exit 1
+fi
 
 mkdir -p out/aarch64-macos-none
 mkdir -p out/x86_64-linux-gnu
 mkdir -p out/x86_64-windows
 
 zig cc \
-    $C_FLAGS -c -O2 \
+    $C_FLAGS -c $PROFILE_FLAGS \
     -target aarch64-macos-none \
     src/xao.c -o out/aarch64-macos-none/xao.o
 # zig cc \
@@ -36,7 +37,7 @@ zig cc \
 #     src/xao.c -o out/x86_64-windows/xao.o
 
 zig c++ \
-    $CPP_FLAGS -O2 \
+    $CPP_FLAGS $PROFILE_FLAGS \
     -target aarch64-macos-none \
     src/main.cpp \
     src/base.cpp \

@@ -210,6 +210,7 @@ Str path_join(Arena *arena, Str left_path, Str right_path) {
 // Subprocesses
 //
 
+Arr<char *> g_argv;
 Arr<char *> g_envp;
 
 Str env_get(Str key) {
