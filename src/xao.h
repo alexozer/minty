@@ -27,13 +27,12 @@ typedef struct {
 } xao_Reader;
 
 xao_Reader xao_reader(char *data, size_t len);
-bool xao_iter_children(xao_Reader *reader, xao_Value tag, xao_Value *content);
-bool xao_iter_attrs(xao_Reader *reader, xao_Value tag, xao_Value *attr_name, xao_Value *attr_value);
 
-// TODO remove
-xao_Value xao__read(xao_Reader *r);
+bool xao_iter_attrs(xao_Reader *r, xao_Value tag, xao_Value *attr_name, xao_Value *attr_value);
+bool xao_iter_content(xao_Reader *r, xao_Value parent, xao_Value *content);
+bool xao_iter_tags(xao_Reader *r, xao_Value parent, xao_Value *child);
 
-#endif // #ifndef SJ_H
+#endif // #ifdef XAO_IMPL
 
 #ifdef XAO_IMPL
 

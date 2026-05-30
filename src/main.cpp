@@ -278,13 +278,19 @@ OSResult parse_livesplit_lss(Arena *arena, Str lss_path, SplitsFile *out) {
     if (result != OSResult::Ok) return result;
 
     xao_Reader reader = xao_reader((char *)lss.value, lss.count);
-    u64 i = 0;
-    while (i < 1000 && reader.error == nullptr) {
-        xao_Value value = xao__read(&reader);
-        Str value_str = { .value = (u8 *)value.start, .count = (u64)(value.end - value.start) };
-        log_debug("XML value: type = %d, depth = %d, str = '%.*s'",
-                value.type, value.depth, SF(value_str));
-        i++;
+    // u64 i = 0;
+    // while (i < 1000 && reader.error == nullptr) {
+    //     xao_Value value = xao__read(&reader);
+    //     Str value_str = { .value = (u8 *)value.start, .count = (u64)(value.end - value.start) };
+    //     log_debug("XML value: type = %d, depth = %d, str = '%.*s'",
+    //             value.type, value.depth, SF(value_str));
+    //     i++;
+    // }
+
+    xao_Value root = {};
+    xao_Value child = {};
+    while (xao_iter_content(&reader, root, &child)) {
+        log_debug("Tag: %.*s", (int)(child.end - child.start), child.start);
     }
     if (reader.error != nullptr) {
         log_debug("XML error: %s", reader.error);
