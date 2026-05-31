@@ -28,11 +28,11 @@ zig cc \
     -target aarch64-macos-none \
     src/xao.c -o out/aarch64-macos-none/xao.o
 # zig cc \
-#     $C_FLAGS -c -O2 \
+#     $C_FLAGS -c $PROFILE_FLAGS \
 #     -target x86_64-linux-gnu \
 #     src/xao.c -o out/x86_64-linux-gnu/xao.o
 # zig cc \
-#     $C_FLAGS -c -O2 \
+#     $C_FLAGS -c $PROFILE_FLAGS \
 #     -target x86_64-windows \
 #     src/xao.c -o out/x86_64-windows/xao.o
 
@@ -46,7 +46,7 @@ zig c++ \
     out/aarch64-macos-none/xao.o \
     -o out/aarch64-macos-none/blitter
 # zig c++ \
-#     $CPP_FLAGS -O2 \
+#     $CPP_FLAGS $PROFILE_FLAGS \
 #     -target x86_64-linux-gnu \
 #     src/main.cpp \
 #     src/base.cpp \
@@ -55,7 +55,7 @@ zig c++ \
 #     out/x86_64-linux-gnu/xao.o \
 #     -o out/x86_64-linux-gnu/blitter
 # zig c++ \
-#     $CPP_FLAGS -O2 \
+#     $CPP_FLAGS $PROFILE_FLAGS \
 #     -target x86_64-windows \
 #     src/main.cpp \
 #     src/base.cpp \

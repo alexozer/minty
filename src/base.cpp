@@ -89,7 +89,7 @@ Str str_trim(Str s) {
     }
 
     u64 end = s.count;
-    while (end > 0 && char_is_whitespace(s[end - 1])) {
+    while (end > start && char_is_whitespace(s[end - 1])) {
         end--;
     }
 
