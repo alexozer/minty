@@ -269,6 +269,19 @@ void timer_apply_action(Arena *arena, TimerState *timer, SplitsFile *file, Timer
     assert(false);
 }
 
+Str xao_to_str(xao_Value v) {
+    return { .value = (u8 *)v.start, .count = (u64)v.end - (u64)v.start };
+}
+
+bool eq(xao_Value v, Str s) {
+    Str xao_str = xao_to_str(v);
+    return str_eq(xao_str, s);
+}
+
+extern "C" {
+xao_Value xao__read(xao_Reader *r);
+}
+
 OSResult parse_livesplit_lss(Arena *arena, Str lss_path, SplitsFile *out) {
     Arena *scratch = arena_acquire();
     defer(arena_release(scratch));
@@ -277,7 +290,7 @@ OSResult parse_livesplit_lss(Arena *arena, Str lss_path, SplitsFile *out) {
     OSResult result = os_read_file(scratch, lss_path, &lss);
     if (result != OSResult::Ok) return result;
 
-    xao_Reader reader = xao_reader((char *)lss.value, lss.count);
+    // xao_Reader reader = xao_reader((char *)lss.value, lss.count);
     // u64 i = 0;
     // while (i < 1000 && reader.error == nullptr) {
     //     xao_Value value = xao__read(&reader);
@@ -287,10 +300,22 @@ OSResult parse_livesplit_lss(Arena *arena, Str lss_path, SplitsFile *out) {
     //     i++;
     // }
 
+    xao_Reader reader = xao_reader((char *)lss.value, lss.count);
     xao_Value root = {};
-    xao_Value child = {};
-    while (xao_iter_content(&reader, root, &child)) {
-        log_debug("Tag: %.*s", (int)(child.end - child.start), child.start);
+    xao_Value root_elem = {};
+    while (xao_iter_tags(&reader, root, &root_elem)) {
+        log_debug("Tag: '%.*s'", SF(xao_to_str(root_elem)));
+        if (root_elem.type == XAO_TAG && eq(root_elem, S("Run"))) {
+            xao_Value run_elem = {};
+            while (xao_iter_tags(&reader, root_elem, &run_elem)) {
+                log_debug("Run child: '%.*s'", SF(xao_to_str(run_elem)));
+                if (eq(run_elem, S("GameName"))) {
+                    xao_Value game_name = {};
+                    xao_iter_content(&reader, run_elem, &game_name);
+                    log_info("Game name: '%.*s'", SF(xao_to_str(game_name)));
+                }
+            }
+        }
     }
     if (reader.error != nullptr) {
         log_debug("XML error: %s", reader.error);

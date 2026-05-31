@@ -179,6 +179,7 @@ Str str_from_bytes(Arr<u8> bytes);
 bool char_is_whitespace(u8 c);
 Str str_trim(Str s);
 Str str_clone(Arena *arena, Str s);
+bool str_eq(Str s1, Str s2);
 bool str_starts_with(Str s, Str prefix);
 __attribute__((format(printf, 2, 3)))
 Str str_format(Arena *arena, const char *format, ...);

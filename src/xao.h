@@ -68,6 +68,7 @@ static void xao__err(xao_Reader *r, char *s) {
 // TODO make static
 xao_Value xao__read(xao_Reader *r) {
 top: {
+    if (r->curr == r->data) r->depth++;
     xao_Value res = { .depth = r->depth };
     if (r->state == XAO_S_ERROR) { res.start = r->end; res.end = r->end; return res; }
     if (r->curr == r->end) { xao__err(r, "unexpected eof"); goto top; }
@@ -102,7 +103,7 @@ top: {
     }
 
     if (r->state == XAO_S_END_ATTRS || r->state == XAO_S_END_ELEM) {
-        r->curr++; r->state = XAO_S_CONTENT; goto top;
+        r->state = XAO_S_CONTENT; goto top;
     }
 
     if (xao__is_string(r->curr, r->end, "</")) {
@@ -168,6 +169,7 @@ bool xao_iter_content(xao_Reader *r, xao_Value parent, xao_Value *content) {
         if (r->state == XAO_S_ERROR) return false;
         if (r->depth == parent.depth && r->state == XAO_S_END_ELEM) return false;
         xao_Value v = xao__read(r);
+        if (r->state == XAO_S_ERROR) return false;
         if (r->depth == parent.depth + 1 && (v.type == XAO_TAG || v.type == XAO_CONTENT)) {
             *content = v;
             return true;

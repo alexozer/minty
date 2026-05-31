@@ -102,6 +102,10 @@ Str str_clone(Arena *arena, Str s) {
     return clone;
 }
 
+bool str_eq(Str s1, Str s2) {
+    return arr_eq(s1, s2);
+}
+
 bool str_starts_with(Str s, Str prefix) {
     if (prefix.count > s.count) {
         return false;
