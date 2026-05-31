@@ -298,35 +298,35 @@ OSResult parse_livesplit_lss(Arena *arena, Str lss_path, SplitsFile *out) {
     OSResult result = os_read_file(scratch, lss_path, &lss);
     if (result != OSResult::Ok) return result;
 
-    xao_Reader reader = xao_reader((char *)lss.value, lss.count);
-    u64 i = 0;
-    while (i < 50 && reader.error == nullptr) {
-        xao_Value value = xao__read(&reader);
-        Str value_str = xao_to_str(value);
-        log_debug("state = '%s', error = %d, type = '%s', depth = %d, str = '%.*s', curr = '%.*s'",
-                STATE_NAMES[reader.state], reader.error != nullptr, TYPE_NAMES[value.type], value.depth, SF(value_str), 4, reader.curr);
-        i++;
-    }
-
-    // xao_Reader reader = xao_reader((char *)lss.value, lss.count);
-    // xao_Value root = {};
-    // xao_Value root_elem = {};
-    // while (xao_iter_tags(&reader, root, &root_elem)) {
-    //     log_debug("Tag: '%.*s'", SF(xao_to_str(root_elem)));
-    //     if (root_elem.type == XAO_TAG && eq(root_elem, S("Run"))) {
-    //         xao_Value run_elem = {};
-    //         while (xao_iter_tags(&reader, root_elem, &run_elem)) {
-    //             log_debug("Run child: '%.*s'", SF(xao_to_str(run_elem)));
-    //             if (eq(run_elem, S("GameName"))) {
-    //                 xao_Value game_name = {};
-    //                 xao_iter_content(&reader, run_elem, &game_name);
-    //                 log_info("Game name: '%.*s'", SF(xao_to_str(game_name)));
-    //             }
-    //         }
-    //     }
+    // xao_Reader r = xao_reader((char *)lss.value, lss.count);
+    // u64 i = 0;
+    // while (i < 300 && r.error == nullptr) {
+    //     xao_Value value = xao__read(&r);
+    //     Str value_str = xao_to_str(value);
+    //     log_debug("state = '%s', error = %d, type = '%s', depth = %d, str = '%.*s'",
+    //             STATE_NAMES[r.state], r.error != nullptr, TYPE_NAMES[value.type], value.depth, SF(value_str));
+    //     i++;
     // }
-    if (reader.error != nullptr) {
-        log_debug("XML error: %s", reader.error);
+
+    xao_Reader r = xao_reader((char *)lss.value, lss.count);
+    xao_Value root = {};
+    xao_Value root_elem = {};
+    while (xao_iter_tags(&r, root, &root_elem)) {
+        log_debug("Tag: '%.*s'", SF(xao_to_str(root_elem)));
+        if (root_elem.type == XAO_TAG && eq(root_elem, S("Run"))) {
+            xao_Value run_elem = {};
+            while (xao_iter_tags(&r, root_elem, &run_elem)) {
+                log_debug("Run child: '%.*s'", SF(xao_to_str(run_elem)));
+                // if (eq(run_elem, S("GameName"))) {
+                //     xao_Value game_name = {};
+                //     xao_iter_content(&r, run_elem, &game_name);
+                //     log_info("Game name: '%.*s'", SF(xao_to_str(game_name)));
+                // }
+            }
+        }
+    }
+    if (r.error != nullptr) {
+        log_debug("XML error: %s", r.error);
     }
 
     return OSResult::Ok;

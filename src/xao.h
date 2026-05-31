@@ -76,7 +76,7 @@ top: {
 
         // Closing tag
         if (*r->curr == '?' || *r->curr == '/') {
-            if (!xao__advance_until(r, ">")) r->error = "missing >"; goto top;
+            if (!xao__advance_until(r, ">")) { r->error = "missing >"; goto top; }
             r->state = XAO_S_END_ELEM;
             r->curr++;
             return res;
@@ -164,7 +164,7 @@ bool xao_iter_attrs(xao_Reader *r, xao_Value tag, xao_Value *attr_name, xao_Valu
 
 bool xao_iter_content(xao_Reader *r, xao_Value parent, xao_Value *content) {
     while (true) {
-        if (r->error != NULL) return false;
+        if (r->error != NULL || r->state == XAO_S_EOF) return false;
         if (r->depth == parent.depth && r->state == XAO_S_END_ELEM) return false;
         xao_Value v = xao__read(r);
         if (r->error != NULL) return false;

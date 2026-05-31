@@ -10,7 +10,7 @@ C_FLAGS="-std=c99 -Wall -Wshadow"
 CPP_FLAGS="-std=c++20 -nostdinc++ -fno-exceptions -fno-rtti -Wall -Wshadow -Wconversion"
 
 if [[ "${1:-}" == "debug" ]]; then
-    PROFILE_FLAGS="-O0"
+    PROFILE_FLAGS="-g -O0"
 elif [[ "${1:-}" == "release" || "${1:-}" == "" ]]; then
     # TODO strip
     PROFILE_FLAGS="-O2 -Werror -UNDEBUG"
