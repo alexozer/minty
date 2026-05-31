@@ -21,7 +21,7 @@ void *arena__push_bytes(Arena *arena, u64 size, u64 alignment) {
 
 // TODO sane arena sizing/lifetime scheme
 static constexpr u64 ARENA_POOL_MAX = 16;
-static constexpr u64 ARENA_SIZE = megabytes(16);
+static constexpr u64 ARENA_SIZE = megabytes(32);
 static Arena s_arena_pool[ARENA_POOL_MAX];
 static Arena *s_arena_stack[ARENA_POOL_MAX];
 static u64 s_arena_stack_top;
