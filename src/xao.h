@@ -59,8 +59,7 @@ static bool xao__advance_until(xao_Reader *r, char *s) {
     return false;
 }
 
-// TODO make static
-xao_Value xao__read(xao_Reader *r) {
+static xao_Value xao__read(xao_Reader *r) {
 top: {
     if (r->curr == r->data) r->depth++;
     xao_Value res = { .depth = r->depth };
@@ -83,11 +82,12 @@ top: {
         }
 
         // Attr value
-        if (xao__is_string(r->curr, r->end, "=\"")) {
+        if (xao__is_string(r->curr, r->end, "=\"") || xao__is_string(r->curr, r->end, "='")) {
+            bool dq = r->curr[1] == '"';
             r->curr += 2;
             res.type = XAO_ATTR_VALUE;
             res.start = r->curr;
-            if (!xao__advance_until(r, "\"")) { r->error = "missing quote"; goto top; }
+            if (!xao__advance_until(r, dq ? "\"" : "'")) { r->error = "missing quote"; goto top; }
             res.end = r->curr++;
             return res;
         }

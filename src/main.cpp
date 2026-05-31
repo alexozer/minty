@@ -278,10 +278,6 @@ bool eq(xao_Value v, Str s) {
     return str_eq(xao_str, s);
 }
 
-extern "C" {
-xao_Value xao__read(xao_Reader *r);
-}
-
 const char *TYPE_NAMES[] = {
     "NONE", "TAG", "ATTR_NAME", "ATTR_VALUE", "CONTENT",
 };
@@ -290,27 +286,27 @@ const char *STATE_NAMES[] = {
     "CONTENT", "TAG", "END_ATTRS", "END_ELEM", "EOF",
 };
 
-// void iter_elem(xao_Reader *r, xao_Value v, u64 depth) {
-//     xao_Value child = {};
-//     while (xao_iter_content(r, v, &child)) {
-//         Str child_str = xao_to_str(child);
-//         if (child.type == XAO_TAG) {
-//             log_debug("%*c<%.*s>", (int)depth * 4, ' ', SF(child_str));
-//             xao_Value key = {}, value = {};
-//             while (xao_iter_attrs(r, child, &key, &value)) {
-//                 log_debug("%*c%.*s=\"%.*s\"", (int)(depth + 1) * 4, ' ', SF(xao_to_str(key)), SF(xao_to_str(value)));
-//             }
-//             iter_elem(r, child, depth + 1);
-//
-//         } else if (child.type == XAO_CONTENT) {
-//             child_str = str_trim(child_str);
-//             if (!str_is_empty(child_str)) {
-//                 log_debug("%*cCONTENT: '%.*s'", (int)depth * 4, ' ', SF(child_str));
-//             }
-//         }
-//     }
-//     log_debug("%*c</%.*s>", (int)(depth - 1) * 4, ' ', SF(xao_to_str(v)));
-// }
+void iter_elem(xao_Reader *r, xao_Value v, u64 depth) {
+    xao_Value child = {};
+    while (xao_iter_content(r, v, &child)) {
+        Str child_str = xao_to_str(child);
+        if (child.type == XAO_TAG) {
+            log_debug("%*c<%.*s>", (int)depth * 4, ' ', SF(child_str));
+            xao_Value key = {}, value = {};
+            while (xao_iter_attrs(r, child, &key, &value)) {
+                log_debug("%*c%.*s=\"%.*s\"", (int)(depth + 1) * 4, ' ', SF(xao_to_str(key)), SF(xao_to_str(value)));
+            }
+            iter_elem(r, child, depth + 1);
+
+        } else if (child.type == XAO_CONTENT) {
+            child_str = str_trim(child_str);
+            if (!str_is_empty(child_str)) {
+                log_debug("%*cCONTENT: '%.*s'", (int)depth * 4, ' ', SF(child_str));
+            }
+        }
+    }
+    log_debug("%*c</%.*s>", (int)(depth - 1) * 4, ' ', SF(xao_to_str(v)));
+}
 
 OSResult parse_livesplit_lss(Arena *arena, Str lss_path, SplitsFile *out) {
     Arena *scratch = arena_acquire();
@@ -320,14 +316,10 @@ OSResult parse_livesplit_lss(Arena *arena, Str lss_path, SplitsFile *out) {
     OSResult result = os_read_file(scratch, lss_path, &lss);
     if (result != OSResult::Ok) return result;
 
-    for (u64 i = 0; i < 100; i++) {
-        xao_Reader r = xao_reader((char *)lss.value, lss.count);
-        while (r.state != 4) {
-            xao__read(&r);
-        }
-        if (r.error != nullptr) {
-            log_debug("XML error: %s", r.error);
-        }
+    xao_Reader r = xao_reader((char *)lss.value, lss.count);
+    iter_elem(&r, {}, 1);
+    if (r.error != nullptr) {
+        log_debug("XML error: %s", r.error);
     }
 
     return OSResult::Ok;
@@ -337,8 +329,6 @@ int main(int argc, char **argv, char **envp) {
     g_argv = { .value = argv, .count = (u64)argc };
     g_envp = arr_from_null_terminated(envp);
     arena_pool_init();
-
-    log_set_level(LogLevel::Info);
 
     Arena *scratch = arena_acquire();
     defer(arena_release(scratch));
