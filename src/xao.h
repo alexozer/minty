@@ -1,6 +1,6 @@
 // TODO:
-// Review error handling/messages
 // Escape codes (escape in-place?)
+// Error line/col
 // Code golf it a bit
 
 #ifndef XAO_H
