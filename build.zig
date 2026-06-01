@@ -1,4 +1,5 @@
 const std = @import("std");
+const zcc = @import("compile_commands");
 
 const blitter_sources: []const []const u8 = &.{
     "src/main.cpp",
@@ -13,6 +14,7 @@ const blitter_flags: []const []const u8 = &.{
     "-fno-rtti",
     "-Wall",
     "-Wshadow",
+    "-isystem", "3rdparty",
 };
 
 const xao_sources: []const []const u8 = &.{
@@ -23,6 +25,7 @@ const xao_flags: []const []const u8 = &.{
     "-std=c99",
     "-Wall",
     "-Wshadow",
+    "-isystem", "3rdparty",
 };
 
 const simdutf_sources: []const []const u8 = &.{
@@ -51,12 +54,17 @@ const yyjson_flags: []const []const u8 = &.{
 };
 
 
-pub fn build(b: *std.Build) void {
+pub fn build(b: *std.Build) !void {
+
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    var targets: std.ArrayList(*std.Build.Step.Compile) = .empty;
+
     // Build simdutf separately so we can compile with libcpp headers, but not
     // link libcpp in final executable
+    // TODO: do we need to build main.cpp with the C header to get small build
+    // size? See singlefile in downloads
     const simdutf = b.addLibrary(.{
         .name = "simdutf",
         .root_module = b.createModule(.{
@@ -69,7 +77,8 @@ pub fn build(b: *std.Build) void {
         .files = simdutf_sources,
         .flags = simdutf_flags,
     });
-    simdutf.installHeader(b.path("3rdparty/simdutf.h"), "simdutf.h");
+    simdutf.installHeader(b.path("3rdparty/simdutf_c.h"), "simdutf_c.h");
+    try targets.append(b.allocator, simdutf);
 
     const yyjson = b.addLibrary(.{
         .name = "yyjson",
@@ -83,6 +92,7 @@ pub fn build(b: *std.Build) void {
         .flags = yyjson_flags,
     });
     yyjson.installHeader(b.path("3rdparty/yyjson.h"), "yyjson.h");
+    try targets.append(b.allocator, yyjson);
 
     const xao = b.addLibrary(.{
         .name = "xao",
@@ -96,6 +106,7 @@ pub fn build(b: *std.Build) void {
         .flags = xao_flags,
     });
     xao.installHeader(b.path("src/xao.h"), "xao.h");
+    try targets.append(b.allocator, xao);
 
     const blitter = b.addExecutable(.{
         .name = "blitter",
@@ -114,6 +125,9 @@ pub fn build(b: *std.Build) void {
     blitter.root_module.linkLibrary(simdutf);
     blitter.root_module.linkLibrary(yyjson);
     blitter.root_module.linkLibrary(xao);
+    try targets.append(b.allocator, blitter);
 
     b.installArtifact(blitter);
+
+    _ = zcc.createStep(b, "cdb", try targets.toOwnedSlice(b.allocator));
 }

@@ -7,7 +7,7 @@ extern "C" {
 #include "xao.h"
 #include <yyjson.h>
 }
-#include <simdutf.h>
+#include <simdutf_c.h>
 
 #include "platform.hpp"
 
@@ -352,7 +352,7 @@ int main(int argc, char **argv, char **envp) {
     }
     yyjson_doc_free(doc);
 
-    if (!simdutf::validate_utf8("blah", 4)) {
+    if (!simdutf_validate_utf8("blah", 4)) {
         log_fatal("Failed to validate UTF-8!");
     } else {
         log_debug("Validated");
