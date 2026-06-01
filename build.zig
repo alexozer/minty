@@ -28,17 +28,6 @@ const xao_flags: []const []const u8 = &.{
     "-isystem", "3rdparty",
 };
 
-const simdutf_sources: []const []const u8 = &.{
-    "3rdparty/simdutf.cpp",
-};
-
-const simdutf_flags: []const []const u8 = &.{
-    "-std=c++20",
-    "-fno-exceptions",
-    "-fno-rtti",
-    "-DSIMDUTF_NO_LIBCXX=1",
-};
-
 const yyjson_sources: []const []const u8 = &.{
     "3rdparty/yyjson.c",
 };
@@ -60,25 +49,6 @@ pub fn build(b: *std.Build) !void {
     const optimize = b.standardOptimizeOption(.{});
 
     var targets: std.ArrayList(*std.Build.Step.Compile) = .empty;
-
-    // Build simdutf separately so we can compile with libcpp headers, but not
-    // link libcpp in final executable
-    // TODO: do we need to build main.cpp with the C header to get small build
-    // size? See singlefile in downloads
-    const simdutf = b.addLibrary(.{
-        .name = "simdutf",
-        .root_module = b.createModule(.{
-            .target = target,
-            .optimize = optimize,
-            .link_libcpp = true,
-        }),
-    });
-    simdutf.root_module.addCSourceFiles(.{
-        .files = simdutf_sources,
-        .flags = simdutf_flags,
-    });
-    simdutf.installHeader(b.path("3rdparty/simdutf_c.h"), "simdutf_c.h");
-    try targets.append(b.allocator, simdutf);
 
     const yyjson = b.addLibrary(.{
         .name = "yyjson",
@@ -122,7 +92,6 @@ pub fn build(b: *std.Build) !void {
         .files = blitter_sources,
         .flags = blitter_flags,
     });
-    blitter.root_module.linkLibrary(simdutf);
     blitter.root_module.linkLibrary(yyjson);
     blitter.root_module.linkLibrary(xao);
     try targets.append(b.allocator, blitter);
