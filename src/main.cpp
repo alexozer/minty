@@ -3,10 +3,13 @@
 #include <stdio.h>
 #include <assert.h>
 
-#include "platform.hpp"
 extern "C" {
 #include "xao.h"
+#include <yyjson.h>
 }
+#include <simdutf.h>
+
+#include "platform.hpp"
 
 Opt<Duration> operator+(const Opt<Duration>& d1, const Opt<Duration>& d2) {
     return {
@@ -333,11 +336,26 @@ int main(int argc, char **argv, char **envp) {
     Arena *scratch = arena_acquire();
     defer(arena_release(scratch));
 
-    SplitsFile *splits = arena_push<SplitsFile>(scratch);
-    Str path = str_from_c(g_argv[1]);
-    OSResult result = parse_livesplit_lss(scratch, path, splits);
-    if (result != OSResult::Ok) {
-        log_fatal("Failed to parse LSS '%.*s'", SF(path));
+    // SplitsFile *splits = arena_push<SplitsFile>(scratch);
+    // Str path = str_from_c(g_argv[1]);
+    // OSResult result = parse_livesplit_lss(scratch, path, splits);
+    // if (result != OSResult::Ok) {
+    //     log_fatal("Failed to parse LSS '%.*s'", SF(path));
+    // }
+
+    const char *str = "[1,2,3,4]";
+    yyjson_doc *doc = yyjson_read(str, strlen(str), 0);
+    if (doc) {
+        log_debug("yyjson doc parsed");
+    } else {
+        log_error("yyjson doc failed to parse");
+    }
+    yyjson_doc_free(doc);
+
+    if (!simdutf::validate_utf8("blah", 4)) {
+        log_fatal("Failed to validate UTF-8!");
+    } else {
+        log_debug("Validated");
     }
 
     return 0;

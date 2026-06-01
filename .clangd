@@ -1,2 +1,2 @@
 CompileFlags:
-  Add: ["-std=c++20", "-nostdinc++", "-fno-exceptions", "-fno-rtti", "-Wall", "-Wshadow", "-Wconversion", "-DXAO_IMPL"]
+  Add: ["-std=c++20", "-nostdinc++", "-fno-exceptions", "-fno-rtti", "-Wall", "-Wshadow", "-Wconversion", "-DXAO_IMPL", "-isystem", "3rdparty"]
