@@ -356,6 +356,7 @@ int main(int argc, char **argv, char **envp) {
         log_fatal("Failed to validate UTF-8!");
     } else {
         log_debug("Validated");
+        log_debug("Validated 2");
     }
 
     return 0;
