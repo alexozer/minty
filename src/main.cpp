@@ -8,6 +8,10 @@ extern "C" {
 #include <yyjson.h>
 }
 
+#include <SDL3/SDL_log.h>
+#include <SDL3/SDL_main.h>
+#include <SDL3/SDL_video.h>
+
 #include "platform.hpp"
 
 Opt<Duration> operator+(const Opt<Duration>& d1, const Opt<Duration>& d2) {
@@ -327,6 +331,10 @@ OSResult parse_livesplit_lss(Arena *arena, Str lss_path, SplitsFile *out) {
     return OSResult::Ok;
 }
 
+SDL_HitTestResult sdl_hit_test_cb(SDL_Window *win, const SDL_Point *area, void *data) {
+    return SDL_HITTEST_DRAGGABLE;
+}
+
 int main(int argc, char **argv, char **envp) {
     g_argv = { .value = argv, .count = (u64)argc };
     g_envp = arr_from_null_terminated(envp);
@@ -342,14 +350,46 @@ int main(int argc, char **argv, char **envp) {
     //     log_fatal("Failed to parse LSS '%.*s'", SF(path));
     // }
 
-    const char *str = "[1,2,3,4]";
-    yyjson_doc *doc = yyjson_read(str, strlen(str), 0);
-    if (doc) {
-        log_debug("yyjson doc parsed");
-    } else {
-        log_error("yyjson doc failed to parse");
+    // const char *str = "[1,2,3,4]";An SDL3 window
+    // yyjson_doc *doc = yyjson_read(str, strlen(str), 0);
+    // if (doc) {
+    //     log_debug("yyjson doc parsed");
+    // } else {
+    //     log_error("yyjson doc failed to parse");
+    // }
+    // yyjson_doc_free(doc);
+
+    if (!SDL_Init(SDL_INIT_VIDEO)) {
+        log_fatal("Failed to initialize SDL: %s", SDL_GetError());
     }
-    yyjson_doc_free(doc);
+    defer(SDL_Quit());
+
+    // Create an application window with the following settings:
+    SDL_Window* window = SDL_CreateWindow(
+        "Blitter",
+        400,
+        640,
+        SDL_WINDOW_METAL | SDL_WINDOW_RESIZABLE
+    );
+    if (window == nullptr) {
+        log_fatal("Failed to create window: %s", SDL_GetError());
+    }
+    defer(SDL_DestroyWindow(window));
+
+    SDL_SetWindowHitTest(window, sdl_hit_test_cb, nullptr);
+
+    bool done = false;
+    while (!done) {
+        SDL_Event event;
+
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_EVENT_QUIT) {
+                done = true;
+            }
+        }
+
+        // Do game logic, present a frame, etc.
+    }
 
     return 0;
 }
