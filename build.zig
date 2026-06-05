@@ -8,73 +8,59 @@ const blitter_sources: []const []const u8 = &.{
     "src/platform_posix.cpp",
 };
 
-const blitter_flags: []const []const u8 = &.{
-    "-std=c++20",
-    "-fno-exceptions",
-    "-fno-rtti",
+const cxx_flags: []const []const u8 = &.{
     "-Wall",
     "-Wshadow",
     "-isystem", "3rdparty",
-};
-
-const xao_sources: []const []const u8 = &.{
-    "src/xao.c",
-};
-
-const xao_flags: []const []const u8 = &.{
-    "-std=c99",
-    "-Wall",
-    "-Wshadow",
-    "-isystem", "3rdparty",
-};
-
-const yyjson_sources: []const []const u8 = &.{
-    "3rdparty/yyjson.c",
-};
-
-const yyjson_flags: []const []const u8 = &.{
-    "-std=c99",
-    "-Wall",
-    "-Wshadow",
     "-DYYJSON_DISABLE_INCR_READER",
     "-DYYJSON_DISABLE_UTILS",
     "-DYYJSON_DISABLE_FAST_FP_CONV",
     "-DYYJSON_DISABLE_NON_STANDARD",
 };
 
+const c_flags: []const []const u8 = .{
+    "-std=c99",
+} ++ cxx_flags;
+
+const cpp_flags: []const []const u8 = .{
+    "-std=c++20",
+    "-fno-exceptions",
+    "-fno-rtti",
+} ++ cxx_flags;
+
+const xao_sources: []const []const u8 = &.{
+    "src/xao.c",
+};
+
+const yyjson_sources: []const []const u8 = &.{
+    "3rdparty/yyjson.c",
+};
 
 pub fn build(b: *std.Build) !void {
-
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
     var targets: std.ArrayList(*std.Build.Step.Compile) = .empty;
 
+    // const sdl = b.dependency("sdl", .{ .optimize = optimize, .target = target });
+    // try targets.append(b.allocator, sdl.artifact("SDL3"));
+
+    const raylib = b.dependency("raylib", .{ .optimize = optimize, .target = target });
+    try targets.append(b.allocator, raylib.artifact("raylib"));
+
     const yyjson = b.addLibrary(.{
         .name = "yyjson",
-        .root_module = b.createModule(.{
-            .target = target,
-            .optimize = optimize,
-        }),
+        .root_module = b.createModule(.{ .target = target, .optimize = optimize }),
     });
-    yyjson.root_module.addCSourceFiles(.{
-        .files = yyjson_sources,
-        .flags = yyjson_flags,
-    });
+    yyjson.root_module.addCSourceFiles(.{ .files = yyjson_sources, .flags = c_flags });
     yyjson.installHeader(b.path("3rdparty/yyjson.h"), "yyjson.h");
     try targets.append(b.allocator, yyjson);
 
     const xao = b.addLibrary(.{
         .name = "xao",
-        .root_module = b.createModule(.{
-            .target = target,
-            .optimize = optimize,
-        }),
+        .root_module = b.createModule(.{ .target = target, .optimize = optimize }),
     });
-    xao.root_module.addCSourceFiles(.{
-        .files = xao_sources,
-        .flags = xao_flags,
-    });
+    xao.root_module.addCSourceFiles(.{ .files = xao_sources, .flags = c_flags });
     xao.installHeader(b.path("src/xao.h"), "xao.h");
     try targets.append(b.allocator, xao);
 
@@ -83,20 +69,25 @@ pub fn build(b: *std.Build) !void {
         .root_module = b.createModule(.{
             .target = target,
             .optimize = optimize,
-            .strip = true,
+            .strip = false,
             .link_libc = true,
             .link_libcpp = false,
         }),
     });
-    blitter.root_module.addCSourceFiles(.{
-        .files = blitter_sources,
-        .flags = blitter_flags,
-    });
+    blitter.root_module.addCSourceFiles(.{ .files = blitter_sources, .flags = cpp_flags });
     blitter.root_module.linkLibrary(yyjson);
     blitter.root_module.linkLibrary(xao);
+    // blitter.root_module.linkLibrary(sdl.artifact("SDL3"));
+    blitter.root_module.linkLibrary(raylib.artifact("raylib"));
     try targets.append(b.allocator, blitter);
 
     b.installArtifact(blitter);
+    const run_blitter = b.addRunArtifact(blitter);
+    if (b.args) |args| {
+        run_blitter.addArgs(args);
+    }
+    const run_step = b.step("run", "Run the application");
+    run_step.dependOn(&run_blitter.step);
 
     _ = zcc.createStep(b, "cdb", try targets.toOwnedSlice(b.allocator));
 }

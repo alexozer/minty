@@ -307,3 +307,44 @@ void log_log(LogLevel level, const char *fmt, ...) {
         va_end(ev.ap);
     }
 }
+
+//
+// Encoding/Decoding
+//
+
+Opt<u64> str_to_u64(Str s) {
+    if (str_is_empty(s)) return {};
+
+    u64 result = 0;
+    u64 last_result = 0;
+    for (u64 i = 0; i < s.count; i++) {
+        if (s[i] < C('0') || s[i] > C('9')) {
+            return {};
+        }
+        u64 new_result = result * 10 + (s[i] - C('0'));
+        if (new_result < last_result) {
+            // Overflow
+            return {};
+        }
+        last_result = result;
+        result = new_result;
+    }
+
+    return some(result);
+}
+
+Opt<Arr<u8>> base64_decode(Arena *arena, Str s) {
+}
+
+Str base64_encode(Arena *arena, Arr<u8> a) {
+}
+
+//
+// Idk
+//
+
+void thread_init(int argc, char **argv, char **envp) {
+    g_argv = { .value = argv, .count = (u64)argc };
+    g_envp = arr_from_null_terminated(envp);
+    arena_pool_init();
+}

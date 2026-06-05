@@ -1,16 +1,13 @@
 #include "base.hpp"
 
-#include <stdio.h>
 #include <assert.h>
 
 extern "C" {
-#include "xao.h"
 #include <yyjson.h>
+#include "xao.h"
 }
 
-#include <SDL3/SDL_log.h>
-#include <SDL3/SDL_main.h>
-#include <SDL3/SDL_video.h>
+#include <raylib.h>
 
 #include "platform.hpp"
 
@@ -33,18 +30,18 @@ struct SplitRecord {
     Arr<Opt<Duration>> splits;
 };
 
-struct Segment {
+struct SegmentDefn {
     Str name;
     Str icon; // TODO a proper decode or something
 };
 
-struct SplitsFile {
+struct FileDefn {
     Str game_name;
     Str category_name;
     u64 total_attempts;
     u64 completed_attempts;
-    Arr<Segment> segments;
-    Opt<SplitRecord> personal_best;
+    Arr<SegmentDefn> segments;
+    SplitRecord personal_best;
     Arr<Opt<Duration>> golds;
 };
 
@@ -79,21 +76,19 @@ struct SegSummary {
     bool is_new_gold;
 };
 
-Arr<SegSummary> calc_seg_summary(Arena *arena, TimerState *timer, SplitsFile *file) {
+Arr<SegSummary> calc_seg_summary(Arena *arena, TimerState *timer, FileDefn *file) {
     Arr<SegSummary> summary = arena_push_arr<SegSummary>(arena, timer->live_splits.count);
 
     // Calc PB splits
-    if (file->personal_best.present) {
-        Arr<Opt<Duration>> pb_splits = file->personal_best.value.splits;
-        for (u64 i = 0; i < pb_splits.count; i++) {
-            summary[i].pb_split = pb_splits[i];
-        }
-        for (u64 i = 0; i < pb_splits.count; i++) {
-            if (i == 0) {
-                summary[i].pb_seg = summary[i].pb_split;
-            } else {
-                summary[i].pb_seg = summary[i].pb_split - summary[i - 1].pb_split;
-            }
+    Arr<Opt<Duration>> pb_splits = file->personal_best.splits;
+    for (u64 i = 0; i < pb_splits.count; i++) {
+        summary[i].pb_split = pb_splits[i];
+    }
+    for (u64 i = 0; i < pb_splits.count; i++) {
+        if (i == 0) {
+            summary[i].pb_seg = summary[i].pb_split;
+        } else {
+            summary[i].pb_seg = summary[i].pb_split - summary[i - 1].pb_split;
         }
     }
 
@@ -196,7 +191,7 @@ Duration timer_get_elapsed(TimerState *timer) {
     return (now - timer->start_time) - timer->total_paused_duration;
 }
 
-void timer_apply_action(Arena *arena, TimerState *timer, SplitsFile *file, TimerAction action) {
+void timer_apply_action(Arena *arena, TimerState *timer, FileDefn *file, TimerAction action) {
     // Switch statements are annoying... and neovim keeps indenting them wrong :(
     if (timer->mode == TimerMode::Init) {
         if (action == TimerAction::Split) {
@@ -275,121 +270,106 @@ void timer_apply_action(Arena *arena, TimerState *timer, SplitsFile *file, Timer
     assert(false);
 }
 
-Str xao_to_str(xao_Value v) {
-    return { .value = (u8 *)v.start, .count = (u64)v.end - (u64)v.start };
+bool eq(xao_Value v, const char *s) {
+    u64 size = (u64)v.end - (u64)v.start;
+    return size == strlen(s) && memcmp(v.start, s, size) == 0;
 }
 
-bool eq(xao_Value v, Str s) {
-    Str xao_str = xao_to_str(v);
-    return str_eq(xao_str, s);
+Str xml_str(Arena *arena, xao_Value v) {
+    Str s = { .value = (u8 *)v.start, .count = (u64)v.end - (u64)v.start };
+    return str_clone(arena, s);
 }
 
-const char *TYPE_NAMES[] = {
-    "NONE", "TAG", "ATTR_NAME", "ATTR_VALUE", "CONTENT",
-};
+Str xml_inner(Arena *arena, xao_Reader *r, xao_Value outer) {
+    xao_Value inner = {};
+    xao_iter_content(r, outer, &inner);
+    return xml_str(arena, inner);
+}
 
-const char *STATE_NAMES[] = {
-    "CONTENT", "TAG", "END_ATTRS", "END_ELEM", "EOF",
-};
-
-void iter_elem(xao_Reader *r, xao_Value v, u64 depth) {
-    xao_Value child = {};
-    while (xao_iter_content(r, v, &child)) {
-        Str child_str = xao_to_str(child);
-        if (child.type == XAO_TAG) {
-            log_debug("%*c<%.*s>", (int)depth * 4, ' ', SF(child_str));
-            xao_Value key = {}, value = {};
-            while (xao_iter_attrs(r, child, &key, &value)) {
-                log_debug("%*c%.*s=\"%.*s\"", (int)(depth + 1) * 4, ' ', SF(xao_to_str(key)), SF(xao_to_str(value)));
-            }
-            iter_elem(r, child, depth + 1);
-
-        } else if (child.type == XAO_CONTENT) {
-            child_str = str_trim(child_str);
-            if (!str_is_empty(child_str)) {
-                log_debug("%*cCONTENT: '%.*s'", (int)depth * 4, ' ', SF(child_str));
+Arr<SegmentDefn> parse_livesplit_segments(Arena *arena, xao_Reader *r, xao_Value segments_tag) {
+    Vec<SegmentDefn> segments = {};
+    xao_Value seg_tag = {};
+    while (xao_iter_tags(r, segments_tag, &seg_tag)) {
+        SegmentDefn *seg = vec_push(arena, &segments, SegmentDefn{});
+        xao_Value attr_tag = {};
+        while (xao_iter_tags(r, seg_tag, &attr_tag)) {
+            if (eq(attr_tag, "Name")) {
+                seg->name = xml_inner(arena, r, attr_tag);
+            } else if (eq(attr_tag, "Icon")) {
+                seg->icon = xml_inner(arena, r, attr_tag);
             }
         }
     }
-    log_debug("%*c</%.*s>", (int)(depth - 1) * 4, ' ', SF(xao_to_str(v)));
+    return vec_arr(&segments);
 }
 
-OSResult parse_livesplit_lss(Arena *arena, Str lss_path, SplitsFile *out) {
+OSResult parse_livesplit_lss(Arena *arena, Str lss_path, FileDefn **out) {
     Arena *scratch = arena_acquire();
     defer(arena_release(scratch));
+    OSResult res = OSResult::Ok;
 
-    Str lss = {};
-    OSResult result = os_read_file(scratch, lss_path, &lss);
-    if (result != OSResult::Ok) return result;
+    Str xml = {};
+    res = os_read_file(arena, lss_path, &xml);
+    if (res != OSResult::Ok) return res;
 
-    xao_Reader r = xao_reader((char *)lss.value, lss.count);
-    iter_elem(&r, {}, 1);
-    if (r.error != nullptr) {
-        log_debug("XML error: %s", r.error);
+    FileDefn *file = arena_push<FileDefn>(arena);
+
+    xao_Reader r = xao_reader((char *)xml.value, xml.count);
+    xao_Value root = {};
+    xao_Value root_tag = {};
+    while (xao_iter_tags(&r, root, &root_tag)) {
+        if (eq(root_tag, "Run")) {
+            xao_Value run_tag = {};
+            while (xao_iter_tags(&r, root_tag, &run_tag)) {
+                if (eq(run_tag, "GameName")) {
+                    file->game_name = xml_inner(arena, &r, run_tag);
+                } else if (eq(run_tag, "CategoryName")) {
+                    file->category_name = xml_inner(arena, &r, run_tag);
+                } else if (eq(run_tag, "AttemptCount")) {
+                    Str attempts_str = xml_inner(arena, &r, run_tag);
+                    file->total_attempts = str_to_u64(attempts_str).value;
+                } else if (eq(run_tag, "Segments")) {
+                    file->segments = parse_livesplit_segments(arena, &r, run_tag);
+                }
+            }
+        }
     }
 
+    *out = file;
     return OSResult::Ok;
 }
 
-SDL_HitTestResult sdl_hit_test_cb(SDL_Window *win, const SDL_Point *area, void *data) {
-    return SDL_HITTEST_DRAGGABLE;
-}
-
 int main(int argc, char **argv, char **envp) {
-    g_argv = { .value = argv, .count = (u64)argc };
-    g_envp = arr_from_null_terminated(envp);
-    arena_pool_init();
+    thread_init(argc, argv, envp);
 
     Arena *scratch = arena_acquire();
     defer(arena_release(scratch));
 
-    // SplitsFile *splits = arena_push<SplitsFile>(scratch);
-    // Str path = str_from_c(g_argv[1]);
-    // OSResult result = parse_livesplit_lss(scratch, path, splits);
-    // if (result != OSResult::Ok) {
-    //     log_fatal("Failed to parse LSS '%.*s'", SF(path));
-    // }
-
-    // const char *str = "[1,2,3,4]";An SDL3 window
-    // yyjson_doc *doc = yyjson_read(str, strlen(str), 0);
-    // if (doc) {
-    //     log_debug("yyjson doc parsed");
-    // } else {
-    //     log_error("yyjson doc failed to parse");
-    // }
-    // yyjson_doc_free(doc);
-
-    if (!SDL_Init(SDL_INIT_VIDEO)) {
-        log_fatal("Failed to initialize SDL: %s", SDL_GetError());
+    if (g_argv.count < 2) {
+        log_fatal("Usage: blitter <path-to-splits-file>");
     }
-    defer(SDL_Quit());
+    Str path = str_from_c(g_argv[1]);
 
-    // Create an application window with the following settings:
-    SDL_Window* window = SDL_CreateWindow(
-        "Blitter",
-        400,
-        640,
-        SDL_WINDOW_METAL | SDL_WINDOW_RESIZABLE
-    );
-    if (window == nullptr) {
-        log_fatal("Failed to create window: %s", SDL_GetError());
+    FileDefn *splits = nullptr;
+    OSResult result = parse_livesplit_lss(scratch, path, &splits);
+    if (result != OSResult::Ok) {
+        log_fatal("Failed to parse LSS '%.*s'", SF(path));
     }
-    defer(SDL_DestroyWindow(window));
 
-    SDL_SetWindowHitTest(window, sdl_hit_test_cb, nullptr);
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
+    InitWindow(360, 600, "Blitter");
+    SetTargetFPS(60);
 
-    bool done = false;
-    while (!done) {
-        SDL_Event event;
-
-        while (SDL_PollEvent(&event)) {
-            if (event.type == SDL_EVENT_QUIT) {
-                done = true;
-            }
-        }
-
-        // Do game logic, present a frame, etc.
+    while (!WindowShouldClose())
+    {
+        BeginDrawing();
+            ClearBackground(BLACK);
+            char *s = str_to_c(scratch, splits->segments[0].icon);
+            DrawText(s, 0, 200, 20, LIGHTGRAY);
+        EndDrawing();
     }
+
+    CloseWindow();
 
     return 0;
 }

@@ -5,6 +5,23 @@
 #include <inttypes.h>
 #include <assert.h>
 
+//
+// World's crappiest optional type
+//
+
+template <typename T>
+struct Opt {
+    bool present;
+    T value;
+};
+
+template <typename T>
+constexpr Opt<T> some(T v) { return { .present = true, .value = v }; }
+
+//
+// Math
+//
+
 typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
@@ -15,10 +32,6 @@ typedef int32_t i32;
 typedef int64_t i64;
 typedef float f32;
 typedef double f64;
-
-//
-// Math
-//
 
 constexpr u64 kilobytes(u64 n) { return n * 1024LL; }
 constexpr u64 megabytes(u64 n) { return kilobytes(n) * 1024LL; }
@@ -423,14 +436,15 @@ constexpr Duration operator-(const Instant &t1, const Instant &t2) {
 }
 
 //
-// World's crappiest optional type
+// Encoding/Decoding
 //
 
-template <typename T>
-struct Opt {
-    bool present;
-    T value;
-};
+Opt<u64> str_to_u64(Str s);
+Opt<Arr<u8>> base64_decode(Arena *arena, Str s);
+Str base64_encode(Arena *arena, Arr<u8> a);
 
-template <typename T>
-constexpr Opt<T> some(T v) { return { .present = true, .value = v }; }
+//
+// Idk
+//
+
+void thread_init(int argc, char **argv, char **envp);

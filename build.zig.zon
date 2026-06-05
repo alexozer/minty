@@ -6,6 +6,10 @@
             .url = "https://github.com/the-argus/zig-compile-commands/archive/9400cd1963ea6bb58fe47ba7d9700075b808cdd2.tar.gz",
             .hash = "zig_compile_commands-0.0.1-OZg5-e_JAAAGg1WHAePtq4l4Uvjs34BexnFFCZk63EaG",
         },
+        .raylib = .{
+            .url = "https://github.com/raysan5/raylib/archive/refs/tags/6.0.tar.gz",
+            .hash = "raylib-6.0.0-whq8uCSwLgWWeF3ec3dbG6Rr36SLFL-s2WJ1Q_2E22Bb",
+        },
     },
     .paths = .{""},
     .fingerprint = 0x7b75201a23cd3e18,
