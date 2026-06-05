@@ -10,6 +10,10 @@
             .url = "https://github.com/allyourcodebase/SDL3/archive/refs/heads/main.zip",
             .hash = "sdl-1.0.1+3.4.4-i4QD0YqSqQCOOwj21rl1blvhDjBh_EDvOcnzfPbBa6lw",
         },
+        .SDL_ttf = .{
+            .url = "git+https://github.com/allyourcodebase/SDL_ttf#b08907d74f0d8afec47bfafd747e01d3b1a75b8a",
+            .hash = "SDL_ttf-3.2.3-1-PNW5xMMRAADJwwIkWjVS5gqMyk2oVbBm7qOh06Y7hFeu",
+        },
     },
     .paths = .{""},
     .fingerprint = 0x7b75201a23cd3e18,

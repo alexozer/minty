@@ -30,6 +30,7 @@ const blitter_sources_macos: []const []const u8 = &.{
     "src/base.cpp",
     "src/platform_macos.cpp",
     "src/platform_posix.cpp",
+    "src/tiny_ttf.cpp",
 };
 
 const blitter_sources_linux: []const []const u8 = &.{
@@ -72,6 +73,9 @@ pub fn build(b: *std.Build) !void {
 
     const sdl = b.dependency("sdl", .{ .optimize = optimize, .target = target });
     try cdb_targets.append(b.allocator, sdl.artifact("SDL3"));
+
+    const sdl_ttf = b.dependency("SDL_ttf", .{ .optimize = optimize, .target = target });
+    try cdb_targets.append(b.allocator, sdl_ttf.artifact("SDL3_ttf"));
 
     // const raylib = b.dependency("raylib", .{ .optimize = optimize, .target = target });
     // try targets.append(b.allocator, raylib.artifact("raylib"));
@@ -131,6 +135,7 @@ pub fn build(b: *std.Build) !void {
     blitter.root_module.linkLibrary(yyjson);
     blitter.root_module.linkLibrary(xao);
     blitter.root_module.linkLibrary(sdl.artifact("SDL3"));
+    blitter.root_module.linkLibrary(sdl_ttf.artifact("SDL3_ttf"));
     // blitter.root_module.linkLibrary(raylib.artifact("raylib"));
     try cdb_targets.append(b.allocator, blitter);
 

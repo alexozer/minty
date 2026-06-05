@@ -7,6 +7,7 @@
 #include <SDL3/SDL_render.h>
 #include <SDL3/SDL_stdinc.h>
 #include <SDL3/SDL_video.h>
+#include <SDL3_ttf/SDL_ttf.h>
 
 extern "C" {
 #include <yyjson.h>
@@ -14,6 +15,7 @@ extern "C" {
 }
 
 #include "platform.hpp"
+#include "tiny_ttf.hpp"
 
 Opt<Duration> operator+(const Opt<Duration>& d1, const Opt<Duration>& d2) {
     return {
@@ -352,12 +354,49 @@ OSResult parse_livesplit_lss(Arena *arena, Str lss_path, FileDefn **out) {
     return OSResult::Ok;
 }
 
+//
+// Main
+//
+
+constexpr i32 DEFAULT_WINDOW_WIDTH = 360;
+constexpr i32 DEFAULT_WINDOW_HEIGHT = 600;
+constexpr i32 MIN_WINDOW_WIDTH = 200;
+constexpr i32 MIN_WINDOW_HEIGHT = 100;
+
 struct App {
     SDL_Window* window;
     SDL_Renderer* renderer;
+    TTF_Font *font;
+    TTF_TextEngine *engine;
+    TTF_Text *text;
 };
 
-void load(int argc, char **argv) {
+void init_text(App *app) {
+     if (!TTF_Init()) {
+        log_fatal("Couldn't initialize SDL_ttf: %s", SDL_GetError());
+    }
+
+    /* Open the font */
+    app->font = TTF_OpenFontIO(SDL_IOFromConstMem(TINY_TTF, TINY_TTF_SIZE), true, 18.0f);
+    if (app->font == nullptr) {
+        log_fatal("Couldn't open font: %s", SDL_GetError());
+    }
+
+    /* Create the text engine */
+    app->engine = TTF_CreateRendererTextEngine(app->renderer);
+    if (app->engine == nullptr) {
+        log_fatal("Couldn't create text engine: %s", SDL_GetError());
+    }
+
+    /* Create the text */
+    app->text = TTF_CreateText(app->engine, app->font, "Hello world!", 0);
+    if (app->text == nullptr) {
+        log_fatal("Couldn't create text: %s", SDL_GetError());
+    }
+    TTF_SetTextColor(app->text, 255, 255, 255, SDL_ALPHA_OPAQUE);
+}
+
+void init(int argc, char **argv) {
     char **envp = SDL_GetEnvironmentVariables(SDL_GetEnvironment());
     thread_init(argc, argv, envp);
 
@@ -382,13 +421,8 @@ SDL_HitTestResult hittest_callback(SDL_Window* window, const SDL_Point *point, v
   return SDL_HITTEST_DRAGGABLE;
 }
 
-constexpr i32 DEFAULT_WINDOW_WIDTH = 360;
-constexpr i32 DEFAULT_WINDOW_HEIGHT = 600;
-constexpr i32 MIN_WINDOW_WIDTH = 200;
-constexpr i32 MIN_WINDOW_HEIGHT = 200;
-
 SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
-    load(argc, argv);
+    init(argc, argv);
 
     Arena *root_arena = arena_acquire();
     App *app = arena_push<App>(root_arena);
@@ -424,28 +458,32 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
     }
     SDL_SetRenderVSync(app->renderer, 1);
 
+    init_text(app);
+
     return SDL_APP_CONTINUE;
 }
 
 SDL_AppResult SDL_AppIterate(void* appstate) {
     App *app = (App *)appstate;
 
+    int w = 0, h = 0;
+    int text_w = 0, text_h = 0;
+    float x, y;
+    const float scale = 1.0f;
+
+    /* Center the text and scale it up */
+    SDL_GetRenderOutputSize(app->renderer, &w, &h);
+    SDL_SetRenderScale(app->renderer, scale, scale);
+    TTF_GetTextSize(app->text, &text_w, &text_h);
+    x = ((w / scale) - text_w) / 2;
+    y = ((h / scale) - text_h) / 2;
+
+    /* Draw the text */
     SDL_SetRenderDrawColor(app->renderer, 0, 0, 0, 255);
     SDL_RenderClear(app->renderer);
-
-    i32 width = 0;
-    i32 height = 0;
-    SDL_GetWindowSize(app->window, &width, &height);
-
-    SDL_FRect rect = { .w = 100, .h = 100 };
-    rect.x = (f32)width / 2 - rect.w / 2;
-    rect.y = (f32)height / 2 - rect.h / 2;
-
-    SDL_SetRenderDrawColor(app->renderer, 255, 255, 255, 255);
-    SDL_RenderFillRect(app->renderer, &rect);
-
-
+    TTF_DrawRendererText(app->text, x, y);
     SDL_RenderPresent(app->renderer);
+
     return SDL_APP_CONTINUE;
 }
 
@@ -462,4 +500,16 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
 }
 
 void SDL_AppQuit(void* appstate, SDL_AppResult result) {
+    App *app = (App *)appstate;
+
+    if (app->text != nullptr) {
+        TTF_DestroyText(app->text);
+    }
+    if (app->engine) {
+        TTF_DestroyRendererTextEngine(app->engine);
+    }
+    if (app->font) {
+        TTF_CloseFont(app->font);
+    }
+    TTF_Quit();
 }
