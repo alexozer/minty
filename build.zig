@@ -10,6 +10,9 @@ const cxx_flags: []const []const u8 = &.{
     "-DYYJSON_DISABLE_UTILS",
     "-DYYJSON_DISABLE_FAST_FP_CONV",
     "-DYYJSON_DISABLE_NON_STANDARD",
+    // Cross-compilation builds fail for avx512, just disable for now
+    // TODO maybe figure out how to enable avx512 support eventually
+    "-DSIMDUTF_IMPLEMENTATION_ICELAKE=0",
 };
 
 const c_flags: []const []const u8 = .{
@@ -71,15 +74,23 @@ pub fn build(b: *std.Build) !void {
 
     const yyjson = b.addLibrary(.{
         .name = "yyjson",
-        .root_module = b.createModule(.{ .target = target, .optimize = optimize }),
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+        }),
     });
-    yyjson.root_module.addCSourceFiles(.{ .files = yyjson_sources, .flags = c_flags });
+    yyjson.root_module.addCSourceFiles(.{ .files = yyjson_sources, .flags = c_flags, });
     yyjson.installHeader(b.path("3rdparty/yyjson.h"), "yyjson.h");
     try targets.append(b.allocator, yyjson);
 
     const xao = b.addLibrary(.{
         .name = "xao",
-        .root_module = b.createModule(.{ .target = target, .optimize = optimize }),
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+        }),
     });
     xao.root_module.addCSourceFiles(.{ .files = xao_sources, .flags = c_flags });
     xao.installHeader(b.path("src/xao.h"), "xao.h");
