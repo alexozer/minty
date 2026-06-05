@@ -22,16 +22,23 @@ const cpp_flags: []const []const u8 = .{
     "-fno-rtti",
 } ++ cxx_flags;
 
-const c_sources: []const []const u8 = &.{
-    "src/xao.c",
-    "3rdparty/yyjson.c",
-};
-
-const cpp_sources: []const []const u8 = &.{
+const blitter_sources: []const []const u8 = &.{
     "src/main.cpp",
     "src/base.cpp",
     "src/platform_macos.cpp",
     "src/platform_posix.cpp",
+};
+
+const xao_sources: []const []const u8 = &.{
+    "src/xao.c",
+};
+
+const yyjson_sources: []const []const u8 = &.{
+    "3rdparty/yyjson.c",
+};
+
+const simdutf_sources: []const []const u8 = &.{
+    "3rdparty/simdutf.cpp",
 };
 
 pub fn build(b: *std.Build) !void {
@@ -47,7 +54,9 @@ pub fn build(b: *std.Build) !void {
     try targets.append(b.allocator, raylib.artifact("raylib"));
 
     // Build simdutf separately so we can compile with libcpp headers, but not
-    // link libcpp in final executable. TODO are we actually avoiding libcpp?
+    // link libcpp in final executable
+    // TODO: do we need to build main.cpp with the C header to get small build
+    // size? See singlefile in downloads
     const simdutf = b.addLibrary(.{
         .name = "simdutf",
         .root_module = b.createModule(.{
@@ -56,35 +65,40 @@ pub fn build(b: *std.Build) !void {
             .link_libcpp = true,
         }),
     });
-    simdutf.root_module.addCSourceFiles(.{
-        .files = &.{ "3rdparty/simdutf.cpp" },
-        .flags = cpp_flags,
-        .language = .cpp,
-    });
+    simdutf.root_module.addCSourceFiles(.{ .files = simdutf_sources, .flags = cpp_flags });
     simdutf.installHeader(b.path("3rdparty/simdutf_c.h"), "simdutf_c.h");
     try targets.append(b.allocator, simdutf);
+
+    const yyjson = b.addLibrary(.{
+        .name = "yyjson",
+        .root_module = b.createModule(.{ .target = target, .optimize = optimize }),
+    });
+    yyjson.root_module.addCSourceFiles(.{ .files = yyjson_sources, .flags = c_flags });
+    yyjson.installHeader(b.path("3rdparty/yyjson.h"), "yyjson.h");
+    try targets.append(b.allocator, yyjson);
+
+    const xao = b.addLibrary(.{
+        .name = "xao",
+        .root_module = b.createModule(.{ .target = target, .optimize = optimize }),
+    });
+    xao.root_module.addCSourceFiles(.{ .files = xao_sources, .flags = c_flags });
+    xao.installHeader(b.path("src/xao.h"), "xao.h");
+    try targets.append(b.allocator, xao);
 
     const blitter = b.addExecutable(.{
         .name = "blitter",
         .root_module = b.createModule(.{
             .target = target,
             .optimize = optimize,
-            .strip = optimize != .Debug,
+            .strip = false,
             .link_libc = true,
             .link_libcpp = false,
         }),
     });
-    blitter.root_module.addCSourceFiles(.{
-        .files = cpp_sources,
-        .flags = cpp_flags,
-        .language = .cpp,
-    });
-    blitter.root_module.addCSourceFiles(.{
-        .files = c_sources,
-        .flags = c_flags,
-        .language = .c,
-    });
+    blitter.root_module.addCSourceFiles(.{ .files = blitter_sources, .flags = cpp_flags });
     blitter.root_module.linkLibrary(simdutf);
+    blitter.root_module.linkLibrary(yyjson);
+    blitter.root_module.linkLibrary(xao);
     // blitter.root_module.linkLibrary(sdl.artifact("SDL3"));
     blitter.root_module.linkLibrary(raylib.artifact("raylib"));
     try targets.append(b.allocator, blitter);
