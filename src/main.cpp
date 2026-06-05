@@ -6,6 +6,7 @@ extern "C" {
 #include <yyjson.h>
 #include "xao.h"
 }
+#include <simdutf_c.h>
 
 #include <raylib.h>
 
@@ -370,6 +371,13 @@ int main(int argc, char **argv, char **envp) {
     }
 
     CloseWindow();
+
+    if (!simdutf_validate_utf8("blah", 4)) {
+        log_fatal("Failed to validate UTF-8!");
+    } else {
+        log_debug("Validated");
+        log_debug("Validated 2");
+    }
 
     return 0;
 }
