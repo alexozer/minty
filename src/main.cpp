@@ -1,12 +1,9 @@
 #include "base.hpp"
 
-#include <assert.h>
-
 extern "C" {
 #include <yyjson.h>
 #include "xao.h"
 }
-#include <simdutf_c.h>
 
 #include <raylib.h>
 
@@ -33,7 +30,7 @@ struct SplitRecord {
 
 struct SegmentDefn {
     Str name;
-    Str icon; // TODO a proper decode or something
+    Arr<u8> icon; // TODO a proper decode or something
 };
 
 struct FileDefn {
@@ -129,7 +126,7 @@ Arr<SegSummary> calc_seg_summary(Arena *arena, TimerState *timer, FileDefn *file
 }
 
 Str format_duration(Arena *arena, Duration duration, u32 ms_digits, bool show_plus_prefix) {
-    assert(ms_digits <= 3);
+    log_assert(ms_digits <= 3);
 
     Str sign_str = show_plus_prefix ? S("+") : S("");
     if (duration < DURATION_ZERO) {
@@ -268,7 +265,7 @@ void timer_apply_action(Arena *arena, TimerState *timer, FileDefn *file, TimerAc
         }
     }
 
-    assert(false);
+    log_assert(false);
 }
 
 bool eq(xao_Value v, const char *s) {
@@ -276,28 +273,33 @@ bool eq(xao_Value v, const char *s) {
     return size == strlen(s) && memcmp(v.start, s, size) == 0;
 }
 
-Str xml_str(Arena *arena, xao_Value v) {
-    Str s = { .value = (u8 *)v.start, .count = (u64)v.end - (u64)v.start };
-    return str_clone(arena, s);
+Str xml_str(xao_Value v) {
+    return { .value = (u8 *)v.start, .count = (u64)v.end - (u64)v.start };
 }
 
-Str xml_inner(Arena *arena, xao_Reader *r, xao_Value outer) {
+Str xml_inner(xao_Reader *r, xao_Value outer) {
     xao_Value inner = {};
     xao_iter_content(r, outer, &inner);
-    return xml_str(arena, inner);
+    return xml_str(inner);
 }
 
 Arr<SegmentDefn> parse_livesplit_segments(Arena *arena, xao_Reader *r, xao_Value segments_tag) {
     Vec<SegmentDefn> segments = {};
     xao_Value seg_tag = {};
     while (xao_iter_tags(r, segments_tag, &seg_tag)) {
-        SegmentDefn *seg = vec_push(arena, &segments, SegmentDefn{});
+        SegmentDefn *seg = vec_push(arena, &segments, {});
         xao_Value attr_tag = {};
         while (xao_iter_tags(r, seg_tag, &attr_tag)) {
             if (eq(attr_tag, "Name")) {
-                seg->name = xml_inner(arena, r, attr_tag);
+                seg->name = str_clone(arena, xml_inner(r, attr_tag));
             } else if (eq(attr_tag, "Icon")) {
-                seg->icon = xml_inner(arena, r, attr_tag);
+                Str base64 = xml_inner(r, attr_tag);
+                Opt<Arr<u8>> icon_bin = base64_decode(arena, base64);
+                if (!icon_bin.present) {
+                    // TODO proper error handling
+                    log_warn("Failed to decode base64 for segment %.*s", SF(seg->name));
+                }
+                seg->icon = icon_bin.value;
             }
         }
     }
@@ -310,8 +312,12 @@ OSResult parse_livesplit_lss(Arena *arena, Str lss_path, FileDefn **out) {
     OSResult res = OSResult::Ok;
 
     Str xml = {};
-    res = os_read_file(arena, lss_path, &xml);
+    res = os_read_file(scratch, lss_path, &xml);
     if (res != OSResult::Ok) return res;
+    if (!str_is_valid_utf8(xml)) {
+        // TODO proper error handling
+        return OSResult::InvalidUtf8;
+    }
 
     FileDefn *file = arena_push<FileDefn>(arena);
 
@@ -323,11 +329,11 @@ OSResult parse_livesplit_lss(Arena *arena, Str lss_path, FileDefn **out) {
             xao_Value run_tag = {};
             while (xao_iter_tags(&r, root_tag, &run_tag)) {
                 if (eq(run_tag, "GameName")) {
-                    file->game_name = xml_inner(arena, &r, run_tag);
+                    file->game_name = str_clone(arena, xml_inner(&r, run_tag));
                 } else if (eq(run_tag, "CategoryName")) {
-                    file->category_name = xml_inner(arena, &r, run_tag);
+                    file->category_name = str_clone(arena, xml_inner(&r, run_tag));
                 } else if (eq(run_tag, "AttemptCount")) {
-                    Str attempts_str = xml_inner(arena, &r, run_tag);
+                    Str attempts_str = str_clone(arena, xml_inner(&r, run_tag));
                     file->total_attempts = str_to_u64(attempts_str).value;
                 } else if (eq(run_tag, "Segments")) {
                     file->segments = parse_livesplit_segments(arena, &r, run_tag);
@@ -371,13 +377,6 @@ int main(int argc, char **argv, char **envp) {
     }
 
     CloseWindow();
-
-    if (!simdutf_validate_utf8("blah", 4)) {
-        log_fatal("Failed to validate UTF-8!");
-    } else {
-        log_debug("Validated");
-        log_debug("Validated 2");
-    }
 
     return 0;
 }

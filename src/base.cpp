@@ -1,6 +1,7 @@
 #include "base.hpp"
 
 #include <fcntl.h>
+#include <simdutf_c.h>
 #include <time.h>
 #include <string.h>
 #include <stdio.h>
@@ -192,6 +193,10 @@ Str str_format(Arena *arena, const char *format, ...) {
     return str_clone(arena, s);
 }
 
+bool str_is_valid_utf8(Str s) {
+    return simdutf_validate_utf8((const char *)s.value, s.count);
+}
+
 //
 // Paths
 //
@@ -308,6 +313,10 @@ void log_log(LogLevel level, const char *fmt, ...) {
     }
 }
 
+[[noreturn]] void log__assert(const char *cond, const char *file, int line) {
+    log_fatal("Assertion failed: %s:%d: %s", file, line, cond);
+}
+
 //
 // Encoding/Decoding
 //
@@ -316,17 +325,15 @@ Opt<u64> str_to_u64(Str s) {
     if (str_is_empty(s)) return {};
 
     u64 result = 0;
-    u64 last_result = 0;
     for (u64 i = 0; i < s.count; i++) {
         if (s[i] < C('0') || s[i] > C('9')) {
             return {};
         }
         u64 new_result = result * 10 + (s[i] - C('0'));
-        if (new_result < last_result) {
+        if (new_result < result) {
             // Overflow
             return {};
         }
-        last_result = result;
         result = new_result;
     }
 
@@ -334,9 +341,30 @@ Opt<u64> str_to_u64(Str s) {
 }
 
 Opt<Arr<u8>> base64_decode(Arena *arena, Str s) {
+    u64 max_out_size = simdutf_maximal_binary_length_from_base64((const char *)s.value, s.count);
+    Arr<u8> out = arena_push_arr<u8>(arena, max_out_size);
+    simdutf_result result = simdutf_base64_to_binary(
+            (const char *)s.value,
+            s.count,
+            (char *)out.value,
+            SIMDUTF_BASE64_DEFAULT,
+            SIMDUTF_LAST_CHUNK_STRICT);
+    if (result.error != SIMDUTF_ERROR_SUCCESS) {
+        return {};
+    }
+    return some(arr_slice(out, 0, result.count));
 }
 
 Str base64_encode(Arena *arena, Arr<u8> a) {
+    u64 out_size = simdutf_base64_length_from_binary(a.count, SIMDUTF_BASE64_DEFAULT);
+    Arr<u8> out = arena_push_arr<u8>(arena, out_size);
+    u64 written = simdutf_binary_to_base64(
+            (const char *)a.value,
+            a.count,
+            (char *)out.value,
+            SIMDUTF_BASE64_DEFAULT);
+    log_assert(written == out_size);
+    return out;
 }
 
 //

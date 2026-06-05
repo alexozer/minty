@@ -3,7 +3,6 @@
 #include <stdarg.h>
 #include <stdint.h>
 #include <inttypes.h>
-#include <assert.h>
 
 //
 // World's crappiest optional type
@@ -76,6 +75,9 @@ void log_set_level(LogLevel level);
 __attribute__((format(printf, 2, 3)))
 void log_log(LogLevel level, const char *fmt, ...);
 
+[[noreturn]] void log__assert(const char *cond, const char *file, int line);
+#define log_assert(cond) if (!(cond)) log__assert(#cond, __FILE_NAME__, __LINE__)
+
 //
 // Arenas
 //
@@ -86,7 +88,7 @@ struct Arr {
     u64 count;
 
     T& operator[](u64 i) {
-        assert(i < count);
+        log_assert(i < count);
         return value[i];
     }
 };
@@ -129,9 +131,9 @@ Arr<T> arr_from_null_terminated(T *v) {
 
 template <typename T>
 Arr<T> arr_slice(Arr<T> arr, u64 start, u64 end) {
-    assert(start <= arr.count);
-    assert(end <= arr.count);
-    assert(start <= end);
+    log_assert(start <= arr.count);
+    log_assert(end <= arr.count);
+    log_assert(start <= end);
 
     return {
         .value = arr.value + start,
@@ -196,6 +198,7 @@ bool str_eq(Str s1, Str s2);
 bool str_starts_with(Str s, Str prefix);
 __attribute__((format(printf, 2, 3)))
 Str str_format(Arena *arena, const char *format, ...);
+bool str_is_valid_utf8(Str s);
 
 // Certainly possible to do this simply and w/o an iterator object, but just messin around
 struct StrLineIter {
@@ -220,9 +223,7 @@ struct Vec {
     u64 cap; // Element capacity (not size capacity in bytes)
 
     T& operator[](u64 i) {
-        if (i >= count) {
-            log_fatal("Bounds check fail! %" PRIu64 " >= %" PRIu64, i, count);
-        }
+        log_assert(i < count);
         return value[i];
     }
 };
@@ -255,7 +256,7 @@ T *vec_push(Arena *arena, Vec<T> *vec, T val) {
 
 template <typename T>
 void vec_pop(Vec<T> *vec) {
-    assert(vec->count > 0);
+    log_assert(vec->count > 0);
     vec->count--;
 }
 
@@ -334,6 +335,7 @@ enum class [[nodiscard]] OSResult {
     InvalidFileDescriptor,
     SubprocessExitError,
     SubprocessNonZeroExitCode,
+    InvalidUtf8, // Not an OS error! TODO fix
     OtherError,
 };
 
