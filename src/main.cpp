@@ -357,10 +357,6 @@ struct App {
     SDL_Renderer* renderer;
 };
 
-SDL_FRect g_rect = {
-    100.f, 100.f, 100.f, 100.f
-};
-
 void load(int argc, char **argv) {
     char **envp = SDL_GetEnvironmentVariables(SDL_GetEnvironment());
     thread_init(argc, argv, envp);
@@ -381,6 +377,16 @@ void load(int argc, char **argv) {
     }
 }
 
+SDL_HitTestResult hittest_callback(SDL_Window* window, const SDL_Point *point, void *data) {
+  // Would expand the resize radius if I could, but doesn't appear to work on macOS
+  return SDL_HITTEST_DRAGGABLE;
+}
+
+constexpr i32 DEFAULT_WINDOW_WIDTH = 360;
+constexpr i32 DEFAULT_WINDOW_HEIGHT = 600;
+constexpr i32 MIN_WINDOW_WIDTH = 200;
+constexpr i32 MIN_WINDOW_HEIGHT = 200;
+
 SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
     load(argc, argv);
 
@@ -394,21 +400,29 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
     }
     defer(SDL_DestroyProperties(props));
 
-    // Assume the following calls succeed
     SDL_SetStringProperty(props, SDL_PROP_WINDOW_CREATE_TITLE_STRING, "Blitter");
     SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN, true);
     SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_BORDERLESS_BOOLEAN, true);
-    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, 360);
-    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, 600);
+    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, DEFAULT_WINDOW_WIDTH);
+    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, DEFAULT_WINDOW_HEIGHT);
+
     app->window = SDL_CreateWindowWithProperties(props);
     if (app->window == nullptr) {
         log_fatal("Unable to create window: %s", SDL_GetError());
+    }
+
+    if (!SDL_SetWindowMinimumSize(app->window, MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)) {
+        log_fatal("Unable to set min window dimensions: %s", SDL_GetError());
+    }
+    if (!SDL_SetWindowHitTest(app->window, hittest_callback, nullptr)) {
+        log_fatal("Unable to set window hit test callback: %s", SDL_GetError());
     }
 
     app->renderer = SDL_CreateRenderer(app->window, nullptr);
     if (app->renderer == nullptr) {
         log_fatal("Unable to create renderer: %s", SDL_GetError());
     }
+    SDL_SetRenderVSync(app->renderer, 1);
 
     return SDL_APP_CONTINUE;
 }
@@ -419,9 +433,13 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
     SDL_SetRenderDrawColor(app->renderer, 0, 0, 0, 255);
     SDL_RenderClear(app->renderer);
 
-    SDL_FRect rect = g_rect;
-    rect.x += 50 * SDL_sinf(SDL_GetTicksNS() / 1000000000.f);
+    i32 width = 0;
+    i32 height = 0;
+    SDL_GetWindowSize(app->window, &width, &height);
 
+    SDL_FRect rect = { .w = 100, .h = 100 };
+    rect.x = (f32)width / 2 - rect.w / 2;
+    rect.y = (f32)height / 2 - rect.h / 2;
 
     SDL_SetRenderDrawColor(app->renderer, 255, 255, 255, 255);
     SDL_RenderFillRect(app->renderer, &rect);
