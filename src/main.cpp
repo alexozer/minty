@@ -1,11 +1,17 @@
 #include "base.hpp"
 
+#include <SDL3/SDL.h>
+#define SDL_MAIN_USE_CALLBACKS
+#include <SDL3/SDL_main.h>
+#include <SDL3/SDL_init.h>
+#include <SDL3/SDL_render.h>
+#include <SDL3/SDL_stdinc.h>
+#include <SDL3/SDL_video.h>
+
 extern "C" {
 #include <yyjson.h>
 #include "xao.h"
 }
-
-#include <raylib.h>
 
 #include "platform.hpp"
 
@@ -346,37 +352,96 @@ OSResult parse_livesplit_lss(Arena *arena, Str lss_path, FileDefn **out) {
     return OSResult::Ok;
 }
 
-int main(int argc, char **argv, char **envp) {
+struct App {
+    SDL_Window* window;
+    SDL_Renderer* renderer;
+};
+
+SDL_FRect g_rect = {
+    100.f, 100.f, 100.f, 100.f
+};
+
+void load(int argc, char **argv) {
+    char **envp = SDL_GetEnvironmentVariables(SDL_GetEnvironment());
     thread_init(argc, argv, envp);
 
     Arena *scratch = arena_acquire();
     defer(arena_release(scratch));
 
-    if (g_argv.count < 2) {
-        log_fatal("Usage: blitter <path-to-splits-file>");
-    }
-    Str path = str_from_c(g_argv[1]);
+    // if (g_argv.count < 2) {
+    //     log_fatal("Usage: blitter <path-to-splits-file>");
+    // }
+    // Str path = str_from_c(g_argv[1]);
+    Str path = S("data/silksong-blank.lss");
 
     FileDefn *splits = nullptr;
     OSResult result = parse_livesplit_lss(scratch, path, &splits);
     if (result != OSResult::Ok) {
         log_fatal("Failed to parse LSS '%.*s'", SF(path));
     }
+}
 
-    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
-    InitWindow(360, 600, "Blitter");
-    SetTargetFPS(60);
+SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
+    load(argc, argv);
 
-    while (!WindowShouldClose())
-    {
-        BeginDrawing();
-            ClearBackground(BLACK);
-            char *s = str_to_c(scratch, splits->segments[0].icon);
-            DrawText(s, 0, 200, 20, LIGHTGRAY);
-        EndDrawing();
+    Arena *root_arena = arena_acquire();
+    App *app = arena_push<App>(root_arena);
+    *appstate = (void *)app;
+
+    SDL_PropertiesID props = SDL_CreateProperties();
+    if (props == 0) {
+        log_fatal("Unable to create properties: %s", SDL_GetError());
+    }
+    defer(SDL_DestroyProperties(props));
+
+    // Assume the following calls succeed
+    SDL_SetStringProperty(props, SDL_PROP_WINDOW_CREATE_TITLE_STRING, "Blitter");
+    SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN, true);
+    SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_BORDERLESS_BOOLEAN, true);
+    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, 360);
+    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, 600);
+    app->window = SDL_CreateWindowWithProperties(props);
+    if (app->window == nullptr) {
+        log_fatal("Unable to create window: %s", SDL_GetError());
     }
 
-    CloseWindow();
+    app->renderer = SDL_CreateRenderer(app->window, nullptr);
+    if (app->renderer == nullptr) {
+        log_fatal("Unable to create renderer: %s", SDL_GetError());
+    }
 
-    return 0;
+    return SDL_APP_CONTINUE;
+}
+
+SDL_AppResult SDL_AppIterate(void* appstate) {
+    App *app = (App *)appstate;
+
+    SDL_SetRenderDrawColor(app->renderer, 0, 0, 0, 255);
+    SDL_RenderClear(app->renderer);
+
+    SDL_FRect rect = g_rect;
+    rect.x += 50 * SDL_sinf(SDL_GetTicksNS() / 1000000000.f);
+
+
+    SDL_SetRenderDrawColor(app->renderer, 255, 255, 255, 255);
+    SDL_RenderFillRect(app->renderer, &rect);
+
+
+    SDL_RenderPresent(app->renderer);
+    return SDL_APP_CONTINUE;
+}
+
+SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
+    // App *app = (App *)appstate;
+
+    if (event->common.type == SDL_EVENT_QUIT) {
+        return SDL_APP_SUCCESS;
+    }
+    if (event->key.key == SDLK_Q) {
+        return SDL_APP_SUCCESS;
+    }
+    return SDL_APP_CONTINUE;
+}
+
+void SDL_AppQuit(void* appstate, SDL_AppResult result) {
 }

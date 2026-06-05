@@ -25,11 +25,24 @@ const cpp_flags: []const []const u8 = .{
     "-fno-rtti",
 } ++ cxx_flags;
 
-const blitter_sources: []const []const u8 = &.{
+const blitter_sources_macos: []const []const u8 = &.{
     "src/main.cpp",
     "src/base.cpp",
     "src/platform_macos.cpp",
     "src/platform_posix.cpp",
+};
+
+const blitter_sources_linux: []const []const u8 = &.{
+    "src/main.cpp",
+    "src/base.cpp",
+    "src/platform_linux.cpp",
+    "src/platform_posix.cpp",
+};
+
+const blitter_sources_windows: []const []const u8 = &.{
+    "src/main.cpp",
+    "src/base.cpp",
+    "src/platform_windows.cpp",
 };
 
 const xao_sources: []const []const u8 = &.{
@@ -48,13 +61,20 @@ pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    var targets: std.ArrayList(*std.Build.Step.Compile) = .empty;
+    var cdb_targets: std.ArrayList(*std.Build.Step.Compile) = .empty;
 
-    // const sdl = b.dependency("sdl", .{ .optimize = optimize, .target = target });
-    // try targets.append(b.allocator, sdl.artifact("SDL3"));
+    const blitter_sources = switch (target.result.os.tag) {
+        .macos => blitter_sources_macos,
+        .linux => blitter_sources_linux,
+        .windows => blitter_sources_windows,
+        else => @panic("Unsupported OS"),
+    };
 
-    const raylib = b.dependency("raylib", .{ .optimize = optimize, .target = target });
-    try targets.append(b.allocator, raylib.artifact("raylib"));
+    const sdl = b.dependency("sdl", .{ .optimize = optimize, .target = target });
+    try cdb_targets.append(b.allocator, sdl.artifact("SDL3"));
+
+    // const raylib = b.dependency("raylib", .{ .optimize = optimize, .target = target });
+    // try targets.append(b.allocator, raylib.artifact("raylib"));
 
     // Build simdutf separately so we can compile with libcpp headers, but not
     // link libcpp in final executable
@@ -70,7 +90,7 @@ pub fn build(b: *std.Build) !void {
     });
     simdutf.root_module.addCSourceFiles(.{ .files = simdutf_sources, .flags = cpp_flags });
     simdutf.installHeader(b.path("3rdparty/simdutf_c.h"), "simdutf_c.h");
-    try targets.append(b.allocator, simdutf);
+    try cdb_targets.append(b.allocator, simdutf);
 
     const yyjson = b.addLibrary(.{
         .name = "yyjson",
@@ -82,7 +102,7 @@ pub fn build(b: *std.Build) !void {
     });
     yyjson.root_module.addCSourceFiles(.{ .files = yyjson_sources, .flags = c_flags, });
     yyjson.installHeader(b.path("3rdparty/yyjson.h"), "yyjson.h");
-    try targets.append(b.allocator, yyjson);
+    try cdb_targets.append(b.allocator, yyjson);
 
     const xao = b.addLibrary(.{
         .name = "xao",
@@ -94,7 +114,7 @@ pub fn build(b: *std.Build) !void {
     });
     xao.root_module.addCSourceFiles(.{ .files = xao_sources, .flags = c_flags });
     xao.installHeader(b.path("src/xao.h"), "xao.h");
-    try targets.append(b.allocator, xao);
+    try cdb_targets.append(b.allocator, xao);
 
     const blitter = b.addExecutable(.{
         .name = "blitter",
@@ -110,9 +130,9 @@ pub fn build(b: *std.Build) !void {
     blitter.root_module.linkLibrary(simdutf);
     blitter.root_module.linkLibrary(yyjson);
     blitter.root_module.linkLibrary(xao);
-    // blitter.root_module.linkLibrary(sdl.artifact("SDL3"));
-    blitter.root_module.linkLibrary(raylib.artifact("raylib"));
-    try targets.append(b.allocator, blitter);
+    blitter.root_module.linkLibrary(sdl.artifact("SDL3"));
+    // blitter.root_module.linkLibrary(raylib.artifact("raylib"));
+    try cdb_targets.append(b.allocator, blitter);
 
     b.installArtifact(blitter);
     const run_blitter = b.addRunArtifact(blitter);
@@ -122,5 +142,5 @@ pub fn build(b: *std.Build) !void {
     const run_step = b.step("run", "Run the application");
     run_step.dependOn(&run_blitter.step);
 
-    _ = zcc.createStep(b, "cdb", try targets.toOwnedSlice(b.allocator));
+    _ = zcc.createStep(b, "cdb", try cdb_targets.toOwnedSlice(b.allocator));
 }

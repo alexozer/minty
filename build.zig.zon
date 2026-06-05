@@ -6,9 +6,9 @@
             .url = "https://github.com/the-argus/zig-compile-commands/archive/9400cd1963ea6bb58fe47ba7d9700075b808cdd2.tar.gz",
             .hash = "zig_compile_commands-0.0.1-OZg5-e_JAAAGg1WHAePtq4l4Uvjs34BexnFFCZk63EaG",
         },
-        .raylib = .{
-            .url = "https://github.com/raysan5/raylib/archive/refs/tags/6.0.tar.gz",
-            .hash = "raylib-6.0.0-whq8uCSwLgWWeF3ec3dbG6Rr36SLFL-s2WJ1Q_2E22Bb",
+        .sdl = .{
+            .url = "https://github.com/allyourcodebase/SDL3/archive/refs/heads/main.zip",
+            .hash = "sdl-1.0.1+3.4.4-i4QD0YqSqQCOOwj21rl1blvhDjBh_EDvOcnzfPbBa6lw",
         },
     },
     .paths = .{""},

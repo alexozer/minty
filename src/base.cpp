@@ -373,6 +373,5 @@ Str base64_encode(Arena *arena, Arr<u8> a) {
 
 void thread_init(int argc, char **argv, char **envp) {
     g_argv = { .value = argv, .count = (u64)argc };
-    g_envp = arr_from_null_terminated(envp);
     arena_pool_init();
 }
