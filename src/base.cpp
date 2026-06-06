@@ -197,6 +197,23 @@ bool str_is_valid_utf8(Str s) {
     return simdutf_validate_utf8((const char *)s.value, s.count);
 }
 
+Opt<u64> str_find(Str haystack, Str needle) {
+    if (str_is_empty(haystack) || str_is_empty(needle)) {
+        return {};
+    }
+    u64 i = 0;
+    while (i + needle.count < haystack.count) {
+        void *loc = memchr(haystack.value + i, needle[0], haystack.count - i);
+        if (loc == nullptr) return {};
+        Str haystack_slice = arr_slice(haystack, i, i + needle.count);
+        if (str_eq(haystack_slice, needle)) {
+            return some(i);
+        }
+        i = (u64)loc - (u64)haystack.value;
+    }
+    return {};
+}
+
 //
 // Paths
 //
@@ -371,7 +388,7 @@ Str base64_encode(Arena *arena, Arr<u8> a) {
 // Idk
 //
 
-void thread_init(int argc, char **argv, char **envp) {
+void thread_init(int argc, char **argv) {
     g_argv = { .value = argv, .count = (u64)argc };
     arena_pool_init();
 }

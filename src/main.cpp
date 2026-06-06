@@ -15,19 +15,18 @@ extern "C" {
 }
 
 #include "platform.hpp"
-#include "tiny_ttf.hpp"
 
 Opt<Duration> operator+(const Opt<Duration>& d1, const Opt<Duration>& d2) {
     return {
         .present = d1.present && d2.present,
-        .value = d1.value + d2.value,
+        .opt = d1.opt + d2.opt,
     };
 }
 
 Opt<Duration> operator-(const Opt<Duration>& d1, const Opt<Duration>& d2) {
     return {
         .present = d1.present && d2.present,
-        .value = d1.value - d2.value,
+        .opt = d1.opt - d2.opt,
     };
 }
 
@@ -127,7 +126,7 @@ Arr<SegSummary> calc_seg_summary(Arena *arena, TimerState *timer, FileDefn *file
         Opt<Duration> prev_gold = file->golds[i];
         Opt<Duration> live_seg = summary[i].live_seg;
         summary[i].is_new_gold = prev_gold.present && live_seg.present && \
-                                 live_seg.value < prev_gold.value;
+                                 live_seg.opt < prev_gold.opt;
     }
 
     return summary;
@@ -291,9 +290,24 @@ Str xml_inner(xao_Reader *r, xao_Value outer) {
     return xml_str(inner);
 }
 
+// TODO I've been neglectful of `const`ness in my APIs, but obviously this
+// should be const
+u8 PNG_HEADER[] = { 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a };
+
+Arr<u8> decode_icon_base64_to_png(Arena *arena, Str icon_base64) {
+    Opt<Arr<u8>> icon_bin = base64_decode(arena, icon_base64);
+    if (!icon_bin.present) return {};
+
+    Opt<u64> png_idx = str_find(icon_bin.opt, A(PNG_HEADER));
+    if (!png_idx.present) return {};
+
+    return arr_slice(icon_bin.opt, png_idx.opt, icon_bin.opt.count);
+}
+
 Arr<SegmentDefn> parse_livesplit_segments(Arena *arena, xao_Reader *r, xao_Value segments_tag) {
     Vec<SegmentDefn> segments = {};
     xao_Value seg_tag = {};
+    u64 seg_idx = 0;
     while (xao_iter_tags(r, segments_tag, &seg_tag)) {
         SegmentDefn *seg = vec_push(arena, &segments, {});
         xao_Value attr_tag = {};
@@ -302,14 +316,14 @@ Arr<SegmentDefn> parse_livesplit_segments(Arena *arena, xao_Reader *r, xao_Value
                 seg->name = str_clone(arena, xml_inner(r, attr_tag));
             } else if (eq(attr_tag, "Icon")) {
                 Str base64 = xml_inner(r, attr_tag);
-                Opt<Arr<u8>> icon_bin = base64_decode(arena, base64);
-                if (!icon_bin.present) {
-                    // TODO proper error handling
-                    log_warn("Failed to decode base64 for segment %.*s", SF(seg->name));
+                seg->icon = decode_icon_base64_to_png(arena, base64);
+                if (arr_is_empty(seg->icon)) {
+                    // TODO better error handling
+                    log_warn("Error decoding PNG icon for segment '%.*s'", SF(seg->name));
                 }
-                seg->icon = icon_bin.value;
             }
         }
+        seg_idx++;
     }
     return vec_arr(&segments);
 }
@@ -342,7 +356,7 @@ OSResult parse_livesplit_lss(Arena *arena, Str lss_path, FileDefn **out) {
                     file->category_name = str_clone(arena, xml_inner(&r, run_tag));
                 } else if (eq(run_tag, "AttemptCount")) {
                     Str attempts_str = str_clone(arena, xml_inner(&r, run_tag));
-                    file->total_attempts = str_to_u64(attempts_str).value;
+                    file->total_attempts = str_to_u64(attempts_str).opt;
                 } else if (eq(run_tag, "Segments")) {
                     file->segments = parse_livesplit_segments(arena, &r, run_tag);
                 }
@@ -364,6 +378,7 @@ constexpr i32 MIN_WINDOW_WIDTH = 200;
 constexpr i32 MIN_WINDOW_HEIGHT = 100;
 
 struct App {
+    Arena *arena; // Lives for duration of application
     SDL_Window* window;
     SDL_Renderer* renderer;
     TTF_Font *font;
@@ -372,12 +387,19 @@ struct App {
 };
 
 void init_text(App *app) {
-     if (!TTF_Init()) {
+    if (!TTF_Init()) {
         log_fatal("Couldn't initialize SDL_ttf: %s", SDL_GetError());
     }
 
+    Arr<u8> ttf = {};
+    Str font_path = S("/Users/alex/Documents/repos/2026/blitter/data/Roboto-Regular.ttf");
+    OSResult res = os_read_file(app->arena, font_path, &ttf);
+    if (res != OSResult::Ok) {
+        log_fatal("Failed to open font: %.*s", SF(font_path));
+    }
+
     /* Open the font */
-    app->font = TTF_OpenFontIO(SDL_IOFromConstMem(TINY_TTF, TINY_TTF_SIZE), true, 18.0f);
+    app->font = TTF_OpenFontIO(SDL_IOFromConstMem(ttf.value, ttf.count), true, 40.0f);
     if (app->font == nullptr) {
         log_fatal("Couldn't open font: %s", SDL_GetError());
     }
@@ -396,18 +418,12 @@ void init_text(App *app) {
     TTF_SetTextColor(app->text, 255, 255, 255, SDL_ALPHA_OPAQUE);
 }
 
-void init(int argc, char **argv) {
-    char **envp = SDL_GetEnvironmentVariables(SDL_GetEnvironment());
-    thread_init(argc, argv, envp);
-
+void load_splits() {
     Arena *scratch = arena_acquire();
     defer(arena_release(scratch));
 
-    // if (g_argv.count < 2) {
-    //     log_fatal("Usage: blitter <path-to-splits-file>");
-    // }
-    // Str path = str_from_c(g_argv[1]);
-    Str path = S("data/silksong-blank.lss");
+    // Str path = S("data/silksong-blank.lss");
+    Str path = S("data/smb2smal-autosplit.lss");
 
     FileDefn *splits = nullptr;
     OSResult result = parse_livesplit_lss(scratch, path, &splits);
@@ -417,16 +433,17 @@ void init(int argc, char **argv) {
 }
 
 SDL_HitTestResult hittest_callback(SDL_Window* window, const SDL_Point *point, void *data) {
-  // Would expand the resize radius if I could, but doesn't appear to work on macOS
-  return SDL_HITTEST_DRAGGABLE;
+    // Would expand the resize radius if I could, but doesn't appear to work on macOS
+    return SDL_HITTEST_DRAGGABLE;
 }
 
 SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
-    init(argc, argv);
+    thread_init(argc, argv);
 
     Arena *root_arena = arena_acquire();
     App *app = arena_push<App>(root_arena);
     *appstate = (void *)app;
+    app->arena = root_arena;
 
     SDL_PropertiesID props = SDL_CreateProperties();
     if (props == 0) {
@@ -459,6 +476,8 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
     SDL_SetRenderVSync(app->renderer, 1);
 
     init_text(app);
+
+    load_splits();
 
     return SDL_APP_CONTINUE;
 }

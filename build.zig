@@ -30,7 +30,6 @@ const blitter_sources_macos: []const []const u8 = &.{
     "src/base.cpp",
     "src/platform_macos.cpp",
     "src/platform_posix.cpp",
-    "src/tiny_ttf.cpp",
 };
 
 const blitter_sources_linux: []const []const u8 = &.{

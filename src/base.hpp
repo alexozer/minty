@@ -11,11 +11,11 @@
 template <typename T>
 struct Opt {
     bool present;
-    T value;
+    T opt; // Makes it more obvious we're accessing an `Opt` at a glance
 };
 
 template <typename T>
-constexpr Opt<T> some(T v) { return { .present = true, .value = v }; }
+constexpr Opt<T> some(T v) { return { .present = true, .opt = v }; }
 
 //
 // Math
@@ -185,7 +185,7 @@ using Str = Arr<u8>;
 #define S(s) ((Str){ .value = (u8 *)(s), .count = (sizeof(s)) - 1 })
 #define SF(s) (int)(s).count, (char *)(s).value
 #define C(c) ((u8)(c))
-#define A(a) { .value = (a), .count = sizeof((a)) / sizeof((a)[0]) }
+#define A(a) ((Arr<u8>){ .value = (a), .count = sizeof((a)) / sizeof((a)[0]) })
 
 char *str_to_c(Arena *arena, Str s);
 Str str_from_c(const char *cstr);
@@ -199,6 +199,7 @@ bool str_starts_with(Str s, Str prefix);
 __attribute__((format(printf, 2, 3)))
 Str str_format(Arena *arena, const char *format, ...);
 bool str_is_valid_utf8(Str s);
+Opt<u64> str_find(Str haystack, Str needle);
 
 // Certainly possible to do this simply and w/o an iterator object, but just messin around
 struct StrLineIter {
@@ -449,4 +450,4 @@ Str base64_encode(Arena *arena, Arr<u8> a);
 // Idk
 //
 
-void thread_init(int argc, char **argv, char **envp);
+void thread_init(int argc, char **argv);
