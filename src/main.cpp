@@ -321,6 +321,15 @@ Arr<SegmentDefn> parse_livesplit_segments(Arena *arena, xao_Reader *r, xao_Value
                     // TODO better error handling
                     log_warn("Error decoding PNG icon for segment '%.*s'", SF(seg->name));
                 }
+
+                Arena *scratch = arena_acquire();
+                defer(arena_release(scratch));
+
+                Str png_file_name = str_format(scratch, "test-images/seg%" PRIu64 ".png", seg_idx);
+                char *png_file_name_cstr = str_to_c(scratch, png_file_name);
+                if (!SDL_SaveFile(png_file_name_cstr, seg->icon.value, seg->icon.count)) {
+                    log_fatal("Failed to write PNG: %s", SDL_GetError());
+                }
             }
         }
         seg_idx++;
@@ -422,13 +431,13 @@ void load_splits() {
     Arena *scratch = arena_acquire();
     defer(arena_release(scratch));
 
-    // Str path = S("data/silksong-blank.lss");
-    Str path = S("data/smb2smal-autosplit.lss");
-
-    FileDefn *splits = nullptr;
-    OSResult result = parse_livesplit_lss(scratch, path, &splits);
-    if (result != OSResult::Ok) {
-        log_fatal("Failed to parse LSS '%.*s'", SF(path));
+    if (g_argv.count > 1) {
+        Str path = str_from_c(g_argv[1]);
+        FileDefn *splits = nullptr;
+        OSResult result = parse_livesplit_lss(scratch, path, &splits);
+        if (result != OSResult::Ok) {
+            log_fatal("Failed to parse LSS '%.*s'", SF(path));
+        }
     }
 }
 
