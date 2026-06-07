@@ -14,8 +14,6 @@ extern "C" {
 #include "xao.h"
 }
 
-#include "platform.hpp"
-
 Opt<Duration> operator+(const Opt<Duration>& d1, const Opt<Duration>& d2) {
     return {
         .present = d1.present && d2.present,
@@ -281,7 +279,7 @@ bool eq(xao_Value v, const char *s) {
 }
 
 Str xml_str(xao_Value v) {
-    return { .value = (u8 *)v.start, .count = (u64)v.end - (u64)v.start };
+    return { .ptr = (u8 *)v.start, .count = (u64)v.end - (u64)v.start };
 }
 
 Str xml_inner(xao_Reader *r, xao_Value outer) {
@@ -327,7 +325,7 @@ Arr<SegmentDefn> parse_livesplit_segments(Arena *arena, xao_Reader *r, xao_Value
 
                 Str png_file_name = str_format(scratch, "test-images/seg%" PRIu64 ".png", seg_idx);
                 char *png_file_name_cstr = str_to_c(scratch, png_file_name);
-                if (!SDL_SaveFile(png_file_name_cstr, seg->icon.value, seg->icon.count)) {
+                if (!SDL_SaveFile(png_file_name_cstr, seg->icon.ptr, seg->icon.count)) {
                     log_fatal("Failed to write PNG: %s", SDL_GetError());
                 }
             }
@@ -352,14 +350,14 @@ OSResult parse_livesplit_lss(Arena *arena, Str lss_path, FileDef **out) {
     }
     defer(SDL_free(lss_buf));
 
-    Str xml = { .value = (u8 *)lss_buf, .count = (u64)size };
+    Str xml = { .ptr = (u8 *)lss_buf, .count = (u64)size };
     if (!str_is_valid_utf8(xml)) {
         // TODO proper error handling
         return OSResult::InvalidUtf8;
     }
 
     FileDef *file_def = arena_push<FileDef>(arena);
-    xao_Reader r = xao_reader((char *)xml.value, xml.count);
+    xao_Reader r = xao_reader((char *)xml.ptr, xml.count);
     xao_Value root = {};
     xao_Value root_tag = {};
     while (xao_iter_tags(&r, root, &root_tag)) {
@@ -416,10 +414,10 @@ void init_text(App *app) {
         // TODO sane error handling
         log_fatal("Failed to open font: %s", font_path);
     }
-    Arr<u8> ttf = { .value = (u8 *)font_buf, .count = (u64)font_size };
+    Arr<u8> ttf = { .ptr = (u8 *)font_buf, .count = (u64)font_size };
 
     /* Open the font */
-    app->font = TTF_OpenFontIO(SDL_IOFromConstMem(ttf.value, ttf.count), true, 40.0f);
+    app->font = TTF_OpenFontIO(SDL_IOFromConstMem(ttf.ptr, ttf.count), true, 40.0f);
     if (app->font == nullptr) {
         log_fatal("Couldn't open font: %s", SDL_GetError());
     }

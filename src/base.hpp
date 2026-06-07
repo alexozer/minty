@@ -84,12 +84,12 @@ void log_log(LogLevel level, const char *fmt, ...);
 
 template <typename T>
 struct Arr {
-    T *value;
+    T *ptr;
     u64 count;
 
     T& operator[](u64 i) {
         log_assert(i < count);
-        return value[i];
+        return ptr[i];
     }
 };
 
@@ -113,7 +113,7 @@ T *arena_push(Arena *arena) {
 template <typename T>
 Arr<T> arena_push_arr(Arena *arena, u64 count) {
     return {
-        .value = (T *)arena__push_bytes(arena, sizeof(T) * count, 8),
+        .ptr = (T *)arena__push_bytes(arena, sizeof(T) * count, 8),
         .count = count,
     };
 }
@@ -126,7 +126,7 @@ template <typename T>
 Arr<T> arr_from_null_terminated(T *v) {
     u64 count = 0;
     while (v[count] != nullptr) count++;
-    return { .value = v, .count = count };
+    return { .ptr = v, .count = count };
 }
 
 template <typename T>
@@ -136,7 +136,7 @@ Arr<T> arr_slice(Arr<T> arr, u64 start, u64 end) {
     log_assert(start <= end);
 
     return {
-        .value = arr.value + start,
+        .ptr = arr.ptr + start,
         .count = end - start,
     };
 }
@@ -182,10 +182,10 @@ struct Pair {
 
 using Str = Arr<u8>;
 
-#define S(s) ((Str){ .value = (u8 *)(s), .count = (sizeof(s)) - 1 })
-#define SF(s) (int)(s).count, (char *)(s).value
+#define S(s) ((Str){ .ptr = (u8 *)(s), .count = (sizeof(s)) - 1 })
+#define SF(s) (int)(s).count, (char *)(s).ptr
 #define C(c) ((u8)(c))
-#define A(a) ((Arr<u8>){ .value = (a), .count = sizeof((a)) / sizeof((a)[0]) })
+#define A(a) ((Arr<u8>){ .ptr = (a), .count = sizeof((a)) / sizeof((a)[0]) })
 
 char *str_to_c(Arena *arena, Str s);
 Str str_from_c(const char *cstr);
@@ -219,13 +219,13 @@ constexpr bool str_is_empty(Str s) { return s.count == 0; }
 
 template <typename T>
 struct Vec {
-    T *value;
+    T *ptr;
     u64 count; // Element count (not size in bytes)
     u64 cap; // Element capacity (not size capacity in bytes)
 
     T& operator[](u64 i) {
         log_assert(i < count);
-        return value[i];
+        return ptr[i];
     }
 };
 
@@ -243,7 +243,7 @@ void vec__grow(Arena *arena, Vec<T> *vec, u64 new_cap) {
         Arr<T> new_arr_slice = arr_slice(new_arr, 0, vec->count);
         arr_copy(new_arr_slice, vec_arr(vec));
 
-        vec->value = new_arr.value;
+        vec->ptr = new_arr.ptr;
         vec->cap = new_cap;
     }
 }
@@ -251,8 +251,8 @@ void vec__grow(Arena *arena, Vec<T> *vec, u64 new_cap) {
 template <typename T>
 T *vec_push(Arena *arena, Vec<T> *vec, T val) {
     vec__grow(arena, vec, vec->count + 1);
-    vec->value[vec->count] = val;
-    return &vec->value[vec->count++];
+    vec->ptr[vec->count] = val;
+    return &vec->ptr[vec->count++];
 }
 
 template <typename T>
@@ -275,7 +275,7 @@ Arr<T> vec_extend(Arena *arena, Vec<T> *vec, Arr<T> arr) {
 
 template <typename T>
 Arr<T> vec_arr(Vec<T> *vec) {
-    return { .value = vec->value, .count = vec->count };
+    return { .ptr = vec->ptr, .count = vec->count };
 }
 
 template <typename T>

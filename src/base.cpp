@@ -55,18 +55,18 @@ void arena_release(Arena *arena) {
 
 char *str_to_c(Arena *arena, Str s) {
     Arr<char> cstr = arena_push_arr<char>(arena, s.count + 1);
-    memcpy(cstr.value, s.value, s.count);
-    return cstr.value;
+    memcpy(cstr.ptr, s.ptr, s.count);
+    return cstr.ptr;
 }
 
 Str str_from_c(const char *cstr) {
     u64 count = 0;
     while (cstr[count] != '\0') count++;
-    return (Str){ .value = (u8 *)cstr, .count = count };
+    return (Str){ .ptr = (u8 *)cstr, .count = count };
 }
 
 Str str_from_c_len(const char *cstr, u64 len) {
-    return { . value = (u8 *)cstr, .count = len };
+    return { . ptr = (u8 *)cstr, .count = len };
 }
 
 // Returns a string from a utf8 byte buffer. Doesn't validate if it's actually utf8.
@@ -101,7 +101,7 @@ Str str_trim(Str s) {
 
 Str str_clone(Arena *arena, Str s) {
     Str clone = arena_push_arr<u8>(arena, s.count);
-    memcpy(clone.value, s.value, s.count);
+    memcpy(clone.ptr, s.ptr, s.count);
     return clone;
 }
 
@@ -148,7 +148,7 @@ bool str_lines_next(StrLineIter* iter, Str *line) {
     iter->pos = next_line_start;
 
     if (line != nullptr) {
-        line->value = iter->base.value + line_start;
+        line->ptr = iter->base.ptr + line_start;
         line->count = line_end - line_start;
     }
 
@@ -190,13 +190,13 @@ Str str_format(Arena *arena, const char *format, ...) {
         return S("<formatting error>");
     }
 
-    Str s = { .value = (u8 *)buf, .count = (u64)n };
+    Str s = { .ptr = (u8 *)buf, .count = (u64)n };
     // TODO try to allocate directly on tip of arena?
     return str_clone(arena, s);
 }
 
 bool str_is_valid_utf8(Str s) {
-    return simdutf_validate_utf8((const char *)s.value, s.count);
+    return simdutf_validate_utf8((const char *)s.ptr, s.count);
 }
 
 Opt<u64> str_find(Str haystack, Str needle) {
@@ -205,13 +205,13 @@ Opt<u64> str_find(Str haystack, Str needle) {
     }
     u64 i = 0;
     while (i + needle.count < haystack.count) {
-        void *loc = memchr(haystack.value + i, needle[0], haystack.count - i);
+        void *loc = memchr(haystack.ptr + i, needle[0], haystack.count - i);
         if (loc == nullptr) return {};
         Str haystack_slice = arr_slice(haystack, i, i + needle.count);
         if (str_eq(haystack_slice, needle)) {
             return some(i);
         }
-        i = (u64)loc - (u64)haystack.value;
+        i = (u64)loc - (u64)haystack.ptr;
     }
     return {};
 }
@@ -360,12 +360,12 @@ Opt<u64> str_to_u64(Str s) {
 }
 
 Opt<Arr<u8>> base64_decode(Arena *arena, Str s) {
-    u64 max_out_size = simdutf_maximal_binary_length_from_base64((const char *)s.value, s.count);
+    u64 max_out_size = simdutf_maximal_binary_length_from_base64((const char *)s.ptr, s.count);
     Arr<u8> out = arena_push_arr<u8>(arena, max_out_size);
     simdutf_result result = simdutf_base64_to_binary(
-            (const char *)s.value,
+            (const char *)s.ptr,
             s.count,
-            (char *)out.value,
+            (char *)out.ptr,
             SIMDUTF_BASE64_DEFAULT,
             SIMDUTF_LAST_CHUNK_STRICT);
     if (result.error != SIMDUTF_ERROR_SUCCESS) {
@@ -378,9 +378,9 @@ Str base64_encode(Arena *arena, Arr<u8> a) {
     u64 out_size = simdutf_base64_length_from_binary(a.count, SIMDUTF_BASE64_DEFAULT);
     Arr<u8> out = arena_push_arr<u8>(arena, out_size);
     u64 written = simdutf_binary_to_base64(
-            (const char *)a.value,
+            (const char *)a.ptr,
             a.count,
-            (char *)out.value,
+            (char *)out.ptr,
             SIMDUTF_BASE64_DEFAULT);
     log_assert(written == out_size);
     return out;
@@ -405,6 +405,6 @@ Instant get_current_monotonic_time() {
 //
 
 void thread_init(int argc, char **argv) {
-    g_argv = { .value = argv, .count = (u64)argc };
+    g_argv = { .ptr = argv, .count = (u64)argc };
     arena_pool_init();
 }

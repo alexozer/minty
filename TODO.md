@@ -4,6 +4,7 @@
 
 <!-- Render Roboto font -->
 <!-- Decode split images -->
+<!-- Replace most of shitty platform layer with SDL -->
 Render PNGs
 Write simple prototype stacking renderer
     How am I supposed to change the text contents? Size?
