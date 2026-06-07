@@ -450,37 +450,43 @@ struct App {
     FileDef *file;
 };
 
-void init_text(App *app) {
+void init_text(ErrorContext *err, App *app) {
     if (!TTF_Init()) {
-        log_fatal("Couldn't initialize SDL_ttf: %s", SDL_GetError());
+        log_fatal("Failed to initialize text engine: %s", SDL_GetError());
     }
 
     const char *font_path = "/Users/alex/Documents/repos/2026/blitter/data/Roboto-Regular.ttf";
-    size_t font_size = 0;
+    size_t font_file_size = 0;
     // TODO arena allocate
-    void *font_buf = SDL_LoadFile(font_path, &font_size);
-    if (font_buf == nullptr) {
-        // TODO sane error handling
-        log_fatal("Failed to open font: %s", font_path);
+    void *font_buf = SDL_LoadFile(font_path, &font_file_size);
+    {
+        err_scope(err, "Load font '%s", font_path);
+        if (font_buf == nullptr) {
+            err_report(err, "Failed to open font: %s", SDL_GetError());
+            return;
+        }
     }
-    Arr<u8> ttf = { .ptr = (u8 *)font_buf, .count = (u64)font_size };
+    Arr<u8> ttf = { .ptr = (u8 *)font_buf, .count = (u64)font_file_size };
 
     /* Open the font */
     app->font = TTF_OpenFontIO(SDL_IOFromConstMem(ttf.ptr, ttf.count), true, 40.0f);
     if (app->font == nullptr) {
-        log_fatal("Couldn't open font: %s", SDL_GetError());
+        err_report(err, "Couldn't open font: %s", SDL_GetError());
+        return;
     }
 
     /* Create the text engine */
     app->engine = TTF_CreateRendererTextEngine(app->renderer);
     if (app->engine == nullptr) {
-        log_fatal("Couldn't create text engine: %s", SDL_GetError());
+        err_report(err, "Couldn't create text engine: %s", SDL_GetError());
+        return;
     }
 
     /* Create the text */
     app->text = TTF_CreateText(app->engine, app->font, "Hello world!", 0);
     if (app->text == nullptr) {
-        log_fatal("Couldn't create text: %s", SDL_GetError());
+        err_report(err, "Couldn't create text: %s", SDL_GetError());
+        return;
     }
     TTF_SetTextColor(app->text, 255, 255, 255, SDL_ALPHA_OPAQUE);
 }
@@ -499,24 +505,16 @@ SDL_HitTestResult hittest_callback(SDL_Window* window, const SDL_Point *point, v
     return SDL_HITTEST_DRAGGABLE;
 }
 
-SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
-    thread_init(argc, argv);
-
-    ErrorContext err = { .arena = arena_acquire() };
-    defer(arena_release(err.arena));
-
+void init_inner(App *app, ErrorContext *err) {
     if (!SDL_SetAppMetadata("Blitter", "0.0.1", nullptr)) {
-        log_fatal("Failed to set app metadata: %s", SDL_GetError());
+        err_report(err, "Failed to set app metadata: %s", SDL_GetError());
+        return;
     }
-
-    Arena *root_arena = arena_acquire();
-    App *app = arena_push<App>(root_arena);
-    *appstate = (void *)app;
-    app->arena = root_arena;
 
     SDL_PropertiesID props = SDL_CreateProperties();
     if (props == 0) {
-        log_fatal("Unable to create properties: %s", SDL_GetError());
+        err_report(err, "Unable to create properties: %s", SDL_GetError());
+        return;
     }
     defer(SDL_DestroyProperties(props));
 
@@ -528,27 +526,45 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
 
     app->window = SDL_CreateWindowWithProperties(props);
     if (app->window == nullptr) {
-        log_fatal("Unable to create window: %s", SDL_GetError());
+        err_report(err, "Unable to create window: %s", SDL_GetError());
+        return;
     }
 
     if (!SDL_SetWindowMinimumSize(app->window, MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)) {
-        log_fatal("Unable to set min window dimensions: %s", SDL_GetError());
+        err_report(err, "Unable to set min window dimensions: %s", SDL_GetError());
+        return;
     }
     if (!SDL_SetWindowHitTest(app->window, hittest_callback, nullptr)) {
-        log_fatal("Unable to set window hit test callback: %s", SDL_GetError());
+        err_report(err, "Unable to set window hit test callback: %s", SDL_GetError());
+        return;
     }
 
     app->renderer = SDL_CreateRenderer(app->window, nullptr);
     if (app->renderer == nullptr) {
-        log_fatal("Unable to create renderer: %s", SDL_GetError());
+        err_report(err, "Unable to create renderer: %s", SDL_GetError());
+        return;
     }
     SDL_SetRenderVSync(app->renderer, 1);
 
-    init_text(app);
+    init_text(err, app);
+    app->file = load_splits_file(app->arena, err, app->renderer);
+}
 
-    app->file = load_splits_file(root_arena, &err, app->renderer);
-    if (err_failed(&err)) {
-        err_log(&err);
+SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
+    thread_init(argc, argv);
+
+    ErrorContext err_base = { .arena = arena_acquire() };
+    ErrorContext *err = &err_base;
+    defer(arena_release(err_base.arena));
+
+    Arena *root_arena = arena_acquire();
+    App *app = arena_push<App>(root_arena);
+    *appstate = (void *)app;
+    app->arena = root_arena;
+
+    init_inner(app, err);
+    if (err_failed(err)) {
+        err_log(err);
         return SDL_APP_FAILURE;
     }
 
