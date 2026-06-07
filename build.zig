@@ -5,14 +5,14 @@ const cxx_flags: []const []const u8 = &.{
     "-Wall",
     "-Wshadow",
     "-isystem", "3rdparty",
-    "-DSIMDUTF_NO_LIBCXX=1",
-    "-DYYJSON_DISABLE_INCR_READER",
-    "-DYYJSON_DISABLE_UTILS",
-    "-DYYJSON_DISABLE_FAST_FP_CONV",
-    "-DYYJSON_DISABLE_NON_STANDARD",
+    "-DYYJSON_DISABLE_INCR_READER=1",
+    "-DYYJSON_DISABLE_UTILS=1",
+    "-DYYJSON_DISABLE_FAST_FP_CONV=1",
+    "-DYYJSON_DISABLE_NON_STANDARD=1",
     // Cross-compilation builds fail for avx512, just disable for now
     // TODO maybe figure out how to enable avx512 support eventually
     "-DSIMDUTF_IMPLEMENTATION_ICELAKE=0",
+    "-DSIMDUTF_NO_LIBCXX=1",
 };
 
 const c_flags: []const []const u8 = .{
