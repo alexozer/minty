@@ -1,3 +1,4 @@
+#include "SDL3/SDL_iostream.h"
 #include "base.hpp"
 
 #include <SDL3/SDL.h>
@@ -33,7 +34,7 @@ struct SplitRecord {
     Arr<Opt<Duration>> splits;
 };
 
-struct SegmentDefn {
+struct SegmentDef {
     Str name;
     Arr<u8> icon; // TODO a proper decode or something
 };
@@ -43,9 +44,13 @@ struct FileDef {
     Str category_name;
     u64 total_attempts;
     u64 completed_attempts;
-    Arr<SegmentDefn> segments;
+    Arr<SegmentDef> segments;
     SplitRecord personal_best;
     Arr<Opt<Duration>> golds;
+
+    // TODO organize better
+    Arr<SDL_Surface *> surfaces;
+    Arr<SDL_Texture *> textures;
 };
 
 enum class TimerMode {
@@ -302,12 +307,11 @@ Arr<u8> decode_icon_base64_to_png(Arena *arena, Str icon_base64) {
     return arr_slice(icon_bin.opt, png_idx.opt, icon_bin.opt.count);
 }
 
-Arr<SegmentDefn> parse_livesplit_segments(Arena *arena, xao_Reader *r, xao_Value segments_tag) {
-    Vec<SegmentDefn> segments = {};
+Arr<SegmentDef> parse_livesplit_segments(Arena *arena, xao_Reader *r, xao_Value segments_tag) {
+    Vec<SegmentDef> segments = {};
     xao_Value seg_tag = {};
-    u64 seg_idx = 0;
     while (xao_iter_tags(r, segments_tag, &seg_tag)) {
-        SegmentDefn *seg = vec_push(arena, &segments, {});
+        SegmentDef *seg = vec_push(arena, &segments, {});
         xao_Value attr_tag = {};
         while (xao_iter_tags(r, seg_tag, &attr_tag)) {
             if (eq(attr_tag, "Name")) {
@@ -317,26 +321,38 @@ Arr<SegmentDefn> parse_livesplit_segments(Arena *arena, xao_Reader *r, xao_Value
                 seg->icon = decode_icon_base64_to_png(arena, base64);
                 if (arr_is_empty(seg->icon)) {
                     // TODO better error handling
-                    log_warn("Error decoding PNG icon for segment '%.*s'", SF(seg->name));
-                }
-
-                Arena *scratch = arena_acquire();
-                defer(arena_release(scratch));
-
-                Str png_file_name = str_format(scratch, "test-images/seg%" PRIu64 ".png", seg_idx);
-                char *png_file_name_cstr = str_to_c(scratch, png_file_name);
-                if (!SDL_SaveFile(png_file_name_cstr, seg->icon.ptr, seg->icon.count)) {
-                    log_fatal("Failed to write PNG: %s", SDL_GetError());
+                    log_warn("Error decoding base64 icon for segment '%.*s'", SF(seg->name));
                 }
             }
         }
-        seg_idx++;
     }
 
     return vec_arr(&segments);
 }
 
-OSResult parse_livesplit_lss(Arena *arena, Str lss_path, FileDef **out) {
+void load_timer_textures(Arena *arena, SDL_Renderer *renderer, FileDef *file) {
+    file->surfaces = arena_push_arr<SDL_Surface *>(arena, file->segments.count);
+    file->textures = arena_push_arr<SDL_Texture *>(arena, file->segments.count);
+
+    for (u64 i = 0; i < file->segments.count; i++) {
+        SDL_IOStream *png_stream = SDL_IOFromMem(file->segments[i].icon.ptr, file->segments[i].icon.count);
+        defer(SDL_CloseIO(png_stream));
+
+        file->surfaces[i] = SDL_LoadPNG_IO(png_stream, false);
+        if (file->surfaces[i] == nullptr) {
+            // TODO handle error
+            log_fatal("Failed to load surface from PNG");
+        }
+
+        file->textures[i] = SDL_CreateTextureFromSurface(renderer, file->surfaces[i]);
+        if (file->textures[i] == nullptr) {
+            // TODO handle error
+            log_fatal("Failed to load texture");
+        }
+    }
+}
+
+OSResult load_livesplit_lss(Arena *arena, SDL_Renderer *renderer, Str lss_path, FileDef **out) {
     Arena *scratch = arena_acquire();
     defer(arena_release(scratch));
 
@@ -378,6 +394,8 @@ OSResult parse_livesplit_lss(Arena *arena, Str lss_path, FileDef **out) {
         }
     }
 
+    load_timer_textures(arena, renderer, file_def);
+
     *out = file_def;
 
     return OSResult::Ok;
@@ -399,6 +417,7 @@ struct App {
     TTF_Font *font;
     TTF_TextEngine *engine;
     TTF_Text *text;
+    FileDef *file;
 };
 
 void init_text(App *app) {
@@ -436,17 +455,17 @@ void init_text(App *app) {
     TTF_SetTextColor(app->text, 255, 255, 255, SDL_ALPHA_OPAQUE);
 }
 
-void load_splits() {
-    Arena *scratch = arena_acquire();
-    defer(arena_release(scratch));
-
+FileDef *load_splits_file(Arena *arena, SDL_Renderer *renderer) {
     if (g_argv.count > 1) {
         Str path = str_from_c(g_argv[1]);
         FileDef *splits = nullptr;
-        OSResult result = parse_livesplit_lss(scratch, path, &splits);
+        OSResult result = load_livesplit_lss(arena, renderer, path, &splits);
         if (result != OSResult::Ok) {
-            log_fatal("Failed to parse LSS '%.*s'", SF(path));
+            log_fatal("Failed to load LSS '%.*s'", SF(path));
         }
+        return splits;
+    } else {
+        log_fatal("Usage: blitter <path-to-splits-file>");
     }
 }
 
@@ -499,14 +518,15 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
 
     init_text(app);
 
-    load_splits();
+    app->file = load_splits_file(root_arena, app->renderer);
+    if (app->file == nullptr) {
+        log_fatal("Failed to load splits");
+    }
 
     return SDL_APP_CONTINUE;
 }
 
-SDL_AppResult SDL_AppIterate(void* appstate) {
-    App *app = (App *)appstate;
-
+void draw_sample_text(App *app) {
     int w = 0, h = 0;
     int text_w = 0, text_h = 0;
     float x, y;
@@ -523,6 +543,26 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
     SDL_SetRenderDrawColor(app->renderer, 0, 0, 0, 255);
     SDL_RenderClear(app->renderer);
     TTF_DrawRendererText(app->text, x, y);
+}
+
+SDL_AppResult SDL_AppIterate(void* appstate) {
+    App *app = (App *)appstate;
+
+    draw_sample_text(app);
+
+    // Draw split icons
+    f32 y = 0;
+    for (u64 i = 0; i < app->file->textures.count; i++) {
+        SDL_FRect dest = {
+            .x = 0,
+            .y = y,
+            .w = (f32)app->file->textures[i]->w,
+            .h = (f32)app->file->textures[i]->h,
+        };
+        SDL_RenderTexture(app->renderer, app->file->textures[i], nullptr, &dest);
+        y += (f32)app->file->textures[i]->h;
+    }
+
     SDL_RenderPresent(app->renderer);
 
     return SDL_APP_CONTINUE;
