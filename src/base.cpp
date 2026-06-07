@@ -7,6 +7,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <SDL3/SDL_timer.h>
+
 #include "platform.hpp"
 
 // TODO deal with e.g. string nonalignment
@@ -80,7 +82,7 @@ Str str_from_bytes(Arr<u8> bytes) {
 
 // Super conservative definition probably
 bool char_is_whitespace(u8 c) {
-    return c == C(' ') || c == C('\r') || c == C('\n');
+    return c == C(' ') || c == C('\r') || c == C('\n') || c == C('\t');
 }
 
 Str str_trim(Str s) {
@@ -382,6 +384,20 @@ Str base64_encode(Arena *arena, Arr<u8> a) {
             SIMDUTF_BASE64_DEFAULT);
     log_assert(written == out_size);
     return out;
+}
+
+//
+// Time
+//
+
+constexpr u64 SECOND_IN_NS = 1'000'000'000;
+
+Instant get_current_monotonic_time() {
+    u64 ticks = SDL_GetTicksNS();
+    return {
+        .seconds = (i64)(ticks / SECOND_IN_NS),
+        .nanoseconds = (u32)(ticks % SECOND_IN_NS),
+    };
 }
 
 //

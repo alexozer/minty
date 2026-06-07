@@ -25,24 +25,9 @@ const cpp_flags: []const []const u8 = .{
     "-fno-rtti",
 } ++ cxx_flags;
 
-const blitter_sources_macos: []const []const u8 = &.{
+const blitter_sources: []const []const u8 = &.{
     "src/main.cpp",
     "src/base.cpp",
-    "src/platform_macos.cpp",
-    "src/platform_posix.cpp",
-};
-
-const blitter_sources_linux: []const []const u8 = &.{
-    "src/main.cpp",
-    "src/base.cpp",
-    "src/platform_linux.cpp",
-    "src/platform_posix.cpp",
-};
-
-const blitter_sources_windows: []const []const u8 = &.{
-    "src/main.cpp",
-    "src/base.cpp",
-    "src/platform_windows.cpp",
 };
 
 const xao_sources: []const []const u8 = &.{
@@ -63,10 +48,10 @@ pub fn build(b: *std.Build) !void {
 
     var cdb_targets: std.ArrayList(*std.Build.Step.Compile) = .empty;
 
-    const blitter_sources = switch (target.result.os.tag) {
-        .macos => blitter_sources_macos,
-        .linux => blitter_sources_linux,
-        .windows => blitter_sources_windows,
+    const blitter_sources_plat = switch (target.result.os.tag) {
+        .macos => blitter_sources ++ .{ "src/platform_posix.cpp" },
+        .linux => blitter_sources ++ .{ "src/platform_posix.cpp" },
+        .windows => blitter_sources ++ .{ "src/platform_windows.cpp" },
         else => @panic("Unsupported OS"),
     };
 
@@ -129,7 +114,7 @@ pub fn build(b: *std.Build) !void {
             .link_libcpp = false,
         }),
     });
-    blitter.root_module.addCSourceFiles(.{ .files = blitter_sources, .flags = cpp_flags });
+    blitter.root_module.addCSourceFiles(.{ .files = blitter_sources_plat, .flags = cpp_flags });
     blitter.root_module.linkLibrary(simdutf);
     blitter.root_module.linkLibrary(yyjson);
     blitter.root_module.linkLibrary(xao);

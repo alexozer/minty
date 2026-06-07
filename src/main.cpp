@@ -40,7 +40,7 @@ struct SegmentDefn {
     Arr<u8> icon; // TODO a proper decode or something
 };
 
-struct FileDefn {
+struct FileDef {
     Str game_name;
     Str category_name;
     u64 total_attempts;
@@ -81,7 +81,7 @@ struct SegSummary {
     bool is_new_gold;
 };
 
-Arr<SegSummary> calc_seg_summary(Arena *arena, TimerState *timer, FileDefn *file) {
+Arr<SegSummary> calc_seg_summary(Arena *arena, TimerState *timer, FileDef *file) {
     Arr<SegSummary> summary = arena_push_arr<SegSummary>(arena, timer->live_splits.count);
 
     // Calc PB splits
@@ -191,17 +191,17 @@ Duration timer_get_elapsed(TimerState *timer) {
     if (timer->mode == TimerMode::Paused) {
         now = timer->paused_time;
     } else {
-        now = os_get_monotonic_time();
+        now = get_current_monotonic_time();
     }
     return (now - timer->start_time) - timer->total_paused_duration;
 }
 
-void timer_apply_action(Arena *arena, TimerState *timer, FileDefn *file, TimerAction action) {
+void timer_apply_action(Arena *arena, TimerState *timer, FileDef *file, TimerAction action) {
     // Switch statements are annoying... and neovim keeps indenting them wrong :(
     if (timer->mode == TimerMode::Init) {
         if (action == TimerAction::Split) {
             timer->mode = TimerMode::Running;
-            timer->start_time = os_get_monotonic_time();
+            timer->start_time = get_current_monotonic_time();
         }
 
     } else if (timer->mode == TimerMode::Running) {
@@ -235,13 +235,13 @@ void timer_apply_action(Arena *arena, TimerState *timer, FileDefn *file, TimerAc
 
         } else if (action == TimerAction::Pause) {
             timer->mode = TimerMode::Paused;
-            timer->paused_time = os_get_monotonic_time();
+            timer->paused_time = get_current_monotonic_time();
         }
 
     } else if (timer->mode == TimerMode::Paused) {
         if (action == TimerAction::Pause) {
             // Unpause
-            Duration pause_duration = os_get_monotonic_time() - timer->paused_time;
+            Duration pause_duration = get_current_monotonic_time() - timer->paused_time;
             timer->total_paused_duration += pause_duration;
             timer->mode = TimerMode::Running;
         }
@@ -334,24 +334,31 @@ Arr<SegmentDefn> parse_livesplit_segments(Arena *arena, xao_Reader *r, xao_Value
         }
         seg_idx++;
     }
+
     return vec_arr(&segments);
 }
 
-OSResult parse_livesplit_lss(Arena *arena, Str lss_path, FileDefn **out) {
+OSResult parse_livesplit_lss(Arena *arena, Str lss_path, FileDef **out) {
     Arena *scratch = arena_acquire();
     defer(arena_release(scratch));
-    OSResult res = OSResult::Ok;
 
-    Str xml = {};
-    res = os_read_file(scratch, lss_path, &xml);
-    if (res != OSResult::Ok) return res;
+    // TODO arena allocate
+    size_t size = 0;
+    char *lss_path_cstr = str_to_c(scratch, lss_path);
+    void *lss_buf = SDL_LoadFile(lss_path_cstr, &size);
+    if (lss_buf == nullptr) {
+        // TODO sane error handling
+        return OSResult::OtherError;
+    }
+    defer(SDL_free(lss_buf));
+
+    Str xml = { .value = (u8 *)lss_buf, .count = (u64)size };
     if (!str_is_valid_utf8(xml)) {
         // TODO proper error handling
         return OSResult::InvalidUtf8;
     }
 
-    FileDefn *file = arena_push<FileDefn>(arena);
-
+    FileDef *file_def = arena_push<FileDef>(arena);
     xao_Reader r = xao_reader((char *)xml.value, xml.count);
     xao_Value root = {};
     xao_Value root_tag = {};
@@ -360,20 +367,21 @@ OSResult parse_livesplit_lss(Arena *arena, Str lss_path, FileDefn **out) {
             xao_Value run_tag = {};
             while (xao_iter_tags(&r, root_tag, &run_tag)) {
                 if (eq(run_tag, "GameName")) {
-                    file->game_name = str_clone(arena, xml_inner(&r, run_tag));
+                    file_def->game_name = str_clone(arena, xml_inner(&r, run_tag));
                 } else if (eq(run_tag, "CategoryName")) {
-                    file->category_name = str_clone(arena, xml_inner(&r, run_tag));
+                    file_def->category_name = str_clone(arena, xml_inner(&r, run_tag));
                 } else if (eq(run_tag, "AttemptCount")) {
                     Str attempts_str = str_clone(arena, xml_inner(&r, run_tag));
-                    file->total_attempts = str_to_u64(attempts_str).opt;
+                    file_def->total_attempts = str_to_u64(attempts_str).opt;
                 } else if (eq(run_tag, "Segments")) {
-                    file->segments = parse_livesplit_segments(arena, &r, run_tag);
+                    file_def->segments = parse_livesplit_segments(arena, &r, run_tag);
                 }
             }
         }
     }
 
-    *out = file;
+    *out = file_def;
+
     return OSResult::Ok;
 }
 
@@ -400,12 +408,15 @@ void init_text(App *app) {
         log_fatal("Couldn't initialize SDL_ttf: %s", SDL_GetError());
     }
 
-    Arr<u8> ttf = {};
-    Str font_path = S("/Users/alex/Documents/repos/2026/blitter/data/Roboto-Regular.ttf");
-    OSResult res = os_read_file(app->arena, font_path, &ttf);
-    if (res != OSResult::Ok) {
-        log_fatal("Failed to open font: %.*s", SF(font_path));
+    const char *font_path = "/Users/alex/Documents/repos/2026/blitter/data/Roboto-Regular.ttf";
+    size_t font_size = 0;
+    // TODO arena allocate
+    void *font_buf = SDL_LoadFile(font_path, &font_size);
+    if (font_buf == nullptr) {
+        // TODO sane error handling
+        log_fatal("Failed to open font: %s", font_path);
     }
+    Arr<u8> ttf = { .value = (u8 *)font_buf, .count = (u64)font_size };
 
     /* Open the font */
     app->font = TTF_OpenFontIO(SDL_IOFromConstMem(ttf.value, ttf.count), true, 40.0f);
@@ -433,7 +444,7 @@ void load_splits() {
 
     if (g_argv.count > 1) {
         Str path = str_from_c(g_argv[1]);
-        FileDefn *splits = nullptr;
+        FileDef *splits = nullptr;
         OSResult result = parse_livesplit_lss(scratch, path, &splits);
         if (result != OSResult::Ok) {
             log_fatal("Failed to parse LSS '%.*s'", SF(path));
@@ -448,6 +459,10 @@ SDL_HitTestResult hittest_callback(SDL_Window* window, const SDL_Point *point, v
 
 SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
     thread_init(argc, argv);
+
+    if (!SDL_SetAppMetadata("Blitter", "0.0.1", nullptr)) {
+        log_fatal("Failed to set app metadata: %s", SDL_GetError());
+    }
 
     Arena *root_arena = arena_acquire();
     App *app = arena_push<App>(root_arena);

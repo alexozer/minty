@@ -361,6 +361,8 @@ constexpr Duration DURATION_MILLISECOND = { .nanoseconds = 1'000'000 };
 constexpr Duration DURATION_SECOND = { .seconds = 1 };
 constexpr Duration DURATION_ZERO = {};
 
+Instant get_current_monotonic_time();
+
 constexpr Duration operator+(const Duration &t1, const Duration &t2) {
     i64 ns_sum = t1.nanoseconds + t2.nanoseconds;
     i64 sec_sum = t1.seconds + t2.seconds + (ns_sum / 1'000'000'000);
