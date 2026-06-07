@@ -491,21 +491,12 @@ void init_text(ErrorContext *err, App *app) {
     TTF_SetTextColor(app->text, 255, 255, 255, SDL_ALPHA_OPAQUE);
 }
 
-FileDef *load_splits_file(Arena *arena, ErrorContext *err, SDL_Renderer *renderer) {
-    if (g_argv.count > 1) {
-        Str path = str_from_c(g_argv[1]);
-        return load_livesplit_lss(arena, err, renderer, path);
-    } else {
-        log_fatal("Usage: blitter <path-to-splits-file>");
-    }
-}
-
 SDL_HitTestResult hittest_callback(SDL_Window* window, const SDL_Point *point, void *data) {
     // Would expand the resize radius if I could, but doesn't appear to work on macOS
     return SDL_HITTEST_DRAGGABLE;
 }
 
-void init_inner(App *app, ErrorContext *err) {
+void init_window(ErrorContext *err, App *app) {
     if (!SDL_SetAppMetadata("Blitter", "0.0.1", nullptr)) {
         err_report(err, "Failed to set app metadata: %s", SDL_GetError());
         return;
@@ -545,9 +536,18 @@ void init_inner(App *app, ErrorContext *err) {
         return;
     }
     SDL_SetRenderVSync(app->renderer, 1);
+}
 
+void init_app(ErrorContext *err, App *app) {
+    init_window(err, app);
     init_text(err, app);
-    app->file = load_splits_file(app->arena, err, app->renderer);
+
+    if (g_argv.count > 1) {
+        Str path = str_from_c(g_argv[1]);
+        app->file = load_livesplit_lss(app->arena, err, app->renderer, path);
+    } else {
+        log_fatal("Usage: blitter <path-to-splits-file>");
+    }
 }
 
 SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
@@ -562,7 +562,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
     *appstate = (void *)app;
     app->arena = root_arena;
 
-    init_inner(app, err);
+    init_app(err, app);
     if (err_failed(err)) {
         err_log(err);
         return SDL_APP_FAILURE;
