@@ -491,7 +491,7 @@ constexpr Duration operator-(const Instant &t1, const Instant &t2) {
 //
 
 u64 parse_u64(ErrorContext *err, Str s);
-Opt<Arr<u8>> base64_decode(Arena *arena, Str s);
+Arr<u8> base64_decode(Arena *arena, ErrorContext *err, Str s);
 Str base64_encode(Arena *arena, Arr<u8> a);
 
 //

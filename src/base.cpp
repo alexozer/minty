@@ -206,15 +206,22 @@ Opt<u64> str_find(Str haystack, Str needle) {
     if (str_is_empty(haystack) || str_is_empty(needle)) {
         return {};
     }
+
     u64 i = 0;
     while (i + needle.count < haystack.count) {
         void *loc = memchr(haystack.ptr + i, needle[0], haystack.count - i);
         if (loc == nullptr) return {};
-        Str haystack_slice = arr_slice(haystack, i, i + needle.count);
+
+        u64 haystack_start = (u64)loc - (u64)haystack.ptr;
+        u64 haystack_end = haystack_start + needle.count;
+        if (haystack_end > haystack.count) return {};
+
+        Str haystack_slice = arr_slice(haystack, haystack_start, haystack_end);
         if (str_eq(haystack_slice, needle)) {
-            return some(i);
+            return some(haystack_start);
         }
-        i = (u64)loc - (u64)haystack.ptr;
+
+        i = haystack_start + 1;
     }
     return {};
 }
@@ -368,7 +375,9 @@ u64 parse_u64(ErrorContext *err, Str s) {
     return result;
 }
 
-Opt<Arr<u8>> base64_decode(Arena *arena, Str s) {
+Arr<u8> base64_decode(Arena *arena, ErrorContext *err, Str s) {
+    err_scope(err, "Decode base64");
+
     u64 max_out_size = simdutf_maximal_binary_length_from_base64((const char *)s.ptr, s.count);
     Arr<u8> out = arena_push_arr<u8>(arena, max_out_size);
     simdutf_result result = simdutf_base64_to_binary(
@@ -378,9 +387,10 @@ Opt<Arr<u8>> base64_decode(Arena *arena, Str s) {
             SIMDUTF_BASE64_DEFAULT,
             SIMDUTF_LAST_CHUNK_STRICT);
     if (result.error != SIMDUTF_ERROR_SUCCESS) {
+        err_report(err, "Invalid base64. Error Code = %d", result.error);
         return {};
     }
-    return some(arr_slice(out, 0, result.count));
+    return arr_slice(out, 0, result.count);
 }
 
 Str base64_encode(Arena *arena, Arr<u8> a) {
@@ -438,7 +448,7 @@ void err_log(ErrorContext *ctx) {
     log_error("Failed: %.*s", SF(ctx->ctx_stack[count - 1]));
     if (count > 1) {
         log_error("");
-        log_error("Caused by:");
+        log_error("Caused By:");
         log_error("");
         for (i64 i = (i64) count - 2; i >= 0; i--) {
             log_error("  Failed: %.*s", SF(ctx->ctx_stack[i]));

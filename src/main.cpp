@@ -298,17 +298,20 @@ Str xml_inner(xao_Reader *r, xao_Value outer) {
 // should be const
 u8 PNG_HEADER[] = { 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a };
 
-Arr<u8> decode_icon_base64_to_png(Arena *arena, Str icon_base64) {
-    Opt<Arr<u8>> icon_bin = base64_decode(arena, icon_base64);
-    if (!icon_bin.present) return {};
+Arr<u8> decode_icon_base64_to_png(Arena *arena, ErrorContext *err, Str icon_base64) {
+    Arr<u8> icon_bin = base64_decode(arena, err, icon_base64);
+    Opt<u64> png_idx = str_find(icon_bin, A(PNG_HEADER));
+    if (!png_idx.present) {
+        err_report(err, "PNG image not detected");
+        return {};
+    }
 
-    Opt<u64> png_idx = str_find(icon_bin.opt, A(PNG_HEADER));
-    if (!png_idx.present) return {};
-
-    return arr_slice(icon_bin.opt, png_idx.opt, icon_bin.opt.count);
+    return arr_slice(icon_bin, png_idx.opt, icon_bin.count);
 }
 
-Arr<SegmentDef> parse_livesplit_segments(Arena *arena, xao_Reader *r, xao_Value segments_tag) {
+Arr<SegmentDef> parse_livesplit_segments(Arena *arena, ErrorContext *err, xao_Reader *r, xao_Value segments_tag) {
+    err_scope(err, "Parse LiveSplit file segments");
+
     Vec<SegmentDef> segments = {};
     xao_Value seg_tag = {};
     while (xao_iter_tags(r, segments_tag, &seg_tag)) {
@@ -318,12 +321,9 @@ Arr<SegmentDef> parse_livesplit_segments(Arena *arena, xao_Reader *r, xao_Value 
             if (eq(attr_tag, "Name")) {
                 seg->name = str_clone(arena, xml_inner(r, attr_tag));
             } else if (eq(attr_tag, "Icon")) {
+                err_scope(err, "Decode icon for segment '%.*s'", SF(seg->name));
                 Str base64 = xml_inner(r, attr_tag);
-                seg->icon = decode_icon_base64_to_png(arena, base64);
-                if (arr_is_empty(seg->icon)) {
-                    // TODO better error handling
-                    log_warn("Error decoding base64 icon for segment '%.*s'", SF(seg->name));
-                }
+                seg->icon = decode_icon_base64_to_png(arena, err, base64);
             }
         }
     }
@@ -382,7 +382,7 @@ FileDef *parse_livesplit_lss(Arena *arena, ErrorContext *err, Str xml) {
                     Str attempts_str = str_clone(arena, xml_inner(&r, run_tag));
                     file_def->total_attempts = parse_u64(err, attempts_str);
                 } else if (eq(run_tag, "Segments")) {
-                    file_def->segments = parse_livesplit_segments(arena, &r, run_tag);
+                    file_def->segments = parse_livesplit_segments(arena, err, &r, run_tag);
                 }
             }
         }
