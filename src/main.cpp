@@ -1,5 +1,6 @@
-#include "SDL3/SDL_iostream.h"
 #include "base.hpp"
+
+#include <stdarg.h>
 
 #include <SDL3/SDL.h>
 #define SDL_MAIN_USE_CALLBACKS
@@ -330,46 +331,38 @@ Arr<SegmentDef> parse_livesplit_segments(Arena *arena, xao_Reader *r, xao_Value 
     return vec_arr(&segments);
 }
 
-void load_timer_textures(Arena *arena, SDL_Renderer *renderer, FileDef *file) {
+void load_timer_textures(Arena *arena, ErrorContext *err, SDL_Renderer *renderer, FileDef *file) {
+    err_scope(err, "Load split textures");
+
     file->surfaces = arena_push_arr<SDL_Surface *>(arena, file->segments.count);
     file->textures = arena_push_arr<SDL_Texture *>(arena, file->segments.count);
 
     for (u64 i = 0; i < file->segments.count; i++) {
+        err_scope(err, "Load texture for segment '%.*s'", SF(file->segments[i].name));
+
         SDL_IOStream *png_stream = SDL_IOFromMem(file->segments[i].icon.ptr, file->segments[i].icon.count);
         defer(SDL_CloseIO(png_stream));
 
         file->surfaces[i] = SDL_LoadPNG_IO(png_stream, false);
         if (file->surfaces[i] == nullptr) {
-            // TODO handle error
-            log_fatal("Failed to load surface from PNG");
+            err_report(err, "Failed to load surface from PNG: %s", SDL_GetError());
+            return;
         }
 
         file->textures[i] = SDL_CreateTextureFromSurface(renderer, file->surfaces[i]);
         if (file->textures[i] == nullptr) {
-            // TODO handle error
-            log_fatal("Failed to load texture");
+            err_report(err, "Failed to create texture: %s", SDL_GetError());
+            return;
         }
     }
 }
 
-OSResult load_livesplit_lss(Arena *arena, SDL_Renderer *renderer, Str lss_path, FileDef **out) {
-    Arena *scratch = arena_acquire();
-    defer(arena_release(scratch));
+FileDef *parse_livesplit_lss(Arena *arena, ErrorContext *err, Str xml) {
+    err_scope(err, "Parse LiveSplit LSS");
 
-    // TODO arena allocate
-    size_t size = 0;
-    char *lss_path_cstr = str_to_c(scratch, lss_path);
-    void *lss_buf = SDL_LoadFile(lss_path_cstr, &size);
-    if (lss_buf == nullptr) {
-        // TODO sane error handling
-        return OSResult::OtherError;
-    }
-    defer(SDL_free(lss_buf));
-
-    Str xml = { .ptr = (u8 *)lss_buf, .count = (u64)size };
     if (!str_is_valid_utf8(xml)) {
-        // TODO proper error handling
-        return OSResult::InvalidUtf8;
+        err_report(err, "Invalid UTF-8");
+        return nullptr;
     }
 
     FileDef *file_def = arena_push<FileDef>(arena);
@@ -385,8 +378,9 @@ OSResult load_livesplit_lss(Arena *arena, SDL_Renderer *renderer, Str lss_path, 
                 } else if (eq(run_tag, "CategoryName")) {
                     file_def->category_name = str_clone(arena, xml_inner(&r, run_tag));
                 } else if (eq(run_tag, "AttemptCount")) {
+                    err_scope(err, "Parse AttemptCount");
                     Str attempts_str = str_clone(arena, xml_inner(&r, run_tag));
-                    file_def->total_attempts = str_to_u64(attempts_str).opt;
+                    file_def->total_attempts = parse_u64(err, attempts_str);
                 } else if (eq(run_tag, "Segments")) {
                     file_def->segments = parse_livesplit_segments(arena, &r, run_tag);
                 }
@@ -394,11 +388,31 @@ OSResult load_livesplit_lss(Arena *arena, SDL_Renderer *renderer, Str lss_path, 
         }
     }
 
-    load_timer_textures(arena, renderer, file_def);
+    return file_def;
+}
 
-    *out = file_def;
+FileDef *load_livesplit_lss(Arena *arena, ErrorContext *err, SDL_Renderer *renderer, Str lss_path) {
+    err_scope(err, "Load LiveSplit LSS file '%.*s'", SF(lss_path));
 
-    return OSResult::Ok;
+    Arena *scratch = arena_acquire();
+    defer(arena_release(scratch));
+
+    // TODO arena allocate
+    size_t size = 0;
+    char *lss_path_cstr = str_to_c(scratch, lss_path);
+    void *lss_buf = SDL_LoadFile(lss_path_cstr, &size);
+    if (lss_buf == nullptr) {
+        err_report(err, "Failed to load file: %s", SDL_GetError());
+        return nullptr;
+    }
+    defer(SDL_free(lss_buf));
+
+    Str xml = { .ptr = (u8 *)lss_buf, .count = (u64)size };
+
+    FileDef *file_def = parse_livesplit_lss(arena, err, xml);
+    load_timer_textures(arena, err, renderer, file_def);
+
+    return file_def;
 }
 
 //
@@ -455,15 +469,10 @@ void init_text(App *app) {
     TTF_SetTextColor(app->text, 255, 255, 255, SDL_ALPHA_OPAQUE);
 }
 
-FileDef *load_splits_file(Arena *arena, SDL_Renderer *renderer) {
+FileDef *load_splits_file(Arena *arena, ErrorContext *err, SDL_Renderer *renderer) {
     if (g_argv.count > 1) {
         Str path = str_from_c(g_argv[1]);
-        FileDef *splits = nullptr;
-        OSResult result = load_livesplit_lss(arena, renderer, path, &splits);
-        if (result != OSResult::Ok) {
-            log_fatal("Failed to load LSS '%.*s'", SF(path));
-        }
-        return splits;
+        return load_livesplit_lss(arena, err, renderer, path);
     } else {
         log_fatal("Usage: blitter <path-to-splits-file>");
     }
@@ -476,6 +485,9 @@ SDL_HitTestResult hittest_callback(SDL_Window* window, const SDL_Point *point, v
 
 SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
     thread_init(argc, argv);
+
+    ErrorContext err = { .arena = arena_acquire() };
+    defer(arena_release(err.arena));
 
     if (!SDL_SetAppMetadata("Blitter", "0.0.1", nullptr)) {
         log_fatal("Failed to set app metadata: %s", SDL_GetError());
@@ -518,9 +530,10 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
 
     init_text(app);
 
-    app->file = load_splits_file(root_arena, app->renderer);
-    if (app->file == nullptr) {
-        log_fatal("Failed to load splits");
+    app->file = load_splits_file(root_arena, &err, app->renderer);
+    if (err_failed(&err)) {
+        err_log(&err);
+        return SDL_APP_FAILURE;
     }
 
     return SDL_APP_CONTINUE;
@@ -581,16 +594,5 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
 }
 
 void SDL_AppQuit(void* appstate, SDL_AppResult result) {
-    App *app = (App *)appstate;
-
-    if (app->text != nullptr) {
-        TTF_DestroyText(app->text);
-    }
-    if (app->engine) {
-        TTF_DestroyRendererTextEngine(app->engine);
-    }
-    if (app->font) {
-        TTF_CloseFont(app->font);
-    }
-    TTF_Quit();
+    // Just let OS clean up everything
 }

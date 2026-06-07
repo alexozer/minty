@@ -5,9 +5,11 @@
 <!-- Render Roboto font -->
 <!-- Decode split images -->
 <!-- Replace most of shitty platform layer with SDL -->
-Render PNGs
+<!-- Render PNGs -->
 Write simple prototype stacking renderer
     How am I supposed to change the text contents? Size?
+        A: SDL_RenderTexture() or whatever takes src/dest size
+<!-- Error handling -->
 
 ## Research
 
@@ -26,3 +28,14 @@ Permanent split history / rollback / undo
 Upgrade SDL version
 Vendor some deps so things like the above are easier
 Prune SDL features to bring down binary size
+
+## Error handling
+
+<!-- Some sort of context system where you -->
+<!--     Say errctx("load split icon") -->
+<!--     Pass ErrorContext* to fallible functions -->
+<!--     First error: sets "bottom" error -->
+<!--     Subsequent error contexts -->
+<!--         Check if current error -->
+<!--         If so, stack on top -->
+<!--     Eventually, you process and clear the error context -->

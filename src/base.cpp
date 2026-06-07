@@ -177,15 +177,9 @@ Pair<Str, Str> str_split2(Str base, u8 delim) {
     return result;
 }
 
-__attribute__((format(printf, 2, 3)))
-Str str_format(Arena *arena, const char *format, ...) {
+Str str_format_v(Arena *arena, const char *format, va_list args) {
     char buf[kilobytes(8)];
-
-    va_list args;
-    va_start(args, format);
     int n = vsnprintf(buf, sizeof(buf), format, args);
-    va_end(args);
-
     if (n < 0) {
         return S("<formatting error>");
     }
@@ -193,6 +187,15 @@ Str str_format(Arena *arena, const char *format, ...) {
     Str s = { .ptr = (u8 *)buf, .count = (u64)n };
     // TODO try to allocate directly on tip of arena?
     return str_clone(arena, s);
+}
+
+__attribute__((format(printf, 2, 3)))
+Str str_format(Arena *arena, const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    Str s = str_format_v(arena, format, args);
+    va_end(args);
+    return s;
 }
 
 bool str_is_valid_utf8(Str s) {
@@ -340,23 +343,29 @@ void log_log(LogLevel level, const char *fmt, ...) {
 // Encoding/Decoding
 //
 
-Opt<u64> str_to_u64(Str s) {
-    if (str_is_empty(s)) return {};
+u64 parse_u64(ErrorContext *err, Str s) {
+    err_scope(err, "Parse '%.*s' as u64", SF(s));
+
+    if (str_is_empty(s)) {
+        err_report(err, "Empty string");
+        return {};
+    }
 
     u64 result = 0;
     for (u64 i = 0; i < s.count; i++) {
         if (s[i] < C('0') || s[i] > C('9')) {
+            err_report(err, "Non-numeric char: '%c'", s[i]);
             return {};
         }
         u64 new_result = result * 10 + (s[i] - C('0'));
         if (new_result < result) {
-            // Overflow
+            err_report(err, "u64 overflow");
             return {};
         }
         result = new_result;
     }
 
-    return some(result);
+    return result;
 }
 
 Opt<Arr<u8>> base64_decode(Arena *arena, Str s) {
@@ -407,4 +416,36 @@ Instant get_current_monotonic_time() {
 void thread_init(int argc, char **argv) {
     g_argv = { .ptr = argv, .count = (u64)argc };
     arena_pool_init();
+}
+
+//
+// Errors
+//
+
+__attribute__((format(printf, 2, 3)))
+void err_push_ctx(ErrorContext *ctx, const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    Str msg = str_format_v(ctx->arena, format, args);
+    vec_push(ctx->arena, &ctx->ctx_stack, msg);
+    va_end(args);
+}
+
+void err_log(ErrorContext *ctx) {
+    u64 count = ctx->ctx_stack.count;
+    if (count == 0) return;
+
+    log_error("Failed: %.*s", SF(ctx->ctx_stack[count - 1]));
+    if (count > 1) {
+        log_error("");
+        log_error("Caused by:");
+        log_error("");
+        for (i64 i = (i64) count - 2; i >= 0; i--) {
+            log_error("  Failed: %.*s", SF(ctx->ctx_stack[i]));
+        }
+    }
+}
+
+bool err_failed(ErrorContext *ctx) {
+    return !vec_is_empty(&ctx->ctx_stack);
 }

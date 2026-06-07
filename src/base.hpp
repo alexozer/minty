@@ -198,6 +198,7 @@ bool str_eq(Str s1, Str s2);
 bool str_starts_with(Str s, Str prefix);
 __attribute__((format(printf, 2, 3)))
 Str str_format(Arena *arena, const char *format, ...);
+Str str_format_v(Arena *arena, const char *format, va_list args);
 bool str_is_valid_utf8(Str s);
 Opt<u64> str_find(Str haystack, Str needle);
 
@@ -283,11 +284,10 @@ void vec_reset(Vec<T> *vec) {
     vec->count = 0;
 }
 
-//
-// Paths
-//
-
-Str path_join(Arena *arena, Str left_path, Str right_path);
+template <typename T>
+bool vec_is_empty(Vec<T> *vec) {
+    return vec->count == 0;
+}
 
 //
 // Defer
@@ -310,6 +310,52 @@ Defer(F) -> Defer<F>;
 #define CONCAT_IMPL(a, b) a##b
 #define CONCAT(a, b) CONCAT_IMPL(a, b)
 #define defer(code) Defer CONCAT(_defer_, __LINE__)([&]{ code; })
+
+template<typename F>
+struct DeferCtx {
+    F fn;
+    u64 ctx;
+
+    DeferCtx(F f, uint64_t c) : fn(f), ctx(c) {}
+    ~DeferCtx() { fn(ctx); }
+
+    DeferCtx(const DeferCtx&) = delete;
+    DeferCtx& operator=(const DeferCtx&) = delete;
+};
+
+template<typename F>
+DeferCtx(F, uint64_t) -> DeferCtx<F>;
+
+#define defer_ctx(code, value) Defer CONCAT(_defer_ctx_, __LINE__)([&]{ code; }, value)
+
+//
+// Errors
+//
+
+struct ErrorContext {
+    Arena *arena;
+    Vec<Str> ctx_stack;
+};
+
+__attribute__((format(printf, 2, 3)))
+void err_push_ctx(ErrorContext *ctx, const char *format, ...);
+void err_log(ErrorContext *ctx);
+bool err_failed(ErrorContext *ctx);
+
+#define err_scope(err, format, ...) \
+    DeferCtx CONCAT(_err_scope_, __LINE__)([&] (u64 _err_scope_count_) { \
+        if ((err)->ctx_stack.count > 0 && _err_scope_count_ == 0) { \
+            err_push_ctx((err), (format) __VA_OPT__(,) __VA_ARGS__); \
+        } \
+    }, (err)->ctx_stack.count)
+
+#define err_report(ctx, format, ...) if (vec_is_empty(&((ctx)->ctx_stack))) err_push_ctx((ctx), (format) __VA_OPT__(,) __VA_ARGS__)
+
+//
+// Paths
+//
+
+Str path_join(Arena *arena, Str left_path, Str right_path);
 
 //
 // Subprocesses
@@ -444,7 +490,7 @@ constexpr Duration operator-(const Instant &t1, const Instant &t2) {
 // Encoding/Decoding
 //
 
-Opt<u64> str_to_u64(Str s);
+u64 parse_u64(ErrorContext *err, Str s);
 Opt<Arr<u8>> base64_decode(Arena *arena, Str s);
 Str base64_encode(Arena *arena, Arr<u8> a);
 
