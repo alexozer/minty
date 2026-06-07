@@ -299,6 +299,8 @@ Str xml_inner(xao_Reader *r, xao_Value outer) {
 u8 PNG_HEADER[] = { 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a };
 
 Arr<u8> decode_icon_base64_to_png(Arena *arena, ErrorContext *err, Str icon_base64) {
+    err_scope(err, "Decode icon base64 to PNG");
+
     Arr<u8> icon_bin = base64_decode(arena, err, icon_base64);
     Opt<u64> png_idx = str_find(icon_bin, A(PNG_HEADER));
     if (!png_idx.present) {
@@ -310,7 +312,7 @@ Arr<u8> decode_icon_base64_to_png(Arena *arena, ErrorContext *err, Str icon_base
 }
 
 Arr<SegmentDef> parse_livesplit_segments(Arena *arena, ErrorContext *err, xao_Reader *r, xao_Value segments_tag) {
-    err_scope(err, "Parse LiveSplit file segments");
+    err_scope(err, "Parse LiveSplit LSS segments");
 
     Vec<SegmentDef> segments = {};
     xao_Value seg_tag = {};
@@ -320,6 +322,10 @@ Arr<SegmentDef> parse_livesplit_segments(Arena *arena, ErrorContext *err, xao_Re
         while (xao_iter_tags(r, seg_tag, &attr_tag)) {
             if (eq(attr_tag, "Name")) {
                 seg->name = str_clone(arena, xml_inner(r, attr_tag));
+                if (str_is_empty(seg->name)) {
+                    err_report(err, "Segment %" PRIu64 " has empty name", segments.count + 1);
+                    return {};
+                }
             } else if (eq(attr_tag, "Icon")) {
                 err_scope(err, "Decode icon for segment '%.*s'", SF(seg->name));
                 Str base64 = xml_inner(r, attr_tag);
@@ -332,7 +338,7 @@ Arr<SegmentDef> parse_livesplit_segments(Arena *arena, ErrorContext *err, xao_Re
 }
 
 void load_timer_textures(Arena *arena, ErrorContext *err, SDL_Renderer *renderer, FileDef *file) {
-    err_scope(err, "Load split textures");
+    err_scope(err, "Load segment textures");
 
     file->surfaces = arena_push_arr<SDL_Surface *>(arena, file->segments.count);
     file->textures = arena_push_arr<SDL_Texture *>(arena, file->segments.count);
@@ -360,12 +366,13 @@ void load_timer_textures(Arena *arena, ErrorContext *err, SDL_Renderer *renderer
 FileDef *parse_livesplit_lss(Arena *arena, ErrorContext *err, Str xml) {
     err_scope(err, "Parse LiveSplit LSS");
 
+    FileDef *file = arena_push<FileDef>(arena);
+
     if (!str_is_valid_utf8(xml)) {
         err_report(err, "Invalid UTF-8");
-        return nullptr;
+        return file;
     }
 
-    FileDef *file_def = arena_push<FileDef>(arena);
     xao_Reader r = xao_reader((char *)xml.ptr, xml.count);
     xao_Value root = {};
     xao_Value root_tag = {};
@@ -374,21 +381,30 @@ FileDef *parse_livesplit_lss(Arena *arena, ErrorContext *err, Str xml) {
             xao_Value run_tag = {};
             while (xao_iter_tags(&r, root_tag, &run_tag)) {
                 if (eq(run_tag, "GameName")) {
-                    file_def->game_name = str_clone(arena, xml_inner(&r, run_tag));
+                    file->game_name = str_clone(arena, xml_inner(&r, run_tag));
+                    if (str_is_empty(file->game_name)) {
+                        err_report(err, "Empty game name");
+                        return file;
+                    }
                 } else if (eq(run_tag, "CategoryName")) {
-                    file_def->category_name = str_clone(arena, xml_inner(&r, run_tag));
+                    file->category_name = str_clone(arena, xml_inner(&r, run_tag));
                 } else if (eq(run_tag, "AttemptCount")) {
                     err_scope(err, "Parse AttemptCount");
                     Str attempts_str = str_clone(arena, xml_inner(&r, run_tag));
-                    file_def->total_attempts = parse_u64(err, attempts_str);
+                    file->total_attempts = parse_u64(err, attempts_str);
                 } else if (eq(run_tag, "Segments")) {
-                    file_def->segments = parse_livesplit_segments(arena, err, &r, run_tag);
+                    file->segments = parse_livesplit_segments(arena, err, &r, run_tag);
                 }
             }
         }
     }
 
-    return file_def;
+    if (r.error != nullptr) {
+        err_report(err, "Failed to parse LSS XML: %s", r.error);
+        return file;
+    }
+
+    return file;
 }
 
 FileDef *load_livesplit_lss(Arena *arena, ErrorContext *err, SDL_Renderer *renderer, Str lss_path) {
