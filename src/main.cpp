@@ -333,7 +333,6 @@ Arr<SegmentDef> parse_livesplit_segments(Arena *arena, ErrorContext *err, xao_Re
             }
         }
     }
-
     return vec_arr(&segments);
 }
 
@@ -382,10 +381,6 @@ FileDef *parse_livesplit_lss(Arena *arena, ErrorContext *err, Str xml) {
             while (xao_iter_tags(&r, root_tag, &run_tag)) {
                 if (eq(run_tag, "GameName")) {
                     file->game_name = str_clone(arena, xml_inner(&r, run_tag));
-                    if (str_is_empty(file->game_name)) {
-                        err_report(err, "Empty game name");
-                        return file;
-                    }
                 } else if (eq(run_tag, "CategoryName")) {
                     file->category_name = str_clone(arena, xml_inner(&r, run_tag));
                 } else if (eq(run_tag, "AttemptCount")) {
@@ -401,6 +396,23 @@ FileDef *parse_livesplit_lss(Arena *arena, ErrorContext *err, Str xml) {
 
     if (r.error != nullptr) {
         err_report(err, "Failed to parse LSS XML: %s", r.error);
+        return file;
+    }
+
+    // Basic validation
+    if (arr_is_empty(file->segments)) {
+        err_report(err, "No segments found");
+        return file;
+    }
+    for (u64 i = 0; i < file->segments.count; i++) {
+        if (str_is_empty(file->segments[i].name)) {
+            err_report(err, "Segment %" PRIu64 " has no name", i + 1);
+            return file;
+        }
+    }
+
+    if (str_is_empty(file->game_name)) {
+        err_report(err, "Empty game name");
         return file;
     }
 
@@ -446,7 +458,6 @@ struct App {
     SDL_Renderer* renderer;
     TTF_Font *font;
     TTF_TextEngine *engine;
-    TTF_Text *text;
     FileDef *file;
 };
 
@@ -481,14 +492,6 @@ void init_text(ErrorContext *err, App *app) {
         err_report(err, "Couldn't create text engine: %s", SDL_GetError());
         return;
     }
-
-    /* Create the text */
-    app->text = TTF_CreateText(app->engine, app->font, "Hello world!", 0);
-    if (app->text == nullptr) {
-        err_report(err, "Couldn't create text: %s", SDL_GetError());
-        return;
-    }
-    TTF_SetTextColor(app->text, 255, 255, 255, SDL_ALPHA_OPAQUE);
 }
 
 SDL_HitTestResult hittest_callback(SDL_Window* window, const SDL_Point *point, void *data) {
@@ -571,48 +574,6 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
     return SDL_APP_CONTINUE;
 }
 
-void draw_sample_text(App *app) {
-    int w = 0, h = 0;
-    int text_w = 0, text_h = 0;
-    float x, y;
-    const float scale = 1.0f;
-
-    /* Center the text and scale it up */
-    SDL_GetRenderOutputSize(app->renderer, &w, &h);
-    SDL_SetRenderScale(app->renderer, scale, scale);
-    TTF_GetTextSize(app->text, &text_w, &text_h);
-    x = ((w / scale) - text_w) / 2;
-    y = ((h / scale) - text_h) / 2;
-
-    /* Draw the text */
-    SDL_SetRenderDrawColor(app->renderer, 0, 0, 0, 255);
-    SDL_RenderClear(app->renderer);
-    TTF_DrawRendererText(app->text, x, y);
-}
-
-SDL_AppResult SDL_AppIterate(void* appstate) {
-    App *app = (App *)appstate;
-
-    draw_sample_text(app);
-
-    // Draw split icons
-    f32 y = 0;
-    for (u64 i = 0; i < app->file->textures.count; i++) {
-        SDL_FRect dest = {
-            .x = 0,
-            .y = y,
-            .w = (f32)app->file->textures[i]->w,
-            .h = (f32)app->file->textures[i]->h,
-        };
-        SDL_RenderTexture(app->renderer, app->file->textures[i], nullptr, &dest);
-        y += (f32)app->file->textures[i]->h;
-    }
-
-    SDL_RenderPresent(app->renderer);
-
-    return SDL_APP_CONTINUE;
-}
-
 SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
     // App *app = (App *)appstate;
 
@@ -627,4 +588,259 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
 
 void SDL_AppQuit(void* appstate, SDL_AppResult result) {
     // Just let OS clean up everything
+}
+
+//
+// Rendering
+//
+
+enum class BoxType {
+    Empty,
+    Text,
+    Texture,
+    TopToBottomStack,
+    LeftToRightStack,
+};
+
+// Try some fat struct stuff?
+struct Box {
+    BoxType type;
+
+    // Text stuff
+    Str text_content;
+    TTF_Font *font;
+    TTF_Text *text_obj;
+    SDL_FColor color;
+    f32 font_size;
+
+    // Texture stuff
+    SDL_Texture *texture;
+
+    f32 width;
+    f32 height;
+    // Hm, padding determined by just making more boxes for now?
+
+    Vec<Box*> children;
+};
+
+// TODO cache this if we keep using it for long enough
+SDL_FPoint compute_box_bbox(Box *box) {
+    if (box->type == BoxType::Empty) {
+        return { .x = box->width, .y = box->height };
+
+    } else if (box->type == BoxType::LeftToRightStack) {
+        SDL_FPoint total = {};
+        for (u64 i = 0; i < box->children.count; i++) {
+            SDL_FPoint child_bbox = compute_box_bbox(box->children[i]);
+            if (i == 0) {
+                total = child_bbox;
+            } else {
+                total.x += child_bbox.x;
+                total.y = max(total.y, child_bbox.y);
+            }
+        }
+
+    } else if (box->type == BoxType::TopToBottomStack) {
+        SDL_FPoint total = {};
+        for (u64 i = 0; i < box->children.count; i++) {
+            SDL_FPoint child_bbox = compute_box_bbox(box->children[i]);
+            if (i == 0) {
+                total = child_bbox;
+            } else {
+                total.x = max(total.x, child_bbox.x);
+                total.y += child_bbox.y;
+            }
+        }
+
+    } else if (box->type == BoxType::Text) {
+        i32 width = 0;
+        i32 height = 0;
+        TTF_GetTextSize(box->text_obj, &width, &height);
+        return { .x = (f32)width, .y = (f32)height };
+
+    } else if (box->type == BoxType::Texture) {
+        return { .x = box->width, .y = box->height };
+    }
+
+    return {};
+}
+
+Box *align_box_right(Arena *arena, Box *box, f32 width) {
+    SDL_FPoint bbox = compute_box_bbox(box);
+    if (bbox.x >= width) {
+        return box;
+    }
+
+    f32 pad_width = width - bbox.x;
+    Box *pad_box = arena_push<Box>(arena);
+    pad_box->type = BoxType::Empty;
+    pad_box->width = pad_width;
+    pad_box->height = bbox.y;
+
+    Box *parent_box = arena_push<Box>(arena);
+    parent_box->type = BoxType::LeftToRightStack;
+    vec_push(arena, &parent_box->children, pad_box);
+    vec_push(arena, &parent_box->children, box);
+
+    return parent_box;
+}
+
+Box *align_box_left(Arena *arena, Box *box, f32 width) {
+    SDL_FPoint bbox = compute_box_bbox(box);
+    if (bbox.x >= width) {
+        return box;
+    }
+
+    f32 pad_width = width - bbox.x;
+    Box *pad_box = arena_push<Box>(arena);
+    pad_box->type = BoxType::Empty;
+    pad_box->width = pad_width;
+    pad_box->height = bbox.y;
+
+    Box *parent_box = arena_push<Box>(arena);
+    parent_box->type = BoxType::LeftToRightStack;
+    vec_push(arena, &parent_box->children, box);
+    vec_push(arena, &parent_box->children, pad_box);
+
+    return parent_box;
+}
+
+Box *align_box_bottom(Arena *arena, Box *box, f32 height) {
+    SDL_FPoint bbox = compute_box_bbox(box);
+    if (bbox.y >= height) {
+        return box;
+    }
+
+    f32 pad_height = height - bbox.y;
+    Box *pad_box = arena_push<Box>(arena);
+    pad_box->type = BoxType::Empty;
+    pad_box->width = bbox.x;
+    pad_box->height = pad_height;
+
+    Box *parent_box = arena_push<Box>(arena);
+    parent_box->type = BoxType::TopToBottomStack;
+    vec_push(arena, &parent_box->children, pad_box);
+    vec_push(arena, &parent_box->children, box);
+
+    return parent_box;
+}
+
+Box *align_box_top(Arena *arena, Box *box, f32 height) {
+    SDL_FPoint bbox = compute_box_bbox(box);
+    if (bbox.y >= height) {
+        return box;
+    }
+
+    f32 pad_height = height - bbox.y;
+    Box *pad_box = arena_push<Box>(arena);
+    pad_box->type = BoxType::Empty;
+    pad_box->width = bbox.x;
+    pad_box->height = pad_height;
+
+    Box *parent_box = arena_push<Box>(arena);
+    parent_box->type = BoxType::TopToBottomStack;
+    vec_push(arena, &parent_box->children, pad_box);
+    vec_push(arena, &parent_box->children, box);
+
+    return parent_box;
+}
+
+Box *align_box_center_horiz(Arena *arena, Box *box, f32 width) {
+    SDL_FPoint bbox = compute_box_bbox(box);
+    if (width < bbox.x) {
+        return box;
+    }
+
+    f32 align_width = (width - bbox.x) / 2 + width;
+    return align_box_right(arena, align_box_left(arena, box, align_width), align_width);
+}
+
+Box *align_box_center_vert(Arena *arena, Box *box, f32 height) {
+    SDL_FPoint bbox = compute_box_bbox(box);
+    if (height < bbox.y) {
+        return box;
+    }
+
+    f32 align_height = (height - bbox.y) / 2 + height;
+    return align_box_bottom(arena, align_box_top(arena, box, align_height), align_height);
+}
+
+Box *make_text_box(Arena *arena, TTF_TextEngine *engine, TTF_Font *font, Str content, SDL_FColor color, f32 size) {
+    Box *box = arena_push<Box>(arena);
+
+    box->type = BoxType::Text;
+    const char *content_cstr = str_is_empty(content) ? "" : (const char *)content.ptr;
+    // Zero length actually means "treat string as null terminated"
+    box->text_obj = TTF_CreateText(engine, font, content_cstr, content.count);
+    TTF_SetTextColorFloat(box->text_obj, color.r, color.g, color.b, color.a);
+
+    return box;
+}
+
+Box *prerender(Arena *arena, App *app) {
+    i32 width = 0;
+    i32 height = 0;
+    SDL_GetRenderOutputSize(app->renderer, &width, &height);
+
+    SDL_FColor color = { .r = 1.f, .g = 1.f, .b = 1.f, .a = 1.f };
+
+    Box *game_name = make_text_box( arena, app->engine, app->font,
+            app->file->game_name, color, 9);
+    Box *cat_name = make_text_box( arena, app->engine, app->font,
+            app->file->category_name, color, 9);
+
+    Box *game_name_centered = align_box_center_horiz(arena, game_name, (f32)width);
+    Box *cat_name_centered = align_box_center_horiz(arena, cat_name, (f32)width);
+
+    Box *root_box = arena_push<Box>(arena);
+    root_box->type = BoxType::TopToBottomStack;
+    vec_push(arena, &root_box->children, game_name_centered);
+    vec_push(arena, &root_box->children, cat_name_centered);
+
+    return root_box;
+}
+
+void render_box(App *app, Box *box, SDL_FPoint where) {
+    if (box->type == BoxType::Empty) {
+
+    } else if (box->type == BoxType::LeftToRightStack) {
+        for (u64 i = 0; i < box->children.count; i++) {
+            SDL_FPoint child_bbox = compute_box_bbox(box->children[i]);
+            render_box(app, box->children[i], where);
+            where.x += child_bbox.x;
+        }
+
+    } else if (box->type == BoxType::TopToBottomStack) {
+        for (u64 i = 0; i < box->children.count; i++) {
+            SDL_FPoint child_bbox = compute_box_bbox(box->children[i]);
+            render_box(app, box->children[i], where);
+            where.y += child_bbox.y;
+        }
+
+    } else if (box->type == BoxType::Text) {
+
+    } else if (box->type == BoxType::Texture) {
+
+    }
+}
+
+void render(App *app) {
+    // Frame arena
+    Arena *arena = arena_acquire();
+    defer(arena_release(arena));
+
+    Box *box = prerender(arena, app);
+
+    SDL_SetRenderDrawColor(app->renderer, 5, 0, 8, 255);
+    SDL_RenderClear(app->renderer);
+
+    render_box(app, box, {});
+
+    SDL_RenderPresent(app->renderer);
+}
+
+SDL_AppResult SDL_AppIterate(void* appstate) {
+    App *app = (App *)appstate;
+    render(app);
+    return SDL_APP_CONTINUE;
 }

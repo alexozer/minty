@@ -39,3 +39,17 @@ Prune SDL features to bring down binary size
 <!--         Check if current error -->
 <!--         If so, stack on top -->
 <!--     Eventually, you process and clear the error context -->
+
+## Simple starter renderer
+
+Box can be
+    Text (content, size, color)
+    Texture (scale?)
+    Nothing (padding)?
+Box can have
+    Padding (but not margin)
+    Width/Height (no constraints atm)
+    Hstack/Vstack children
+        In this case, box width/height is determined by children?
+        Maybe only for vertical?
+    Maybe also allow option for absolute size with children?
