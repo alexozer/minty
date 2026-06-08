@@ -607,11 +607,8 @@ struct Box {
     BoxType type;
 
     // Text stuff
-    Str text_content;
-    TTF_Font *font;
     TTF_Text *text_obj;
-    SDL_FColor color;
-    f32 font_size;
+    f32 scale;
 
     // Texture stuff
     SDL_Texture *texture;
@@ -622,6 +619,26 @@ struct Box {
 
     Vec<Box*> children;
 };
+
+Box *make_text_box(Arena *arena, TTF_TextEngine *engine, TTF_Font *font, Str content, SDL_FColor color, f32 size) {
+    Box *box = arena_push<Box>(arena);
+
+    box->type = BoxType::Text;
+    const char *content_cstr = str_is_empty(content) ? "" : (const char *)content.ptr;
+    // Zero length actually means "treat string as null terminated"
+    box->text_obj = TTF_CreateText(engine, font, content_cstr, content.count);
+    TTF_SetTextColorFloat(box->text_obj, color.r, color.g, color.b, color.a);
+
+    return box;
+}
+
+Box *make_empty_box(Arena *arena, f32 width, f32 height) {
+    Box *box = arena_push<Box>(arena);
+    box->type = BoxType::Empty;
+    box->width = max(width, 0.0f);
+    box->height = max(height, 0.0f);
+    return box;
+}
 
 // TODO cache this if we keep using it for long enough
 SDL_FPoint compute_box_bbox(Box *box) {
@@ -639,6 +656,7 @@ SDL_FPoint compute_box_bbox(Box *box) {
                 total.y = max(total.y, child_bbox.y);
             }
         }
+        return total;
 
     } else if (box->type == BoxType::TopToBottomStack) {
         SDL_FPoint total = {};
@@ -651,6 +669,7 @@ SDL_FPoint compute_box_bbox(Box *box) {
                 total.y += child_bbox.y;
             }
         }
+        return total;
 
     } else if (box->type == BoxType::Text) {
         i32 width = 0;
@@ -661,21 +680,14 @@ SDL_FPoint compute_box_bbox(Box *box) {
     } else if (box->type == BoxType::Texture) {
         return { .x = box->width, .y = box->height };
     }
-
-    return {};
+    log_assert("Unknown box type");
 }
 
-Box *align_box_right(Arena *arena, Box *box, f32 width) {
-    SDL_FPoint bbox = compute_box_bbox(box);
-    if (bbox.x >= width) {
-        return box;
-    }
+Box *pad_box_left(Arena *arena, Box *box, f32 pad) {
+    if (pad < 0) return box;
 
-    f32 pad_width = width - bbox.x;
-    Box *pad_box = arena_push<Box>(arena);
-    pad_box->type = BoxType::Empty;
-    pad_box->width = pad_width;
-    pad_box->height = bbox.y;
+    SDL_FPoint bbox = compute_box_bbox(box);
+    Box *pad_box = make_empty_box(arena, pad, bbox.y);
 
     Box *parent_box = arena_push<Box>(arena);
     parent_box->type = BoxType::LeftToRightStack;
@@ -685,17 +697,11 @@ Box *align_box_right(Arena *arena, Box *box, f32 width) {
     return parent_box;
 }
 
-Box *align_box_left(Arena *arena, Box *box, f32 width) {
-    SDL_FPoint bbox = compute_box_bbox(box);
-    if (bbox.x >= width) {
-        return box;
-    }
+Box *pad_box_right(Arena *arena, Box *box, f32 pad) {
+    if (pad < 0) return box;
 
-    f32 pad_width = width - bbox.x;
-    Box *pad_box = arena_push<Box>(arena);
-    pad_box->type = BoxType::Empty;
-    pad_box->width = pad_width;
-    pad_box->height = bbox.y;
+    SDL_FPoint bbox = compute_box_bbox(box);
+    Box *pad_box = make_empty_box(arena, pad, bbox.y);
 
     Box *parent_box = arena_push<Box>(arena);
     parent_box->type = BoxType::LeftToRightStack;
@@ -705,17 +711,11 @@ Box *align_box_left(Arena *arena, Box *box, f32 width) {
     return parent_box;
 }
 
-Box *align_box_bottom(Arena *arena, Box *box, f32 height) {
-    SDL_FPoint bbox = compute_box_bbox(box);
-    if (bbox.y >= height) {
-        return box;
-    }
+Box *pad_box_top(Arena *arena, Box *box, f32 pad) {
+    if (pad < 0) return box;
 
-    f32 pad_height = height - bbox.y;
-    Box *pad_box = arena_push<Box>(arena);
-    pad_box->type = BoxType::Empty;
-    pad_box->width = bbox.x;
-    pad_box->height = pad_height;
+    SDL_FPoint bbox = compute_box_bbox(box);
+    Box *pad_box = make_empty_box(arena, bbox.x, pad);
 
     Box *parent_box = arena_push<Box>(arena);
     parent_box->type = BoxType::TopToBottomStack;
@@ -725,56 +725,46 @@ Box *align_box_bottom(Arena *arena, Box *box, f32 height) {
     return parent_box;
 }
 
-Box *align_box_top(Arena *arena, Box *box, f32 height) {
-    SDL_FPoint bbox = compute_box_bbox(box);
-    if (bbox.y >= height) {
-        return box;
-    }
+Box *pad_box_bottom(Arena *arena, Box *box, f32 pad) {
+    if (pad < 0) return box;
 
-    f32 pad_height = height - bbox.y;
-    Box *pad_box = arena_push<Box>(arena);
-    pad_box->type = BoxType::Empty;
-    pad_box->width = bbox.x;
-    pad_box->height = pad_height;
+    SDL_FPoint bbox = compute_box_bbox(box);
+    Box *pad_box = make_empty_box(arena, bbox.x, pad);
 
     Box *parent_box = arena_push<Box>(arena);
     parent_box->type = BoxType::TopToBottomStack;
-    vec_push(arena, &parent_box->children, pad_box);
     vec_push(arena, &parent_box->children, box);
+    vec_push(arena, &parent_box->children, pad_box);
 
     return parent_box;
 }
 
 Box *align_box_center_horiz(Arena *arena, Box *box, f32 width) {
     SDL_FPoint bbox = compute_box_bbox(box);
-    if (width < bbox.x) {
-        return box;
-    }
+    f32 pad = (width - bbox.x) / 2;
+    Box *pad_box = make_empty_box(arena, pad, bbox.y);
 
-    f32 align_width = (width - bbox.x) / 2 + width;
-    return align_box_right(arena, align_box_left(arena, box, align_width), align_width);
+    Box *parent = arena_push<Box>(arena);
+    parent->type = BoxType::LeftToRightStack;
+    vec_push(arena, &parent->children, pad_box);
+    vec_push(arena, &parent->children, box);
+    vec_push(arena, &parent->children, pad_box);
+
+    return parent;
 }
 
-Box *align_box_center_vert(Arena *arena, Box *box, f32 height) {
+Box *align_box_center_vert(Arena *arena, Box *box, f32 width) {
     SDL_FPoint bbox = compute_box_bbox(box);
-    if (height < bbox.y) {
-        return box;
-    }
+    f32 pad = (width - bbox.y) / 2;
+    Box *pad_box = make_empty_box(arena, bbox.x, pad);
 
-    f32 align_height = (height - bbox.y) / 2 + height;
-    return align_box_bottom(arena, align_box_top(arena, box, align_height), align_height);
-}
+    Box *parent = arena_push<Box>(arena);
+    parent->type = BoxType::TopToBottomStack;
+    vec_push(arena, &parent->children, pad_box);
+    vec_push(arena, &parent->children, box);
+    vec_push(arena, &parent->children, pad_box);
 
-Box *make_text_box(Arena *arena, TTF_TextEngine *engine, TTF_Font *font, Str content, SDL_FColor color, f32 size) {
-    Box *box = arena_push<Box>(arena);
-
-    box->type = BoxType::Text;
-    const char *content_cstr = str_is_empty(content) ? "" : (const char *)content.ptr;
-    // Zero length actually means "treat string as null terminated"
-    box->text_obj = TTF_CreateText(engine, font, content_cstr, content.count);
-    TTF_SetTextColorFloat(box->text_obj, color.r, color.g, color.b, color.a);
-
-    return box;
+    return parent;
 }
 
 Box *prerender(Arena *arena, App *app) {
@@ -818,6 +808,7 @@ void render_box(App *app, Box *box, SDL_FPoint where) {
         }
 
     } else if (box->type == BoxType::Text) {
+        TTF_DrawRendererText(box->text_obj, where.x, where.y);
 
     } else if (box->type == BoxType::Texture) {
 
