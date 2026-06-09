@@ -59,22 +59,28 @@ static bool xao__advance_until(xao_Reader *r, char *s) {
     return false;
 }
 
+const char *codes[] = { "&lt;", "&gt;", "&amp;", "&apos;", "&quot;" };
+const char escapes[] = { '<', '>', '&', '\'', '"' };
+
 static char *xao__unescape(char *start, char *end) {
     char *base = start;
-    while (true) {
-        char *esc = memchr(start, '&', end - start);
-        if (esc == NULL) {
-            memcpy(base, start, end - start);
-            return base + (end - start);
-        }
-        if (xao__is_string(esc, end, "&apos;")) {
-            *esc = '\'';
+top: {
+    char *esc = memchr(start, '&', end - start);
+    if (esc == NULL) {
+        memcpy(base, start, end - start);
+        return base + (end - start);
+    }
+    for (int i = 0; i < (sizeof codes / sizeof codes[0]); i++) {
+        if (xao__is_string(esc, end, codes[i])) {
+            *esc = escapes[i];
             memcpy(base, start, esc - start + 1);
             base += esc - start + 1;
-            start = esc + 6;
+            start = esc + strlen(codes[i]);
+            goto top;
         }
     }
-}
+    start++; goto top; // Unsupported code
+}}
 
 static xao_Value xao__read(xao_Reader *r) {
 top: {
