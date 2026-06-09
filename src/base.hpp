@@ -121,7 +121,7 @@ T *arena_push(Arena *arena) {
 
 template <typename T>
 Arr<T> arena_push_arr(Arena *arena, u64 count) {
-    constexpr u64 ALIGN = min(next_pow2(sizeof(T)), 8ull);
+    constexpr u64 ALIGN = min(next_pow2(sizeof(T)), (u64)8);
     return {
         .ptr = (T *)arena__push_bytes<ALIGN>(arena, sizeof(T) * count),
         .count = count,

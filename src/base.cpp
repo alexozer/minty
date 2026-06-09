@@ -194,7 +194,7 @@ bool str_is_valid_utf8(Str s) {
 Opt<u64> str_find(Str haystack, Str needle) {
     if (str_is_empty(needle)) {
         // Found the non-existent needle at the start of the haystack
-        return some(0ULL);
+        return some((u64)0);
     }
 
     u64 i = 0;

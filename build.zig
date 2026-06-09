@@ -4,7 +4,6 @@ const zcc = @import("compile_commands");
 const cxx_flags: []const []const u8 = &.{
     "-Wall",
     "-Wshadow",
-    "-Werror",
     "-isystem", "3rdparty",
     "-DYYJSON_DISABLE_INCR_READER=1",
     "-DYYJSON_DISABLE_UTILS=1",
@@ -55,6 +54,7 @@ pub fn build(b: *std.Build) !void {
         .windows => blitter_sources ++ .{ "src/platform_windows.cpp" },
         else => @panic("Unsupported OS"),
     };
+    const blitter_flags = cpp_flags ++ .{ "-Werror" };
 
     const sdl = b.dependency("sdl", .{ .optimize = optimize, .target = target });
     try cdb_targets.append(b.allocator, sdl.artifact("SDL3"));
@@ -115,7 +115,7 @@ pub fn build(b: *std.Build) !void {
             .link_libcpp = false,
         }),
     });
-    blitter.root_module.addCSourceFiles(.{ .files = blitter_sources_plat, .flags = cpp_flags });
+    blitter.root_module.addCSourceFiles(.{ .files = blitter_sources_plat, .flags = blitter_flags });
     blitter.root_module.linkLibrary(simdutf);
     blitter.root_module.linkLibrary(yyjson);
     blitter.root_module.linkLibrary(xao);
