@@ -99,7 +99,16 @@ struct Arena {
     u64 offset;
 };
 
-void *arena__push_bytes(Arena *arena, u64 size, u64 alignment);
+template <u64 ALIGNMENT>
+void *arena__push_bytes(Arena *arena, u64 size) {
+    arena->offset = align_to(arena->offset, ALIGNMENT);
+    void *pos = (void *)((u64)arena->data + arena->offset);
+    arena->offset += align_to(size, ALIGNMENT);
+    if (arena->offset > arena->reserved) {
+         log_fatal("Arena over! offset = %" PRIu64 ", reserved = %" PRIu64, arena->offset, arena->reserved);
+    }
+    return pos;
+}
 
 void arena_pool_init();
 Arena *arena_acquire();
@@ -107,13 +116,14 @@ void arena_release(Arena *arena);
 
 template <typename T>
 T *arena_push(Arena *arena) {
-    return (T *)arena__push_bytes(arena, sizeof(T), 8);
+    return (T *)arena__push_bytes<8>(arena, sizeof(T));
 }
 
 template <typename T>
 Arr<T> arena_push_arr(Arena *arena, u64 count) {
+    constexpr u64 ALIGN = min(next_pow2(sizeof(T)), 8ull);
     return {
-        .ptr = (T *)arena__push_bytes(arena, sizeof(T) * count, 8),
+        .ptr = (T *)arena__push_bytes<ALIGN>(arena, sizeof(T) * count),
         .count = count,
     };
 }

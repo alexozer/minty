@@ -11,17 +11,6 @@
 
 #include "platform.hpp"
 
-// TODO deal with e.g. string nonalignment
-void *arena__push_bytes(Arena *arena, u64 size, u64 alignment) {
-    arena->offset = align_to(arena->offset, alignment);
-    void *pos = (void *)((u64)arena->data + arena->offset);
-    arena->offset += align_to(size, alignment);
-    if (arena->offset > arena->reserved) {
-         log_fatal("Arena over! offset = %" PRIu64 ", reserved = %" PRIu64, arena->offset, arena->reserved);
-    }
-    return pos;
-}
-
 // TODO sane arena sizing/lifetime scheme
 static constexpr u64 ARENA_POOL_MAX = 16;
 static constexpr u64 ARENA_SIZE = megabytes(32);
