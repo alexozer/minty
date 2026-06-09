@@ -456,7 +456,9 @@ struct App {
     Arena *arena; // Lives for duration of application
     SDL_Window* window;
     SDL_Renderer* renderer;
-    TTF_Font *font;
+    TTF_Font *font_small;
+    TTF_Font *font_medium;
+    TTF_Font *font_large;
     TTF_TextEngine *engine;
     FileDef *file;
 };
@@ -480,8 +482,10 @@ void init_text(ErrorContext *err, App *app) {
     Arr<u8> ttf = { .ptr = (u8 *)font_buf, .count = (u64)font_file_size };
 
     /* Open the font */
-    app->font = TTF_OpenFontIO(SDL_IOFromConstMem(ttf.ptr, ttf.count), true, 40.0f);
-    if (app->font == nullptr) {
+    app->font_small = TTF_OpenFontIO(SDL_IOFromConstMem(ttf.ptr, ttf.count), true, 15.0f);
+    app->font_medium = TTF_OpenFontIO(SDL_IOFromConstMem(ttf.ptr, ttf.count), true, 18.0f);
+    app->font_large = TTF_OpenFontIO(SDL_IOFromConstMem(ttf.ptr, ttf.count), true, 64.0f);
+    if (app->font_small == nullptr || app->font_medium == nullptr || app->font_large == nullptr) {
         err_report(err, "Couldn't open font: %s", SDL_GetError());
         return;
     }
@@ -620,7 +624,7 @@ struct Box {
     Vec<Box*> children;
 };
 
-Box *make_text_box(Arena *arena, TTF_TextEngine *engine, TTF_Font *font, Str content, SDL_FColor color, f32 size) {
+Box *make_text_box(Arena *arena, TTF_TextEngine *engine, TTF_Font *font, Str content, SDL_FColor color) {
     Box *box = arena_push<Box>(arena);
 
     box->type = BoxType::Text;
@@ -638,6 +642,15 @@ Box *make_empty_box(Arena *arena, f32 width, f32 height) {
     box->width = max(width, 0.0f);
     box->height = max(height, 0.0f);
     return box;
+}
+
+Box *make_texture_box(Arena *arena, SDL_Texture *texture, f32 width, f32 height) {
+    Box *box = arena_push<Box>(arena);
+    box->type = BoxType::Texture;
+    box->width = max(width, 0.0f);
+    box->height = max(height, 0.0f);
+    box->texture = texture;
+    return box; box;
 }
 
 // TODO cache this if we keep using it for long enough
@@ -767,6 +780,24 @@ Box *align_box_center_vert(Arena *arena, Box *box, f32 width) {
     return parent;
 }
 
+Box *prerender_segment(Arena *arena, App *app, u64 idx) {
+    Box *icon = make_texture_box(arena, app->file->textures[idx], 48.f, 48.f);
+    SDL_FPoint icon_bbox = compute_box_bbox(icon);
+
+    SDL_FColor color = { .r = 1.f, .g = 1.f, .b = 1.f, .a = 1.f };
+    Box *pad = make_empty_box(arena, 16, 0);
+    Box *title = make_text_box(arena, app->engine, app->font_medium, app->file->segments[idx].name, color);
+    Box *title_centered = align_box_center_vert(arena, title, icon_bbox.y);
+
+    Box *row = arena_push<Box>(arena);
+    row->type = BoxType::LeftToRightStack;
+    vec_push(arena, &row->children, icon);
+    vec_push(arena, &row->children, pad);
+    vec_push(arena, &row->children, title_centered);
+
+    return row;
+}
+
 Box *prerender(Arena *arena, App *app) {
     i32 width = 0;
     i32 height = 0;
@@ -774,20 +805,47 @@ Box *prerender(Arena *arena, App *app) {
 
     SDL_FColor color = { .r = 1.f, .g = 1.f, .b = 1.f, .a = 1.f };
 
-    Box *game_name = make_text_box( arena, app->engine, app->font,
-            app->file->game_name, color, 9);
-    Box *cat_name = make_text_box( arena, app->engine, app->font,
-            app->file->category_name, color, 9);
+    Box *game_name = make_text_box(arena, app->engine, app->font_medium,
+            app->file->game_name, color);
+    Box *cat_name = make_text_box(arena, app->engine, app->font_medium,
+            app->file->category_name, color);
 
     Box *game_name_centered = align_box_center_horiz(arena, game_name, (f32)width);
     Box *cat_name_centered = align_box_center_horiz(arena, cat_name, (f32)width);
 
-    Box *root_box = arena_push<Box>(arena);
-    root_box->type = BoxType::TopToBottomStack;
-    vec_push(arena, &root_box->children, game_name_centered);
-    vec_push(arena, &root_box->children, cat_name_centered);
+    Box *top = arena_push<Box>(arena);
+    top->type = BoxType::TopToBottomStack;
+    vec_push(arena, &top->children, game_name_centered);
+    vec_push(arena, &top->children, cat_name_centered);
 
-    return root_box;
+    for (u64 i = 30; i < min(app->file->segments.count, (u64)40); i++) {
+        Box *segment = prerender_segment(arena, app, i);
+        vec_push(arena, &top->children, segment);
+    }
+
+    Box *bottom = arena_push<Box>(arena);
+    bottom->type = BoxType::TopToBottomStack;
+
+    Duration t = get_current_monotonic_time() - Instant{};
+    Str t_str = format_duration(arena, t, 2, false);
+    Box *curr_time = make_text_box(arena, app->engine, app->font_large, t_str, color);
+    SDL_FPoint curr_time_bbox = compute_box_bbox(curr_time);
+    Box *curr_time_aligned = pad_box_left(arena, curr_time, width - curr_time_bbox.x);
+
+    vec_push(arena, &bottom->children, curr_time_aligned);
+
+    // Put timer at bottom
+    SDL_FPoint top_bbox = compute_box_bbox(top);
+    SDL_FPoint bottom_bbox = compute_box_bbox(bottom);
+    Box *vsep = make_empty_box(arena, 0, height - top_bbox.y - bottom_bbox.y);
+
+    Box *root = arena_push<Box>(arena);
+    root->type = BoxType::TopToBottomStack;
+    vec_push(arena, &root->children, top);
+    vec_push(arena, &root->children, vsep);
+    vec_push(arena, &root->children, bottom);
+
+    return root;
 }
 
 void render_box(App *app, Box *box, SDL_FPoint where) {
@@ -811,7 +869,26 @@ void render_box(App *app, Box *box, SDL_FPoint where) {
         TTF_DrawRendererText(box->text_obj, where.x, where.y);
 
     } else if (box->type == BoxType::Texture) {
+        f32 src_ratio = (f32)box->texture->w / (f32)box->texture->h;
+        f32 dst_ratio = box->width / box->height;
 
+        // Scale to fit
+        SDL_FRect dest = {};
+        if (src_ratio > dst_ratio) {
+            f32 scale = box->width / (f32)box->texture->w;
+            dest.w = box->width;
+            dest.h = (f32)box->texture->h * scale;
+            dest.x = where.x;
+            dest.y = where.y + ((box->height - dest.h) / 2.f);
+        } else {
+            f32 scale = box->height / (f32)box->texture->h;
+            dest.w = (f32)box->texture->w * scale;
+            dest.h = box->height;
+            dest.x = where.x + ((box->width - dest.w) / 2.f);
+            dest.y = where.y;
+        }
+
+        SDL_RenderTexture(app->renderer, box->texture, nullptr, &dest);
     }
 }
 

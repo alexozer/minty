@@ -9,11 +9,13 @@
 Write simple prototype stacking renderer
     How am I supposed to change the text contents? Size?
         A: SDL_RenderTexture() or whatever takes src/dest size
+        For text: fixed font sizes for now
 <!-- Error handling -->
 
 ## Research
 
 File Pilot render system interview
+Blog posts on text rendering / SDFs
 kb_text_shape shaping/segmentation
 GPU font rendering (slug)
 Modern rendering APIs (webgpu, sdl gpu)
