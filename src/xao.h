@@ -1,8 +1,3 @@
-// TODO:
-// Escape codes (escape in-place?)
-// Error line/col
-// Code golf it a bit
-
 #ifndef XAO_H
 #define XAO_H
 
@@ -59,8 +54,8 @@ static bool xao__advance_until(xao_Reader *r, char *s) {
     return false;
 }
 
-const char *codes[] = { "&lt;", "&gt;", "&amp;", "&apos;", "&quot;" };
-const char escapes[] = { '<', '>', '&', '\'', '"' };
+const char *esc_codes[] = { "&lt;", "&gt;", "&amp;", "&apos;", "&quot;" };
+const char esc_chars[] = { '<', '>', '&', '\'', '"' };
 
 static char *xao__unescape(char *start, char *end) {
     char *base = start;
@@ -70,12 +65,12 @@ top: {
         memcpy(base, start, end - start);
         return base + (end - start);
     }
-    for (int i = 0; i < (sizeof codes / sizeof codes[0]); i++) {
-        if (xao__is_string(esc, end, codes[i])) {
-            *esc = escapes[i];
+    for (int i = 0; i < (sizeof esc_codes / sizeof esc_codes[0]); i++) {
+        if (xao__is_string(esc, end, esc_codes[i])) {
+            *esc = esc_chars[i];
             memcpy(base, start, esc - start + 1);
             base += esc - start + 1;
-            start = esc + strlen(codes[i]);
+            start = esc + strlen(esc_codes[i]);
             goto top;
         }
     }
