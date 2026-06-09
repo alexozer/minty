@@ -37,7 +37,7 @@ struct SplitRecord {
 
 struct SegmentDef {
     Str name;
-    Arr<u8> icon; // TODO a proper decode or something
+    Arr<u8> icon; // Icon in PNG format
 };
 
 struct FileDef {
@@ -329,7 +329,9 @@ Arr<SegmentDef> parse_livesplit_segments(Arena *arena, ErrorContext *err, xao_Re
             } else if (eq(attr_tag, "Icon")) {
                 err_scope(err, "Decode icon for segment '%.*s'", SF(seg->name));
                 Str base64 = xml_inner(r, attr_tag);
-                seg->icon = decode_icon_base64_to_png(arena, err, base64);
+                if (!str_is_empty(base64)) {
+                    seg->icon = decode_icon_base64_to_png(arena, err, base64);
+                }
             }
         }
     }
@@ -343,7 +345,11 @@ void load_timer_textures(Arena *arena, ErrorContext *err, SDL_Renderer *renderer
     file->textures = arena_push_arr<SDL_Texture *>(arena, file->segments.count);
 
     for (u64 i = 0; i < file->segments.count; i++) {
-        err_scope(err, "Load texture for segment '%.*s'", SF(file->segments[i].name));
+        if (arr_is_empty(file->segments[i].icon)) {
+            continue;
+        }
+
+        err_scope(err, "Load icon texture for segment '%.*s'", SF(file->segments[i].name));
 
         SDL_IOStream *png_stream = SDL_IOFromMem(file->segments[i].icon.ptr, file->segments[i].icon.count);
         defer(SDL_CloseIO(png_stream));
@@ -781,7 +787,12 @@ Box *align_box_center_vert(Arena *arena, Box *box, f32 width) {
 }
 
 Box *prerender_segment(Arena *arena, App *app, u64 idx) {
-    Box *icon = make_texture_box(arena, app->file->textures[idx], 48.f, 48.f);
+    Box *icon = nullptr;
+    if (!arr_is_empty(app->file->segments[idx].icon)) {
+        icon = make_texture_box(arena, app->file->textures[idx], 48.f, 48.f);
+    } else {
+        icon = make_empty_box(arena, 48.f, 48.f);
+    }
     SDL_FPoint icon_bbox = compute_box_bbox(icon);
 
     SDL_FColor color = { .r = 1.f, .g = 1.f, .b = 1.f, .a = 1.f };
@@ -818,9 +829,11 @@ Box *prerender(Arena *arena, App *app) {
     vec_push(arena, &top->children, game_name_centered);
     vec_push(arena, &top->children, cat_name_centered);
 
-    for (u64 i = 30; i < min(app->file->segments.count, (u64)40); i++) {
-        Box *segment = prerender_segment(arena, app, i);
-        vec_push(arena, &top->children, segment);
+    for (u64 i = 0; i < app->file->segments.count; i++) {
+        if (!str_starts_with(app->file->segments[i].name, S("-"))) {
+            Box *segment = prerender_segment(arena, app, i);
+            vec_push(arena, &top->children, segment);
+        }
     }
 
     Box *bottom = arena_push<Box>(arena);
