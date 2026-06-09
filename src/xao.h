@@ -59,6 +59,23 @@ static bool xao__advance_until(xao_Reader *r, char *s) {
     return false;
 }
 
+static char *xao__unescape(char *start, char *end) {
+    char *base = start;
+    while (true) {
+        char *esc = memchr(start, '&', end - start);
+        if (esc == NULL) {
+            memcpy(base, start, end - start);
+            return base + (end - start);
+        }
+        if (xao__is_string(esc, end, "&apos;")) {
+            *esc = '\'';
+            memcpy(base, start, esc - start + 1);
+            base += esc - start + 1;
+            start = esc + 6;
+        }
+    }
+}
+
 static xao_Value xao__read(xao_Reader *r) {
 top: {
     if (r->curr == r->data) r->depth++;
@@ -144,7 +161,7 @@ top: {
     res.type = XAO_CONTENT;
     res.start = r->curr;
     if (!xao__advance_until(r, "<")) r->curr = r->end;
-    res.end = r->curr;
+    res.end = xao__unescape(res.start, r->curr);
     return res;
 }}
 
