@@ -680,7 +680,7 @@ SDL_FPoint compute_box_bbox(Box *box) {
     } else if (box->type == BoxType::Texture) {
         return { .x = box->width, .y = box->height };
     }
-    log_assert("Unknown box type");
+    log_assert(false);
 }
 
 Box *pad_box_left(Arena *arena, Box *box, f32 pad) {

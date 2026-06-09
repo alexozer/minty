@@ -76,7 +76,7 @@ __attribute__((format(printf, 2, 3)))
 void log_log(LogLevel level, const char *fmt, ...);
 
 [[noreturn]] void log__assert(const char *cond, const char *file, int line);
-#define log_assert(cond) if (!(cond)) log__assert(#cond, __FILE_NAME__, __LINE__)
+#define log_assert(cond) if ((cond) == false) log__assert(#cond, __FILE_NAME__, __LINE__)
 
 //
 // Arenas
