@@ -600,6 +600,8 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
 SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
     App *app = (App *)appstate;
 
+    // TODO: this is potentially not the OS timestamp of the keypress, sadly, so
+    // not amazingly accurate
     Instant t = instant_from_sdl_nanos(event->common.timestamp);
 
     if (event->common.type == SDL_EVENT_QUIT) {
