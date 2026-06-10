@@ -486,7 +486,7 @@ void init_text(ErrorContext *err, App *app) {
         log_fatal("Failed to initialize text engine: %s", SDL_GetError());
     }
 
-    const char *font_path = "/Users/alex/Documents/repos/2026/blitter/data/Roboto-Regular.ttf";
+    const char *font_path = "data/Roboto-Medium.ttf";
     size_t font_file_size = 0;
     // TODO arena allocate
     void *font_buf = SDL_LoadFile(font_path, &font_file_size);
@@ -612,7 +612,7 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
         if (event->key.key == SDLK_Q) {
             return SDL_APP_SUCCESS;
         }
-        if (event->key.key == SDLK_SPACE) {
+        if (event->key.key == SDLK_SPACE || event->key.key == SDLK_DOWN) {
             timer_apply_action(app->arena, app->timer, app->file, TimerAction::Split, t);
         }
         if (event->key.key == SDLK_UP) {
