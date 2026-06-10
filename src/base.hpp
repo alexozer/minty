@@ -3,6 +3,9 @@
 #include <stdarg.h>
 #include <stdint.h>
 #include <inttypes.h>
+#include <stdlib.h>
+
+#include <SDL3/SDL_log.h>
 
 //
 // World's crappiest optional type
@@ -61,19 +64,12 @@ constexpr u64 next_pow2(u64 x) {
 // Logging
 //
 
-enum class LogLevel { Trace, Debug, Info, Warn, Error, Fatal };
-
-#define log_trace(...) log_log(LogLevel::Trace, __VA_ARGS__)
-#define log_debug(...) log_log(LogLevel::Debug, __VA_ARGS__)
-#define log_info(...)  log_log(LogLevel::Info, __VA_ARGS__)
-#define log_warn(...)  log_log(LogLevel::Warn, __VA_ARGS__)
-#define log_error(...) log_log(LogLevel::Error, __VA_ARGS__)
-__attribute__((format(printf, 1, 2)))
-[[noreturn]] void log_fatal(const char *fmt, ...);
-
-void log_set_level(LogLevel level);
-__attribute__((format(printf, 2, 3)))
-void log_log(LogLevel level, const char *fmt, ...);
+#define log_trace(...) SDL_LogTrace(SDL_LOG_CATEGORY_APPLICATION, __VA_ARGS__)
+#define log_debug(...) SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION, __VA_ARGS__)
+#define log_info(...) SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, __VA_ARGS__)
+#define log_warn(...) SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, __VA_ARGS__)
+#define log_error(...) SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, __VA_ARGS__)
+#define log_fatal(...) SDL_LogCritical(SDL_LOG_CATEGORY_APPLICATION, __VA_ARGS__); exit(1)
 
 [[noreturn]] void log__assert(const char *cond, const char *file, int line);
 #define log_assert(cond) if ((cond) == false) log__assert(#cond, __FILE_NAME__, __LINE__)
