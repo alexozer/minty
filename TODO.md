@@ -12,7 +12,9 @@
 <!--         For text: fixed font sizes for now -->
 <!-- Error handling -->
 <!-- Timer logic loop -->
-Put splits/timer/texture state etc. on dedicated arena
+<!-- Put splits/timer/texture state etc. on dedicated arena -->
+Load/unload session
+    Right-click menu?
 
 ## Research
 

@@ -469,13 +469,12 @@ constexpr i32 MIN_WINDOW_WIDTH = 200;
 constexpr i32 MIN_WINDOW_HEIGHT = 100;
 
 struct Session {
-    Arena *arena;
     FileDef *file;
     TimerState *timer;
 };
 
 struct App {
-    Arena *arena; // Lives for duration of application
+    Arena *app_arena; // Lives for duration of application
     SDL_Window* window;
     SDL_Renderer* renderer;
     TTF_Font *font_small;
@@ -484,6 +483,7 @@ struct App {
     TTF_TextEngine *text_engine;
     SDL_Keycode prev_keys;
 
+    Arena *session_arena;
     Session *session; // Nullable
 };
 
@@ -570,24 +570,32 @@ void init_window(ErrorContext *err, App *app) {
     SDL_SetRenderVSync(app->renderer, 1);
 }
 
-void create_session(ErrorContext *err, App *app) {
+Session *create_session(ErrorContext *err, Arena *arena, SDL_Renderer *renderer, Str path) {
+    Session *session = arena_push<Session>(arena);
+
+    session->file = load_livesplit_lss(arena, err, renderer, path);
+    session->timer = arena_push<TimerState>(arena);
+
+    return session;
+}
+
+App *init_app(ErrorContext *err) {
+    Arena *root_arena = arena_acquire();
+    App *app = arena_push<App>(root_arena);
+    app->app_arena = root_arena;
+
+    init_window(err, app);
+    init_text(err, app);
+
     if (g_argv.count < 2) {
         log_fatal("Usage: blitter <path-to-splits-file>");
     }
-
-    Arena *arena = arena_acquire();
-    app->session = arena_push<Session>(arena);
-    app->session->arena = arena;
-
     Str path = str_from_c(g_argv[1]);
-    app->session->file = load_livesplit_lss(app->session->arena, err, app->renderer, path);
-    app->session->timer = arena_push<TimerState>(app->session->arena);
-}
 
-void init_app(ErrorContext *err, App *app) {
-    init_window(err, app);
-    init_text(err, app);
-    create_session(err, app);
+    app->session_arena = arena_acquire();
+    app->session = create_session(err, app->session_arena, app->renderer, path);
+
+    return app;
 }
 
 SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
@@ -597,18 +605,34 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
     ErrorContext *err = &err_base;
     defer(arena_release(err_base.arena));
 
-    Arena *root_arena = arena_acquire();
-    App *app = arena_push<App>(root_arena);
-    *appstate = (void *)app;
-    app->arena = root_arena;
-
-    init_app(err, app);
+    App *app = init_app(err);
     if (err_failed(err)) {
         err_log(err);
         return SDL_APP_FAILURE;
     }
+    *appstate = app;
 
     return SDL_APP_CONTINUE;
+}
+
+void try_load_new_session(App *app, Str lss_path) {
+    ErrorContext err_base = { .arena = arena_acquire() };
+    ErrorContext *err = &err_base;
+    defer(arena_release(err_base.arena));
+
+    Arena *session_arena = arena_acquire();
+    Session *session = create_session(err, session_arena, app->renderer, lss_path);
+    if (err_failed(err)) {
+        err_log(err);
+        arena_release(session_arena);
+        return;
+    }
+
+    if (app->session_arena != nullptr) {
+        arena_release(app->session_arena);
+    }
+    app->session_arena = session_arena;
+    app->session = session;
 }
 
 SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
@@ -627,23 +651,29 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
             return SDL_APP_SUCCESS;
         }
         if (event->key.key == SDLK_SPACE || event->key.key == SDLK_DOWN) {
-            timer_apply_action(app->arena, app->session->timer, app->session->file, TimerAction::Split, t);
+            timer_apply_action(app->app_arena, app->session->timer, app->session->file, TimerAction::Split, t);
         }
         if (event->key.key == SDLK_UP) {
-            timer_apply_action(app->arena, app->session->timer, app->session->file, TimerAction::UndoSplit, t);
+            timer_apply_action(app->app_arena, app->session->timer, app->session->file, TimerAction::UndoSplit, t);
         }
         if (event->key.key == SDLK_D) {
-            timer_apply_action(app->arena, app->session->timer, app->session->file, TimerAction::DeleteSplit, t);
+            timer_apply_action(app->app_arena, app->session->timer, app->session->file, TimerAction::DeleteSplit, t);
         }
         if (event->key.key == SDLK_P) {
-            timer_apply_action(app->arena, app->session->timer, app->session->file, TimerAction::Pause, t);
+            timer_apply_action(app->app_arena, app->session->timer, app->session->file, TimerAction::Pause, t);
         }
         if (event->key.key == SDLK_BACKSPACE) {
-            timer_apply_action(app->arena, app->session->timer, app->session->file, TimerAction::ResetAndSave, t);
+            timer_apply_action(app->app_arena, app->session->timer, app->session->file, TimerAction::ResetAndSave, t);
         }
-    }
-    if (event->common.type == SDL_EVENT_KEY_UP) {
+        if (event->key.key == SDLK_V && (event->key.mod & (SDL_KMOD_LGUI | SDL_KMOD_RGUI))) {
+        }
+    } else if (event->common.type == SDL_EVENT_KEY_UP) {
         app->prev_keys &= ~event->key.key;
+    } else if (event->common.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event->button.button == SDL_BUTTON_RIGHT) {
+        char *clipboard_cstr = SDL_GetClipboardText();
+        defer(SDL_free(clipboard_cstr));
+        Str clipboard = str_from_c(clipboard_cstr);
+        try_load_new_session(app, clipboard);
     }
 
     return SDL_APP_CONTINUE;

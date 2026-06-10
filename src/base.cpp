@@ -1,12 +1,6 @@
 #include "base.hpp"
 
-#include <fcntl.h>
 #include <simdutf_c.h>
-#include <time.h>
-#include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
-
 #include <SDL3/SDL_timer.h>
 
 #include "platform.hpp"
@@ -168,7 +162,7 @@ Pair<Str, Str> str_split2(Str base, u8 delim) {
 
 Str str_format_v(Arena *arena, const char *format, va_list args) {
     char buf[kilobytes(8)];
-    int n = vsnprintf(buf, sizeof(buf), format, args);
+    int n = SDL_vsnprintf(buf, sizeof(buf), format, args);
     if (n < 0) {
         return S("<formatting error>");
     }
