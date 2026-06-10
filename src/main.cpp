@@ -669,6 +669,9 @@ struct Box {
     // Hm, padding determined by just making more boxes for now?
 
     Vec<Box*> children;
+
+    // AABB of self and children - lazily computed
+    Opt<SDL_FPoint> bbox;
 };
 
 Box *make_text_box(Arena *arena, TTF_TextEngine *engine, TTF_Font *font, Str content, SDL_FColor color) {
@@ -709,8 +712,9 @@ Box *make_solid_color_box(Arena *arena, SDL_FColor color, f32 width, f32 height)
     return box;
 }
 
-// TODO cache this if we keep using it for long enough
-SDL_FPoint compute_box_bbox(Box *box) {
+SDL_FPoint compute_box_bbox(Box *box);
+
+SDL_FPoint compute_box_bbox_uncached(Box *box) {
     if (box->type == BoxType::Empty || box->type == BoxType::SolidColor) {
         return { .x = box->width, .y = box->height };
 
@@ -763,6 +767,15 @@ SDL_FPoint compute_box_bbox(Box *box) {
         return { .x = box->width, .y = box->height };
     }
     log_assert(false);
+}
+
+SDL_FPoint compute_box_bbox(Box *box) {
+    if (box->bbox.present) {
+        return box->bbox.opt;
+    }
+    SDL_FPoint bbox = compute_box_bbox_uncached(box);
+    box->bbox = some(bbox);
+    return bbox;
 }
 
 Box *pad_box_left(Arena *arena, Box *box, f32 pad) {
