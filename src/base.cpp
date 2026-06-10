@@ -401,12 +401,15 @@ Str base64_encode(Arena *arena, Arr<u8> a) {
 
 constexpr u64 SECOND_IN_NS = 1'000'000'000;
 
-Instant get_current_monotonic_time() {
-    u64 ticks = SDL_GetTicksNS();
+Instant instant_from_sdl_nanos(u64 nanos) {
     return {
-        .seconds = (i64)(ticks / SECOND_IN_NS),
-        .nanoseconds = (u32)(ticks % SECOND_IN_NS),
+        .seconds = (i64)(nanos / SECOND_IN_NS),
+        .nanoseconds = (u32)(nanos % SECOND_IN_NS),
     };
+}
+
+Instant get_current_monotonic_time() {
+    return instant_from_sdl_nanos(SDL_GetTicksNS());
 }
 
 //

@@ -418,6 +418,7 @@ constexpr Duration DURATION_SECOND = { .seconds = 1 };
 constexpr Duration DURATION_ZERO = {};
 
 Instant get_current_monotonic_time();
+Instant instant_from_sdl_nanos(u64 nanos);
 
 constexpr Duration operator+(const Duration &t1, const Duration &t2) {
     i64 ns_sum = t1.nanoseconds + t2.nanoseconds;

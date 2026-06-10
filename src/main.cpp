@@ -191,14 +191,14 @@ void timer_reset(TimerState *timer) {
     vec_reset(&timer->live_splits);
 }
 
-Duration timer_get_elapsed(TimerState *timer) {
+Duration timer_get_elapsed(TimerState *timer, Instant event_time) {
     if (timer->mode == TimerMode::Init || timer->mode == TimerMode::Finished) {
         return DURATION_ZERO;
     }
 
     Instant now = {};
     if (timer->mode == TimerMode::Running) {
-        now = get_current_monotonic_time();
+        now = event_time;
     } else if (timer->mode == TimerMode::Paused){
         now = timer->paused_time;
     } else {
@@ -207,17 +207,17 @@ Duration timer_get_elapsed(TimerState *timer) {
     return (now - timer->start_time) - timer->total_paused_duration;
 }
 
-void timer_apply_action(Arena *arena, TimerState *timer, FileDef *file, TimerAction action) {
+void timer_apply_action(Arena *arena, TimerState *timer, FileDef *file, TimerAction action, Instant t) {
     // Switch statements are annoying... and neovim keeps indenting them wrong :(
     if (timer->mode == TimerMode::Init) {
         if (action == TimerAction::Split) {
             timer->mode = TimerMode::Running;
-            timer->start_time = get_current_monotonic_time();
+            timer->start_time = t;
         }
 
     } else if (timer->mode == TimerMode::Running) {
         if (action == TimerAction::Split) {
-            Duration elapsed = timer_get_elapsed(timer);
+            Duration elapsed = timer_get_elapsed(timer, t);
             vec_push(arena, &timer->live_splits, some(elapsed));
 
             if (timer->live_splits.count == file->segments.count) {
@@ -246,13 +246,13 @@ void timer_apply_action(Arena *arena, TimerState *timer, FileDef *file, TimerAct
 
         } else if (action == TimerAction::Pause) {
             timer->mode = TimerMode::Paused;
-            timer->paused_time = get_current_monotonic_time();
+            timer->paused_time = t;
         }
 
     } else if (timer->mode == TimerMode::Paused) {
         if (action == TimerAction::Pause) {
             // Unpause
-            Duration pause_duration = get_current_monotonic_time() - timer->paused_time;
+            Duration pause_duration = t - timer->paused_time;
             timer->total_paused_duration += pause_duration;
             timer->mode = TimerMode::Running;
         }
@@ -597,6 +597,8 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
 SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
     App *app = (App *)appstate;
 
+    Instant t = instant_from_sdl_nanos(event->common.timestamp);
+
     if (event->common.type == SDL_EVENT_QUIT) {
         return SDL_APP_SUCCESS;
     }
@@ -606,19 +608,19 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
             return SDL_APP_SUCCESS;
         }
         if (event->key.key == SDLK_SPACE) {
-            timer_apply_action(app->arena, app->timer, app->file, TimerAction::Split);
+            timer_apply_action(app->arena, app->timer, app->file, TimerAction::Split, t);
         }
         if (event->key.key == SDLK_UP) {
-            timer_apply_action(app->arena, app->timer, app->file, TimerAction::UndoSplit);
+            timer_apply_action(app->arena, app->timer, app->file, TimerAction::UndoSplit, t);
         }
         if (event->key.key == SDLK_D) {
-            timer_apply_action(app->arena, app->timer, app->file, TimerAction::DeleteSplit);
+            timer_apply_action(app->arena, app->timer, app->file, TimerAction::DeleteSplit, t);
         }
         if (event->key.key == SDLK_P) {
-            timer_apply_action(app->arena, app->timer, app->file, TimerAction::Pause);
+            timer_apply_action(app->arena, app->timer, app->file, TimerAction::Pause, t);
         }
         if (event->key.key == SDLK_BACKSPACE) {
-            timer_apply_action(app->arena, app->timer, app->file, TimerAction::ResetAndSave);
+            timer_apply_action(app->arena, app->timer, app->file, TimerAction::ResetAndSave, t);
         }
     }
     if (event->common.type == SDL_EVENT_KEY_UP) {
@@ -640,8 +642,10 @@ enum class BoxType {
     Empty,
     Text,
     Texture,
+    SolidColor,
     TopToBottomStack,
     LeftToRightStack,
+    BackToFrontStack,
 };
 
 // Try some fat struct stuff?
@@ -654,6 +658,8 @@ struct Box {
 
     // Texture stuff
     SDL_Texture *texture;
+
+    SDL_FColor color;
 
     f32 width;
     f32 height;
@@ -688,12 +694,21 @@ Box *make_texture_box(Arena *arena, SDL_Texture *texture, f32 width, f32 height)
     box->width = max(width, 0.0f);
     box->height = max(height, 0.0f);
     box->texture = texture;
-    return box; box;
+    return box;
+}
+
+Box *make_solid_color_box(Arena *arena, SDL_FColor color, f32 width, f32 height) {
+    Box *box = arena_push<Box>(arena);
+    box->type = BoxType::SolidColor;
+    box->width = max(width, 0.0f);
+    box->height = max(height, 0.0f);
+    box->color = color;
+    return box;
 }
 
 // TODO cache this if we keep using it for long enough
 SDL_FPoint compute_box_bbox(Box *box) {
-    if (box->type == BoxType::Empty) {
+    if (box->type == BoxType::Empty || box->type == BoxType::SolidColor) {
         return { .x = box->width, .y = box->height };
 
     } else if (box->type == BoxType::LeftToRightStack) {
@@ -718,6 +733,19 @@ SDL_FPoint compute_box_bbox(Box *box) {
             } else {
                 total.x = max(total.x, child_bbox.x);
                 total.y += child_bbox.y;
+            }
+        }
+        return total;
+
+    } else if (box->type == BoxType::BackToFrontStack) {
+        SDL_FPoint total = {};
+        for (u64 i = 0; i < box->children.count; i++) {
+            SDL_FPoint child_bbox = compute_box_bbox(box->children[i]);
+            if (i == 0) {
+                total = child_bbox;
+            } else {
+                total.x = max(total.x, child_bbox.x);
+                total.y = max(total.y, child_bbox.y);
             }
         }
         return total;
@@ -818,7 +846,7 @@ Box *align_box_center_vert(Arena *arena, Box *box, f32 width) {
     return parent;
 }
 
-Box *prerender_segment(Arena *arena, App *app, u64 idx) {
+Box *prerender_segment(Arena *arena, App *app, f32 width, u64 idx) {
     Box *icon = nullptr;
     if (!arr_is_empty(app->file->segments[idx].icon)) {
         icon = make_texture_box(arena, app->file->textures[idx], 48.f, 48.f);
@@ -832,13 +860,26 @@ Box *prerender_segment(Arena *arena, App *app, u64 idx) {
     Box *title = make_text_box(arena, app->engine, app->font_medium, app->file->segments[idx].name, color);
     Box *title_centered = align_box_center_vert(arena, title, icon_bbox.y);
 
-    Box *row = arena_push<Box>(arena);
-    row->type = BoxType::LeftToRightStack;
-    vec_push(arena, &row->children, icon);
-    vec_push(arena, &row->children, pad);
-    vec_push(arena, &row->children, title_centered);
+    Box *row_front = arena_push<Box>(arena);
+    row_front->type = BoxType::LeftToRightStack;
+    vec_push(arena, &row_front->children, icon);
+    vec_push(arena, &row_front->children, pad);
+    vec_push(arena, &row_front->children, title_centered);
 
-    return row;
+    if (app->timer->mode == TimerMode::Running && idx == app->timer->live_splits.count) {
+        SDL_FPoint row_front_bbox = compute_box_bbox(row_front);
+        SDL_FColor bg_color = { .r = 0.f, .g = 0.1f, .b = 0.85f, .a = 1.f };
+        Box *row_back = make_solid_color_box(arena, bg_color, width, row_front_bbox.y);
+
+        Box *row = arena_push<Box>(arena);
+        row->type = BoxType::BackToFrontStack;
+        vec_push(arena, &row->children, row_back);
+        vec_push(arena, &row->children, row_front);
+
+        return row;
+    }
+
+    return row_front;
 }
 
 Box *prerender(Arena *arena, App *app) {
@@ -863,7 +904,7 @@ Box *prerender(Arena *arena, App *app) {
 
     for (u64 i = 0; i < app->file->segments.count; i++) {
         if (!str_starts_with(app->file->segments[i].name, S("-"))) {
-            Box *segment = prerender_segment(arena, app, i);
+            Box *segment = prerender_segment(arena, app, width, i);
             vec_push(arena, &top->children, segment);
         }
     }
@@ -871,7 +912,7 @@ Box *prerender(Arena *arena, App *app) {
     Box *bottom = arena_push<Box>(arena);
     bottom->type = BoxType::TopToBottomStack;
 
-    Duration t = timer_get_elapsed(app->timer);
+    Duration t = timer_get_elapsed(app->timer, get_current_monotonic_time());
     Str t_str = format_duration(arena, t, 2, false);
     Box *curr_time = make_text_box(arena, app->engine, app->font_large, t_str, color);
     SDL_FPoint curr_time_bbox = compute_box_bbox(curr_time);
@@ -910,6 +951,11 @@ void render_box(App *app, Box *box, SDL_FPoint where) {
             where.y += child_bbox.y;
         }
 
+    } else if (box->type == BoxType::BackToFrontStack) {
+        for (u64 i = 0; i < box->children.count; i++) {
+            render_box(app, box->children[i], where);
+        }
+
     } else if (box->type == BoxType::Text) {
         TTF_DrawRendererText(box->text_obj, where.x, where.y);
 
@@ -934,6 +980,11 @@ void render_box(App *app, Box *box, SDL_FPoint where) {
         }
 
         SDL_RenderTexture(app->renderer, box->texture, nullptr, &dest);
+
+    } else if (box->type == BoxType::SolidColor) {
+        SDL_SetRenderDrawColorFloat(app->renderer, box->color.r, box->color.g, box->color.b, box->color.a);
+        SDL_FRect r = { .x = where.x, .y = where.y, .w = box->width, .h = box->height };
+        SDL_RenderFillRect(app->renderer, &r);
     }
 }
 
