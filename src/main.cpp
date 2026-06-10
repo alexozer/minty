@@ -1,4 +1,3 @@
-#include "SDL3/SDL_keycode.h"
 #include "base.hpp"
 
 #include <stdarg.h>
@@ -10,6 +9,7 @@
 #include <SDL3/SDL_render.h>
 #include <SDL3/SDL_stdinc.h>
 #include <SDL3/SDL_video.h>
+#include "SDL3/SDL_keycode.h"
 #include <SDL3_ttf/SDL_ttf.h>
 
 extern "C" {

@@ -1,7 +1,7 @@
 #include "platform.hpp"
 
 #include <sys/mman.h>
-#include <sys/unistd.h>
+#include <unistd.h>
 
 #include "base.hpp"
 

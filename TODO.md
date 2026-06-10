@@ -11,7 +11,8 @@
 <!--         A: SDL_RenderTexture() or whatever takes src/dest size -->
 <!--         For text: fixed font sizes for now -->
 <!-- Error handling -->
-Timer logic loop
+<!-- Timer logic loop -->
+Put splits/timer/texture state etc. on dedicated arena
 
 ## Research
 
