@@ -835,9 +835,9 @@ Box *align_box_center_horiz(Arena *arena, Box *box, f32 width) {
     return parent;
 }
 
-Box *align_box_center_vert(Arena *arena, Box *box, f32 width) {
+Box *align_box_center_vert(Arena *arena, Box *box, f32 height) {
     SDL_FPoint bbox = compute_box_bbox(box);
-    f32 pad = (width - bbox.y) / 2;
+    f32 pad = (height - bbox.y) / 2;
     Box *pad_box = make_empty_box(arena, bbox.x, pad);
 
     Box *parent = arena_push<Box>(arena);
@@ -850,18 +850,21 @@ Box *align_box_center_vert(Arena *arena, Box *box, f32 width) {
 }
 
 Box *prerender_segment(Arena *arena, App *app, f32 width, u64 idx) {
+    constexpr f32 ICON_INNER = 36.f;
+    constexpr f32 ICON_OUTER = 44.f;
     Box *icon = nullptr;
     if (!arr_is_empty(app->file->segments[idx].icon)) {
-        icon = make_texture_box(arena, app->file->textures[idx], 48.f, 48.f);
+        icon = make_texture_box(arena, app->file->textures[idx], ICON_INNER, ICON_INNER);
     } else {
-        icon = make_empty_box(arena, 48.f, 48.f);
+        icon = make_empty_box(arena, ICON_INNER, ICON_INNER);
     }
-    SDL_FPoint icon_bbox = compute_box_bbox(icon);
+    icon = align_box_center_horiz(arena, icon, ICON_OUTER);
+    icon = align_box_center_vert(arena, icon, ICON_OUTER);
 
-    SDL_FColor color = { .r = 1.f, .g = 1.f, .b = 1.f, .a = 1.f };
-    Box *pad = make_empty_box(arena, 16, 0);
-    Box *title = make_text_box(arena, app->engine, app->font_medium, app->file->segments[idx].name, color);
-    Box *title_centered = align_box_center_vert(arena, title, icon_bbox.y);
+    SDL_FColor text_color = { .r = 1.f, .g = 1.f, .b = 1.f, .a = 1.f };
+    Box *pad = make_empty_box(arena, 10, 0);
+    Box *title = make_text_box(arena, app->engine, app->font_medium, app->file->segments[idx].name, text_color);
+    Box *title_centered = align_box_center_vert(arena, title, ICON_OUTER);
 
     Box *row_front = arena_push<Box>(arena);
     row_front->type = BoxType::LeftToRightStack;
@@ -871,7 +874,7 @@ Box *prerender_segment(Arena *arena, App *app, f32 width, u64 idx) {
 
     if (app->timer->mode == TimerMode::Running && idx == app->timer->live_splits.count) {
         SDL_FPoint row_front_bbox = compute_box_bbox(row_front);
-        SDL_FColor bg_color = { .r = 0.f, .g = 0.1f, .b = 0.85f, .a = 1.f };
+        SDL_FColor bg_color = { .r = 0.f, .g = 0.3f, .b = 0.90f, .a = 1.f };
         Box *row_back = make_solid_color_box(arena, bg_color, width, row_front_bbox.y);
 
         Box *row = arena_push<Box>(arena);
@@ -885,11 +888,7 @@ Box *prerender_segment(Arena *arena, App *app, f32 width, u64 idx) {
     return row_front;
 }
 
-Box *prerender(Arena *arena, App *app) {
-    i32 width = 0;
-    i32 height = 0;
-    SDL_GetRenderOutputSize(app->renderer, &width, &height);
-
+Box *prerender_contents(Arena *arena, App *app, f32 width, f32 height) {
     SDL_FColor color = { .r = 1.f, .g = 1.f, .b = 1.f, .a = 1.f };
 
     Box *game_name = make_text_box(arena, app->engine, app->font_medium,
@@ -935,6 +934,18 @@ Box *prerender(Arena *arena, App *app) {
     vec_push(arena, &root->children, bottom);
 
     return root;
+}
+
+Box *prerender(Arena *arena, App *app) {
+    i32 width = 0;
+    i32 height = 0;
+    SDL_GetRenderOutputSize(app->renderer, &width, &height);
+
+    constexpr f32 PADDING = 10;
+    Box *timer = prerender_contents(arena, app, (f32)width - (PADDING * 2.f), (f32)height - (PADDING * 2.f));
+    timer = align_box_center_horiz(arena, timer, width);
+    timer = align_box_center_vert(arena, timer, height);
+    return timer;
 }
 
 void render_box(App *app, Box *box, SDL_FPoint where) {
