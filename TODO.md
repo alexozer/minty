@@ -6,11 +6,12 @@
 <!-- Decode split images -->
 <!-- Replace most of shitty platform layer with SDL -->
 <!-- Render PNGs -->
-Write simple prototype stacking renderer
-    How am I supposed to change the text contents? Size?
-        A: SDL_RenderTexture() or whatever takes src/dest size
-        For text: fixed font sizes for now
+<!-- Write simple prototype stacking renderer -->
+<!--     How am I supposed to change the text contents? Size? -->
+<!--         A: SDL_RenderTexture() or whatever takes src/dest size -->
+<!--         For text: fixed font sizes for now -->
 <!-- Error handling -->
+Timer logic loop
 
 ## Research
 
@@ -21,8 +22,10 @@ GPU font rendering (slug)
 Modern rendering APIs (webgpu, sdl gpu)
 Settings UI
 Layout
-Smooth resize (how does Ghostty do it?!?)
+Smooth resize
+    How does Ghostty do it?!?
 Global hotkeys
+    See how OBS does it?
 Permanent split history / rollback / undo
 
 ## Low Prio

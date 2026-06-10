@@ -1,3 +1,4 @@
+#include "SDL3/SDL_keycode.h"
 #include "base.hpp"
 
 #include <stdarg.h>
@@ -191,11 +192,17 @@ void timer_reset(TimerState *timer) {
 }
 
 Duration timer_get_elapsed(TimerState *timer) {
+    if (timer->mode == TimerMode::Init || timer->mode == TimerMode::Finished) {
+        return DURATION_ZERO;
+    }
+
     Instant now = {};
-    if (timer->mode == TimerMode::Paused) {
+    if (timer->mode == TimerMode::Running) {
+        now = get_current_monotonic_time();
+    } else if (timer->mode == TimerMode::Paused){
         now = timer->paused_time;
     } else {
-        now = get_current_monotonic_time();
+        log_assert(false);
     }
     return (now - timer->start_time) - timer->total_paused_duration;
 }
@@ -274,9 +281,9 @@ void timer_apply_action(Arena *arena, TimerState *timer, FileDef *file, TimerAct
         } else if (action == TimerAction::ResetAndDelete) {
             timer_reset(timer);
         }
+    } else {
+        log_assert(false);
     }
-
-    log_assert(false);
 }
 
 bool eq(xao_Value v, const char *s) {
@@ -467,6 +474,8 @@ struct App {
     TTF_Font *font_large;
     TTF_TextEngine *engine;
     FileDef *file;
+    TimerState *timer;
+    SDL_Keycode prev_keys;
 };
 
 void init_text(ErrorContext *err, App *app) {
@@ -554,6 +563,7 @@ void init_window(ErrorContext *err, App *app) {
 void init_app(ErrorContext *err, App *app) {
     init_window(err, app);
     init_text(err, app);
+    app->timer = arena_push<TimerState>(app->arena);
 
     if (g_argv.count > 1) {
         Str path = str_from_c(g_argv[1]);
@@ -585,14 +595,36 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
 }
 
 SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
-    // App *app = (App *)appstate;
+    App *app = (App *)appstate;
 
     if (event->common.type == SDL_EVENT_QUIT) {
         return SDL_APP_SUCCESS;
     }
-    if (event->key.key == SDLK_Q) {
-        return SDL_APP_SUCCESS;
+    if (event->common.type == SDL_EVENT_KEY_DOWN && (app->prev_keys & event->key.key) == 0) {
+        app->prev_keys |= event->key.key;
+        if (event->key.key == SDLK_Q) {
+            return SDL_APP_SUCCESS;
+        }
+        if (event->key.key == SDLK_SPACE) {
+            timer_apply_action(app->arena, app->timer, app->file, TimerAction::Split);
+        }
+        if (event->key.key == SDLK_UP) {
+            timer_apply_action(app->arena, app->timer, app->file, TimerAction::UndoSplit);
+        }
+        if (event->key.key == SDLK_D) {
+            timer_apply_action(app->arena, app->timer, app->file, TimerAction::DeleteSplit);
+        }
+        if (event->key.key == SDLK_P) {
+            timer_apply_action(app->arena, app->timer, app->file, TimerAction::Pause);
+        }
+        if (event->key.key == SDLK_BACKSPACE) {
+            timer_apply_action(app->arena, app->timer, app->file, TimerAction::ResetAndSave);
+        }
     }
+    if (event->common.type == SDL_EVENT_KEY_UP) {
+        app->prev_keys &= ~event->key.key;
+    }
+
     return SDL_APP_CONTINUE;
 }
 
@@ -839,7 +871,7 @@ Box *prerender(Arena *arena, App *app) {
     Box *bottom = arena_push<Box>(arena);
     bottom->type = BoxType::TopToBottomStack;
 
-    Duration t = get_current_monotonic_time() - Instant{};
+    Duration t = timer_get_elapsed(app->timer);
     Str t_str = format_duration(arena, t, 2, false);
     Box *curr_time = make_text_box(arena, app->engine, app->font_large, t_str, color);
     SDL_FPoint curr_time_bbox = compute_box_bbox(curr_time);
