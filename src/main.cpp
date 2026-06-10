@@ -567,7 +567,7 @@ void init_window(ErrorContext *err, App *app) {
         err_report(err, "Unable to create renderer: %s", SDL_GetError());
         return;
     }
-    SDL_SetRenderVSync(app->renderer, 1);
+    // SDL_SetRenderVSync(app->renderer, 1);
 }
 
 Session *create_session(ErrorContext *err, Arena *arena, SDL_Renderer *renderer, Str path) {
@@ -672,7 +672,7 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
     } else if (event->common.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event->button.button == SDL_BUTTON_RIGHT) {
         char *clipboard_cstr = SDL_GetClipboardText();
         defer(SDL_free(clipboard_cstr));
-        Str clipboard = str_from_c(clipboard_cstr);
+        Str clipboard = str_trim(str_from_c(clipboard_cstr));
         try_load_new_session(app, clipboard);
     }
 
@@ -1002,8 +1002,10 @@ Box *prerender(Arena *arena, App *app) {
 
     constexpr f32 PADDING = 10;
     Box *timer = prerender_contents(arena, app, (f32)width - (PADDING * 2.f), (f32)height - (PADDING * 2.f));
-    timer = align_box_center_horiz(arena, timer, width);
-    timer = align_box_center_vert(arena, timer, height);
+    timer = pad_box_left(arena, timer, PADDING);
+    timer = pad_box_right(arena, timer, PADDING);
+    timer = pad_box_top(arena, timer, PADDING);
+    timer = pad_box_bottom(arena, timer, PADDING);
     return timer;
 }
 

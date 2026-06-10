@@ -13,8 +13,10 @@
 <!-- Error handling -->
 <!-- Timer logic loop -->
 <!-- Put splits/timer/texture state etc. on dedicated arena -->
-Load/unload session
-    Right-click menu?
+<!-- Load/unload session -->
+<!--     Right-click menu? -->
+Fix padding
+Draw split/segment times
 
 ## Research
 
