@@ -468,6 +468,12 @@ constexpr i32 DEFAULT_WINDOW_HEIGHT = 600;
 constexpr i32 MIN_WINDOW_WIDTH = 200;
 constexpr i32 MIN_WINDOW_HEIGHT = 100;
 
+struct Session {
+    Arena *arena;
+    FileDef *file;
+    TimerState *timer;
+};
+
 struct App {
     Arena *arena; // Lives for duration of application
     SDL_Window* window;
@@ -475,10 +481,10 @@ struct App {
     TTF_Font *font_small;
     TTF_Font *font_medium;
     TTF_Font *font_large;
-    TTF_TextEngine *engine;
-    FileDef *file;
-    TimerState *timer;
+    TTF_TextEngine *text_engine;
     SDL_Keycode prev_keys;
+
+    Session *session; // Nullable
 };
 
 void init_text(ErrorContext *err, App *app) {
@@ -488,10 +494,11 @@ void init_text(ErrorContext *err, App *app) {
 
     const char *font_path = "data/Roboto-Medium.ttf";
     size_t font_file_size = 0;
-    // TODO arena allocate
-    void *font_buf = SDL_LoadFile(font_path, &font_file_size);
+    void *font_buf = nullptr;
     {
         err_scope(err, "Load font '%s", font_path);
+        // TODO arena allocate
+        font_buf = SDL_LoadFile(font_path, &font_file_size);
         if (font_buf == nullptr) {
             err_report(err, "Failed to open font: %s", SDL_GetError());
             return;
@@ -509,8 +516,8 @@ void init_text(ErrorContext *err, App *app) {
     }
 
     /* Create the text engine */
-    app->engine = TTF_CreateRendererTextEngine(app->renderer);
-    if (app->engine == nullptr) {
+    app->text_engine = TTF_CreateRendererTextEngine(app->renderer);
+    if (app->text_engine == nullptr) {
         err_report(err, "Couldn't create text engine: %s", SDL_GetError());
         return;
     }
@@ -563,17 +570,24 @@ void init_window(ErrorContext *err, App *app) {
     SDL_SetRenderVSync(app->renderer, 1);
 }
 
+void create_session(ErrorContext *err, App *app) {
+    if (g_argv.count < 2) {
+        log_fatal("Usage: blitter <path-to-splits-file>");
+    }
+
+    Arena *arena = arena_acquire();
+    app->session = arena_push<Session>(arena);
+    app->session->arena = arena;
+
+    Str path = str_from_c(g_argv[1]);
+    app->session->file = load_livesplit_lss(app->session->arena, err, app->renderer, path);
+    app->session->timer = arena_push<TimerState>(app->session->arena);
+}
+
 void init_app(ErrorContext *err, App *app) {
     init_window(err, app);
     init_text(err, app);
-    app->timer = arena_push<TimerState>(app->arena);
-
-    if (g_argv.count > 1) {
-        Str path = str_from_c(g_argv[1]);
-        app->file = load_livesplit_lss(app->arena, err, app->renderer, path);
-    } else {
-        log_fatal("Usage: blitter <path-to-splits-file>");
-    }
+    create_session(err, app);
 }
 
 SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
@@ -613,19 +627,19 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
             return SDL_APP_SUCCESS;
         }
         if (event->key.key == SDLK_SPACE || event->key.key == SDLK_DOWN) {
-            timer_apply_action(app->arena, app->timer, app->file, TimerAction::Split, t);
+            timer_apply_action(app->arena, app->session->timer, app->session->file, TimerAction::Split, t);
         }
         if (event->key.key == SDLK_UP) {
-            timer_apply_action(app->arena, app->timer, app->file, TimerAction::UndoSplit, t);
+            timer_apply_action(app->arena, app->session->timer, app->session->file, TimerAction::UndoSplit, t);
         }
         if (event->key.key == SDLK_D) {
-            timer_apply_action(app->arena, app->timer, app->file, TimerAction::DeleteSplit, t);
+            timer_apply_action(app->arena, app->session->timer, app->session->file, TimerAction::DeleteSplit, t);
         }
         if (event->key.key == SDLK_P) {
-            timer_apply_action(app->arena, app->timer, app->file, TimerAction::Pause, t);
+            timer_apply_action(app->arena, app->session->timer, app->session->file, TimerAction::Pause, t);
         }
         if (event->key.key == SDLK_BACKSPACE) {
-            timer_apply_action(app->arena, app->timer, app->file, TimerAction::ResetAndSave, t);
+            timer_apply_action(app->arena, app->session->timer, app->session->file, TimerAction::ResetAndSave, t);
         }
     }
     if (event->common.type == SDL_EVENT_KEY_UP) {
@@ -868,8 +882,8 @@ Box *prerender_segment(Arena *arena, App *app, f32 width, u64 idx) {
     constexpr f32 ICON_INNER = 36.f;
     constexpr f32 ICON_OUTER = 44.f;
     Box *icon = nullptr;
-    if (!arr_is_empty(app->file->segments[idx].icon)) {
-        icon = make_texture_box(arena, app->file->textures[idx], ICON_INNER, ICON_INNER);
+    if (!arr_is_empty(app->session->file->segments[idx].icon)) {
+        icon = make_texture_box(arena, app->session->file->textures[idx], ICON_INNER, ICON_INNER);
     } else {
         icon = make_empty_box(arena, ICON_INNER, ICON_INNER);
     }
@@ -878,7 +892,7 @@ Box *prerender_segment(Arena *arena, App *app, f32 width, u64 idx) {
 
     SDL_FColor text_color = { .r = 1.f, .g = 1.f, .b = 1.f, .a = 1.f };
     Box *pad = make_empty_box(arena, 10, 0);
-    Box *title = make_text_box(arena, app->engine, app->font_medium, app->file->segments[idx].name, text_color);
+    Box *title = make_text_box(arena, app->text_engine, app->font_medium, app->session->file->segments[idx].name, text_color);
     Box *title_centered = align_box_center_vert(arena, title, ICON_OUTER);
 
     Box *row_front = arena_push<Box>(arena);
@@ -887,7 +901,7 @@ Box *prerender_segment(Arena *arena, App *app, f32 width, u64 idx) {
     vec_push(arena, &row_front->children, pad);
     vec_push(arena, &row_front->children, title_centered);
 
-    if (app->timer->mode == TimerMode::Running && idx == app->timer->live_splits.count) {
+    if (app->session->timer->mode == TimerMode::Running && idx == app->session->timer->live_splits.count) {
         SDL_FPoint row_front_bbox = compute_box_bbox(row_front);
         SDL_FColor bg_color = { .r = 0.f, .g = 0.3f, .b = 0.90f, .a = 1.f };
         Box *row_back = make_solid_color_box(arena, bg_color, width, row_front_bbox.y);
@@ -906,10 +920,10 @@ Box *prerender_segment(Arena *arena, App *app, f32 width, u64 idx) {
 Box *prerender_contents(Arena *arena, App *app, f32 width, f32 height) {
     SDL_FColor color = { .r = 1.f, .g = 1.f, .b = 1.f, .a = 1.f };
 
-    Box *game_name = make_text_box(arena, app->engine, app->font_medium,
-            app->file->game_name, color);
-    Box *cat_name = make_text_box(arena, app->engine, app->font_medium,
-            app->file->category_name, color);
+    Box *game_name = make_text_box(arena, app->text_engine, app->font_medium,
+            app->session->file->game_name, color);
+    Box *cat_name = make_text_box(arena, app->text_engine, app->font_medium,
+            app->session->file->category_name, color);
 
     Box *game_name_centered = align_box_center_horiz(arena, game_name, (f32)width);
     Box *cat_name_centered = align_box_center_horiz(arena, cat_name, (f32)width);
@@ -919,8 +933,8 @@ Box *prerender_contents(Arena *arena, App *app, f32 width, f32 height) {
     vec_push(arena, &top->children, game_name_centered);
     vec_push(arena, &top->children, cat_name_centered);
 
-    for (u64 i = 0; i < app->file->segments.count; i++) {
-        if (!str_starts_with(app->file->segments[i].name, S("-"))) {
+    for (u64 i = 0; i < app->session->file->segments.count; i++) {
+        if (!str_starts_with(app->session->file->segments[i].name, S("-"))) {
             Box *segment = prerender_segment(arena, app, width, i);
             vec_push(arena, &top->children, segment);
         }
@@ -929,9 +943,9 @@ Box *prerender_contents(Arena *arena, App *app, f32 width, f32 height) {
     Box *bottom = arena_push<Box>(arena);
     bottom->type = BoxType::TopToBottomStack;
 
-    Duration t = timer_get_elapsed(app->timer, get_current_monotonic_time());
+    Duration t = timer_get_elapsed(app->session->timer, get_current_monotonic_time());
     Str t_str = format_duration(arena, t, 2, false);
-    Box *curr_time = make_text_box(arena, app->engine, app->font_large, t_str, color);
+    Box *curr_time = make_text_box(arena, app->text_engine, app->font_large, t_str, color);
     SDL_FPoint curr_time_bbox = compute_box_bbox(curr_time);
     Box *curr_time_aligned = pad_box_left(arena, curr_time, width - curr_time_bbox.x);
 
