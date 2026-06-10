@@ -192,8 +192,11 @@ void timer_reset(TimerState *timer) {
 }
 
 Duration timer_get_elapsed(TimerState *timer, Instant event_time) {
-    if (timer->mode == TimerMode::Init || timer->mode == TimerMode::Finished) {
+    if (timer->mode == TimerMode::Init) {
         return DURATION_ZERO;
+    }
+    if (timer->mode == TimerMode::Finished) {
+        return timer->live_splits[timer->live_splits.count - 1].opt;
     }
 
     Instant now = {};
