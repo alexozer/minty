@@ -196,99 +196,139 @@ void timer_reset(TimerState *timer) {
 }
 
 Duration timer_get_elapsed(TimerState *timer, Instant event_time) {
-    if (timer->mode == TimerMode::Init) {
+    switch (timer->mode) {
+    case TimerMode::Init: {
         return DURATION_ZERO;
-
-    } else if (timer->mode == TimerMode::Finished) {
+    }
+    case TimerMode::Finished: {
         return timer->live_splits[timer->live_splits.count - 1].opt;
-
-    } else if (timer->mode == TimerMode::Running) {
+    }
+    case TimerMode::Running: {
         return (event_time - timer->start_time) - timer->total_paused_duration;
-
-    } else if (timer->mode == TimerMode::Paused) {
+    }
+    case TimerMode::Paused: {
         return (timer->paused_time - timer->start_time) - timer->total_paused_duration;
     }
-
-    unreachable();
+    }
 }
 
-void timer_apply_action(Arena *arena, TimerState *timer, FileDef *file, TimerAction action, Instant t) {
-    // Switch statements are annoying... and neovim keeps indenting them wrong :(
-    if (timer->mode == TimerMode::Init) {
-        if (action == TimerAction::Split) {
+void timer_apply_action_init(Arena *arena, TimerState *timer, FileDef *file, TimerAction action, Instant t) {
+    switch (action) {
+        case TimerAction::Split: {
             timer->mode = TimerMode::Running;
             timer->start_time = t;
         }
+        default: {}
+    }
+}
 
-    } else if (timer->mode == TimerMode::Running) {
-        if (action == TimerAction::Split) {
-            Duration elapsed = timer_get_elapsed(timer, t);
-            vec_push(arena, &timer->live_splits, some(elapsed));
+void timer_apply_action_running(Arena *arena, TimerState *timer, FileDef *file, TimerAction action, Instant t) {
+    switch (action) {
+    case TimerAction::Split: {
+        Duration elapsed = timer_get_elapsed(timer, t);
+        vec_push(arena, &timer->live_splits, some(elapsed));
 
-            if (timer->live_splits.count == file->segments.count) {
-                timer->mode = TimerMode::Finished;
-            }
-
-        } else if (action == TimerAction::UndoSplit) {
-            if (timer->live_splits.count == 0) {
-                timer_reset(timer);
-            } else {
-                vec_pop(&timer->live_splits);
-            }
-
-        } else if (action == TimerAction::DeleteSplit) {
-            if (timer->live_splits.count > 0) {
-                timer->live_splits[timer->live_splits.count - 1] = {};
-            }
-
-        } else if (action == TimerAction::ResetAndSave) {
-            file->total_attempts++;
-            // TODO save golds and rest of file (?)
-            timer_reset(timer);
-
-        } else if (action == TimerAction::ResetAndDelete) {
-            timer_reset(timer);
-
-        } else if (action == TimerAction::Pause) {
-            timer->mode = TimerMode::Paused;
-            timer->paused_time = t;
+        if (timer->live_splits.count == file->segments.count) {
+            timer->mode = TimerMode::Finished;
         }
-
-    } else if (timer->mode == TimerMode::Paused) {
-        if (action == TimerAction::Pause) {
-            // Unpause
-            Duration pause_duration = t - timer->paused_time;
-            timer->total_paused_duration += pause_duration;
-            timer->mode = TimerMode::Running;
-        }
-
-        else if (action == TimerAction::ResetAndSave) {
-            file->total_attempts++;
-            // save golds?
+        break;
+    }
+    case TimerAction::UndoSplit: {
+        if (timer->live_splits.count == 0) {
             timer_reset(timer);
-
-        } else if (action == TimerAction::ResetAndDelete) {
-            timer_reset(timer);
-        }
-
-    } else if (timer->mode == TimerMode::Finished) {
-        if (action == TimerAction::UndoSplit) {
+        } else {
             vec_pop(&timer->live_splits);
-            timer->mode = TimerMode::Running;
-
-        } else if (action == TimerAction::ResetAndSave) {
-            file->total_attempts++;
-            file->completed_attempts++;
-            // save golds?
-            // save personal best?
-            timer_reset(timer);
-
-        } else if (action == TimerAction::ResetAndDelete) {
-            timer_reset(timer);
         }
+        break;
+    }
+    case TimerAction::DeleteSplit: {
+        if (timer->live_splits.count > 0) {
+            timer->live_splits[timer->live_splits.count - 1] = {};
+        }
+        break;
+    }
+    case TimerAction::ResetAndSave: {
+        file->total_attempts++;
+        // TODO save golds and rest of file (?)
+        timer_reset(timer);
+        break;
+    }
+    case TimerAction::ResetAndDelete: {
+        timer_reset(timer);
+        break;
+    }
+    case TimerAction::Pause: {
+        timer->mode = TimerMode::Paused;
+        timer->paused_time = t;
+        break;
+    }
+    }
+}
 
-    } else {
-        unreachable();
+void timer_apply_action_paused(Arena *arena, TimerState *timer, FileDef *file, TimerAction action, Instant t) {
+    switch (action) {
+    case TimerAction::Pause: {
+        // Unpause
+        Duration pause_duration = t - timer->paused_time;
+        timer->total_paused_duration += pause_duration;
+        timer->mode = TimerMode::Running;
+        break;
+    }
+    case TimerAction::ResetAndSave: {
+        file->total_attempts++;
+        // TODO: Save golds?
+        timer_reset(timer);
+        break;
+    }
+    case TimerAction::ResetAndDelete: {
+        timer_reset(timer);
+        break;
+    }
+    default: {}
+    }
+}
+
+void timer_apply_action_finished(Arena *arena, TimerState *timer, FileDef *file, TimerAction action, Instant t) {
+    switch (action) {
+    case TimerAction::UndoSplit: {
+        vec_pop(&timer->live_splits);
+        timer->mode = TimerMode::Running;
+        break;
+    }
+    case TimerAction::ResetAndSave: {
+        file->total_attempts++;
+        file->completed_attempts++;
+        // save golds?
+        // save personal best?
+        timer_reset(timer);
+        break;
+    }
+    case TimerAction::ResetAndDelete: {
+        timer_reset(timer);
+        break;
+    }
+    default: {}
+    }
+}
+
+void timer_apply_action(Arena *arena, TimerState *timer, FileDef *file, TimerAction action, Instant t) {
+    switch (timer->mode) {
+    case TimerMode::Init: {
+        timer_apply_action_init(arena, timer, file, action, t);
+        break;
+    }
+    case TimerMode::Running: {
+        timer_apply_action_running(arena, timer, file, action, t);
+        break;
+    }
+    case TimerMode::Paused: {
+        timer_apply_action_paused(arena, timer, file, action, t);
+        break;
+    }
+    case TimerMode::Finished: {
+        timer_apply_action_finished(arena, timer, file, action, t);
+        break;
+    }
     }
 }
 
