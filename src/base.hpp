@@ -73,6 +73,7 @@ constexpr u64 next_pow2(u64 x) {
 
 [[noreturn]] void log__assert(const char *cond, const char *file, int line);
 #define log_assert(cond) if ((cond) == false) log__assert(#cond, __FILE_NAME__, __LINE__)
+#define unreachable() log__assert("unreachable", __FILE_NAME__, __LINE__)
 
 //
 // Arenas

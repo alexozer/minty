@@ -198,20 +198,18 @@ void timer_reset(TimerState *timer) {
 Duration timer_get_elapsed(TimerState *timer, Instant event_time) {
     if (timer->mode == TimerMode::Init) {
         return DURATION_ZERO;
-    }
-    if (timer->mode == TimerMode::Finished) {
+
+    } else if (timer->mode == TimerMode::Finished) {
         return timer->live_splits[timer->live_splits.count - 1].opt;
+
+    } else if (timer->mode == TimerMode::Running) {
+        return (event_time - timer->start_time) - timer->total_paused_duration;
+
+    } else if (timer->mode == TimerMode::Paused) {
+        return (timer->paused_time - timer->start_time) - timer->total_paused_duration;
     }
 
-    Instant now = {};
-    if (timer->mode == TimerMode::Running) {
-        now = event_time;
-    } else if (timer->mode == TimerMode::Paused){
-        now = timer->paused_time;
-    } else {
-        log_assert(false);
-    }
-    return (now - timer->start_time) - timer->total_paused_duration;
+    unreachable();
 }
 
 void timer_apply_action(Arena *arena, TimerState *timer, FileDef *file, TimerAction action, Instant t) {
@@ -288,8 +286,9 @@ void timer_apply_action(Arena *arena, TimerState *timer, FileDef *file, TimerAct
         } else if (action == TimerAction::ResetAndDelete) {
             timer_reset(timer);
         }
+
     } else {
-        log_assert(false);
+        unreachable();
     }
 }
 
@@ -816,7 +815,7 @@ SDL_FPoint compute_box_bbox_uncached(Box *box) {
     } else if (box->type == BoxType::Texture) {
         return { .x = box->width, .y = box->height };
     }
-    log_assert(false);
+    unreachable();
 }
 
 SDL_FPoint compute_box_bbox(Box *box) {
