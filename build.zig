@@ -4,6 +4,7 @@ const zcc = @import("compile_commands");
 const cxx_flags: []const []const u8 = &.{
     "-Wall",
     "-Wshadow",
+    "-Wimplicit-fallthrough",
     "-isystem", "3rdparty",
     "-DYYJSON_DISABLE_INCR_READER=1",
     "-DYYJSON_DISABLE_UTILS=1",
