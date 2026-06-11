@@ -62,13 +62,13 @@ static char *xao__unescape(char *start, char *end) {
 top: {
     char *esc = memchr(start, '&', end - start);
     if (esc == NULL) {
-        memcpy(base, start, end - start);
+        memmove(base, start, end - start);
         return base + (end - start);
     }
     for (int i = 0; i < (sizeof esc_codes / sizeof esc_codes[0]); i++) {
         if (xao__is_string(esc, end, esc_codes[i])) {
             *esc = esc_chars[i];
-            memcpy(base, start, esc - start + 1);
+            memmove(base, start, esc - start + 1);
             base += esc - start + 1;
             start = esc + strlen(esc_codes[i]);
             goto top;

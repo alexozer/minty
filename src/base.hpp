@@ -153,22 +153,19 @@ bool arr_eq(Arr<T> a, Arr<T> b) {
     if (a.count != b.count) {
         return false;
     }
-    for (u64 i = 0; i < a.count; i++) {
-        if (a[i] != b[i]) {
-            return false;
-        }
-    }
-    return true;
+    return SDL_memcmp(a.ptr, b.ptr, a.count * sizeof(T)) == 0;
 }
 
 template <typename T>
 void arr_copy(Arr<T> dest, Arr<T> source) {
-    if (dest.count != source.count) {
-        log_fatal("Unequal array lengths: dest = %" PRIu64 ", source = %" PRIu64, dest.count, source.count);
-    }
-    for (u64 i = 0; i < dest.count; i++) {
-        dest[i] = source[i];
-    }
+    log_assert(dest.count == source.count);
+    SDL_memcpy(dest.ptr, source.ptr, dest.count * sizeof(T));
+}
+
+template <typename T>
+void arr_move(Arr<T> dest, Arr<T> source) {
+    log_assert(dest.count == source.count);
+    SDL_memmove(dest.ptr, source.ptr, dest.count * sizeof(T));
 }
 
 template <typename T>
