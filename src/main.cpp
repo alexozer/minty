@@ -17,6 +17,10 @@ extern "C" {
 #include "xao.h"
 }
 
+//
+// MARK:Timer
+//
+
 Opt<Duration> operator+(const Opt<Duration>& d1, const Opt<Duration>& d2) {
     return {
         .present = d1.present && d2.present,
@@ -447,7 +451,7 @@ FileDef *load_livesplit_lss(Arena *arena, ErrorContext *err, SDL_Renderer *rende
     void *lss_buf = SDL_LoadFile(lss_path_cstr, &size);
     if (lss_buf == nullptr) {
         err_report(err, "Failed to load file: %s", SDL_GetError());
-        return nullptr;
+        return arena_push<FileDef>(arena);
     }
     defer(SDL_free(lss_buf));
 
@@ -567,7 +571,7 @@ void init_window(ErrorContext *err, App *app) {
         err_report(err, "Unable to create renderer: %s", SDL_GetError());
         return;
     }
-    // SDL_SetRenderVSync(app->renderer, 1);
+    SDL_SetRenderVSync(app->renderer, 1);
 }
 
 Session *create_session(ErrorContext *err, Arena *arena, SDL_Renderer *renderer, Str path) {
@@ -684,7 +688,7 @@ void SDL_AppQuit(void* appstate, SDL_AppResult result) {
 }
 
 //
-// Rendering
+// MARK:Rendering
 //
 
 enum class BoxType {
