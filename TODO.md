@@ -19,7 +19,7 @@ Draw split/segment times
 
 ## Research
 
-File Pilot render system interview
+<!-- File Pilot render system interview -->
 Blog posts on text rendering / SDFs
 kb_text_shape shaping/segmentation
 GPU font rendering (slug)
