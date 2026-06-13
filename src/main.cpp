@@ -66,12 +66,17 @@ enum class TimerMode {
     Finished,
 };
 
-struct TimerState {
+struct Timer {
     TimerMode mode;
     Vec<Opt<Duration>> live_splits;
     Instant start_time;
     Instant paused_time;
     Duration total_paused_duration;
+};
+
+struct Session {
+    FileDef *file;
+    Timer *timer;
 };
 
 struct SegSummary {
@@ -90,7 +95,10 @@ struct SegSummary {
     bool is_new_gold;
 };
 
-Arr<SegSummary> calc_seg_summary(Arena *arena, TimerState *timer, FileDef *file) {
+Arr<SegSummary> calc_seg_summary(Arena *arena, Session *session) {
+    Timer *timer = session->timer;
+    FileDef *file = session->file;
+
     Arr<SegSummary> summary = arena_push_arr<SegSummary>(arena, timer->live_splits.count);
 
     // Calc PB splits
@@ -190,12 +198,12 @@ enum class TimerAction {
     Pause,
 };
 
-void timer_reset(TimerState *timer) {
+void timer_reset(Timer *timer) {
     timer->mode = TimerMode::Init;
     vec_reset(&timer->live_splits);
 }
 
-Duration timer_get_elapsed(TimerState *timer, Instant event_time) {
+Duration timer_get_elapsed(Timer *timer, Instant event_time) {
     switch (timer->mode) {
     case TimerMode::Init: {
         return DURATION_ZERO;
@@ -212,17 +220,21 @@ Duration timer_get_elapsed(TimerState *timer, Instant event_time) {
     }
 }
 
-void timer_apply_action_init(Arena *arena, TimerState *timer, FileDef *file, TimerAction action, Instant t) {
+void timer_apply_action_init(Arena *arena, Session *session, TimerAction action, Instant t) {
     switch (action) {
-        case TimerAction::Split: {
-            timer->mode = TimerMode::Running;
-            timer->start_time = t;
-        }
-        default: {}
+    case TimerAction::Split: {
+        session->timer->mode = TimerMode::Running;
+        session->timer->start_time = t;
+        break;
+    }
+    default: {}
     }
 }
 
-void timer_apply_action_running(Arena *arena, TimerState *timer, FileDef *file, TimerAction action, Instant t) {
+void timer_apply_action_running(Arena *arena, Session *session, TimerAction action, Instant t) {
+    Timer *timer = session->timer;
+    FileDef *file = session->file;
+
     switch (action) {
     case TimerAction::Split: {
         Duration elapsed = timer_get_elapsed(timer, t);
@@ -265,7 +277,10 @@ void timer_apply_action_running(Arena *arena, TimerState *timer, FileDef *file, 
     }
 }
 
-void timer_apply_action_paused(Arena *arena, TimerState *timer, FileDef *file, TimerAction action, Instant t) {
+void timer_apply_action_paused(Arena *arena, Session *session, TimerAction action, Instant t) {
+    Timer *timer = session->timer;
+    FileDef *file = session->file;
+
     switch (action) {
     case TimerAction::Pause: {
         // Unpause
@@ -288,7 +303,10 @@ void timer_apply_action_paused(Arena *arena, TimerState *timer, FileDef *file, T
     }
 }
 
-void timer_apply_action_finished(Arena *arena, TimerState *timer, FileDef *file, TimerAction action, Instant t) {
+void timer_apply_action_finished(Arena *arena, Session *session, TimerAction action, Instant t) {
+    Timer *timer = session->timer;
+    FileDef *file = session->file;
+
     switch (action) {
     case TimerAction::UndoSplit: {
         vec_pop(&timer->live_splits);
@@ -311,22 +329,22 @@ void timer_apply_action_finished(Arena *arena, TimerState *timer, FileDef *file,
     }
 }
 
-void timer_apply_action(Arena *arena, TimerState *timer, FileDef *file, TimerAction action, Instant t) {
-    switch (timer->mode) {
+void timer_apply_action(Arena *arena, Session *session, TimerAction action, Instant t) {
+    switch (session->timer->mode) {
     case TimerMode::Init: {
-        timer_apply_action_init(arena, timer, file, action, t);
+        timer_apply_action_init(arena, session, action, t);
         break;
     }
     case TimerMode::Running: {
-        timer_apply_action_running(arena, timer, file, action, t);
+        timer_apply_action_running(arena, session, action, t);
         break;
     }
     case TimerMode::Paused: {
-        timer_apply_action_paused(arena, timer, file, action, t);
+        timer_apply_action_paused(arena, session, action, t);
         break;
     }
     case TimerMode::Finished: {
-        timer_apply_action_finished(arena, timer, file, action, t);
+        timer_apply_action_finished(arena, session, action, t);
         break;
     }
     }
@@ -511,11 +529,6 @@ constexpr i32 DEFAULT_WINDOW_HEIGHT = 600;
 constexpr i32 MIN_WINDOW_WIDTH = 200;
 constexpr i32 MIN_WINDOW_HEIGHT = 100;
 
-struct Session {
-    FileDef *file;
-    TimerState *timer;
-};
-
 struct App {
     Arena *app_arena; // Lives for duration of application
     SDL_Window* window;
@@ -572,6 +585,8 @@ SDL_HitTestResult hittest_callback(SDL_Window* window, const SDL_Point *point, v
 }
 
 void init_window(ErrorContext *err, App *app) {
+    err_scope(err, "Initialize window");
+
     if (!SDL_SetAppMetadata("Blitter", "0.0.1", nullptr)) {
         err_report(err, "Failed to set app metadata: %s", SDL_GetError());
         return;
@@ -617,7 +632,7 @@ Session *create_session(ErrorContext *err, Arena *arena, SDL_Renderer *renderer,
     Session *session = arena_push<Session>(arena);
 
     session->file = load_livesplit_lss(arena, err, renderer, path);
-    session->timer = arena_push<TimerState>(arena);
+    session->timer = arena_push<Timer>(arena);
 
     return session;
 }
@@ -690,29 +705,40 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
     }
     if (event->common.type == SDL_EVENT_KEY_DOWN && (app->prev_keys & event->key.key) == 0) {
         app->prev_keys |= event->key.key;
-        if (event->key.key == SDLK_Q) {
+
+        switch (event->key.key) {
+        case SDLK_Q: {
             return SDL_APP_SUCCESS;
         }
-        if (event->key.key == SDLK_SPACE || event->key.key == SDLK_DOWN) {
-            timer_apply_action(app->app_arena, app->session->timer, app->session->file, TimerAction::Split, t);
+        case SDLK_SPACE:
+        case SDLK_DOWN: {
+            timer_apply_action(app->app_arena, app->session, TimerAction::Split, t);
+            break;
         }
-        if (event->key.key == SDLK_UP) {
-            timer_apply_action(app->app_arena, app->session->timer, app->session->file, TimerAction::UndoSplit, t);
+        case SDLK_UP: {
+            timer_apply_action(app->app_arena, app->session, TimerAction::UndoSplit, t);
+            break;
         }
-        if (event->key.key == SDLK_D) {
-            timer_apply_action(app->app_arena, app->session->timer, app->session->file, TimerAction::DeleteSplit, t);
+        case SDLK_D: {
+            timer_apply_action(app->app_arena, app->session, TimerAction::DeleteSplit, t);
+            break;
         }
-        if (event->key.key == SDLK_P) {
-            timer_apply_action(app->app_arena, app->session->timer, app->session->file, TimerAction::Pause, t);
+        case SDLK_P: {
+            timer_apply_action(app->app_arena, app->session, TimerAction::Pause, t);
+            break;
         }
-        if (event->key.key == SDLK_BACKSPACE) {
-            timer_apply_action(app->app_arena, app->session->timer, app->session->file, TimerAction::ResetAndSave, t);
+        case SDLK_BACKSPACE: {
+            timer_apply_action(app->app_arena, app->session, TimerAction::ResetAndSave, t);
+            break;
         }
-        if (event->key.key == SDLK_V && (event->key.mod & (SDL_KMOD_LGUI | SDL_KMOD_RGUI))) {
         }
-    } else if (event->common.type == SDL_EVENT_KEY_UP) {
+    }
+
+    if (event->common.type == SDL_EVENT_KEY_UP) {
         app->prev_keys &= ~event->key.key;
-    } else if (event->common.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event->button.button == SDL_BUTTON_RIGHT) {
+    }
+
+    if (event->common.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event->button.button == SDL_BUTTON_RIGHT) {
         char *clipboard_cstr = SDL_GetClipboardText();
         defer(SDL_free(clipboard_cstr));
         Str clipboard = str_trim(str_from_c(clipboard_cstr));
