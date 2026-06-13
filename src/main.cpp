@@ -830,10 +830,12 @@ Box *make_solid_color_box(Arena *arena, SDL_FColor color, f32 width, f32 height)
 SDL_FPoint compute_box_bbox(Box *box);
 
 SDL_FPoint compute_box_bbox_uncached(Box *box) {
-    if (box->type == BoxType::Empty || box->type == BoxType::SolidColor) {
+    switch (box->type) {
+    case BoxType::Empty:
+    case BoxType::SolidColor: {
         return { .x = box->width, .y = box->height };
-
-    } else if (box->type == BoxType::LeftToRightStack) {
+    }
+    case BoxType::LeftToRightStack: {
         SDL_FPoint total = {};
         for (u64 i = 0; i < box->children.count; i++) {
             SDL_FPoint child_bbox = compute_box_bbox(box->children[i]);
@@ -845,8 +847,8 @@ SDL_FPoint compute_box_bbox_uncached(Box *box) {
             }
         }
         return total;
-
-    } else if (box->type == BoxType::TopToBottomStack) {
+    }
+    case BoxType::TopToBottomStack: {
         SDL_FPoint total = {};
         for (u64 i = 0; i < box->children.count; i++) {
             SDL_FPoint child_bbox = compute_box_bbox(box->children[i]);
@@ -858,8 +860,8 @@ SDL_FPoint compute_box_bbox_uncached(Box *box) {
             }
         }
         return total;
-
-    } else if (box->type == BoxType::BackToFrontStack) {
+    }
+    case BoxType::BackToFrontStack: {
         SDL_FPoint total = {};
         for (u64 i = 0; i < box->children.count; i++) {
             SDL_FPoint child_bbox = compute_box_bbox(box->children[i]);
@@ -871,17 +873,17 @@ SDL_FPoint compute_box_bbox_uncached(Box *box) {
             }
         }
         return total;
-
-    } else if (box->type == BoxType::Text) {
+    }
+    case BoxType::Text: {
         i32 width = 0;
         i32 height = 0;
         TTF_GetTextSize(box->text_obj, &width, &height);
         return { .x = (f32)width, .y = (f32)height };
-
-    } else if (box->type == BoxType::Texture) {
+    }
+    case BoxType::Texture: {
         return { .x = box->width, .y = box->height };
     }
-    unreachable();
+    }
 }
 
 SDL_FPoint compute_box_bbox(Box *box) {
@@ -1079,31 +1081,37 @@ Box *prerender(Arena *arena, App *app) {
 }
 
 void render_box(App *app, Box *box, SDL_FPoint where) {
-    if (box->type == BoxType::Empty) {
-
-    } else if (box->type == BoxType::LeftToRightStack) {
+    switch (box->type) {
+    case BoxType::Empty: {
+        break;
+    }
+    case BoxType::LeftToRightStack: {
         for (u64 i = 0; i < box->children.count; i++) {
             SDL_FPoint child_bbox = compute_box_bbox(box->children[i]);
             render_box(app, box->children[i], where);
             where.x += child_bbox.x;
         }
-
-    } else if (box->type == BoxType::TopToBottomStack) {
+        break;
+    }
+    case BoxType::TopToBottomStack: {
         for (u64 i = 0; i < box->children.count; i++) {
             SDL_FPoint child_bbox = compute_box_bbox(box->children[i]);
             render_box(app, box->children[i], where);
             where.y += child_bbox.y;
         }
-
-    } else if (box->type == BoxType::BackToFrontStack) {
+        break;
+    }
+    case BoxType::BackToFrontStack: {
         for (u64 i = 0; i < box->children.count; i++) {
             render_box(app, box->children[i], where);
         }
-
-    } else if (box->type == BoxType::Text) {
+        break;
+    }
+    case BoxType::Text: {
         TTF_DrawRendererText(box->text_obj, where.x, where.y);
-
-    } else if (box->type == BoxType::Texture) {
+        break;
+    }
+    case BoxType::Texture: {
         f32 src_ratio = (f32)box->texture->w / (f32)box->texture->h;
         f32 dst_ratio = box->width / box->height;
 
@@ -1122,13 +1130,15 @@ void render_box(App *app, Box *box, SDL_FPoint where) {
             dest.x = where.x + ((box->width - dest.w) / 2.f);
             dest.y = where.y;
         }
-
         SDL_RenderTexture(app->renderer, box->texture, nullptr, &dest);
-
-    } else if (box->type == BoxType::SolidColor) {
+        break;
+    }
+    case BoxType::SolidColor: {
         SDL_SetRenderDrawColorFloat(app->renderer, box->color.r, box->color.g, box->color.b, box->color.a);
         SDL_FRect r = { .x = where.x, .y = where.y, .w = box->width, .h = box->height };
         SDL_RenderFillRect(app->renderer, &r);
+        break;
+    }
     }
 }
 
