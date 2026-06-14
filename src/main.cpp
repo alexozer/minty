@@ -13,9 +13,10 @@
 #include <SDL3_ttf/SDL_ttf.h>
 
 extern "C" {
-#include <yyjson.h>
 #include <xao.h>
 }
+#include <yyjson.h>
+#include <kb_text_shape.h>
 
 //
 // MARK:Timer
@@ -656,6 +657,8 @@ App *init_app(ErrorContext *err) {
     return app;
 }
 
+void shape_test();
+
 SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
     thread_init(argc, argv);
 
@@ -669,6 +672,9 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
         return SDL_APP_FAILURE;
     }
     *appstate = app;
+
+    // TODO remove
+    shape_test();
 
     return SDL_APP_CONTINUE;
 }
@@ -1161,4 +1167,46 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
     App *app = (App *)appstate;
     render(app);
     return SDL_APP_CONTINUE;
+}
+
+//
+// MARK:Font stuff
+//
+
+void shape_test() {
+    kbts_shape_context *context = kbts_CreateShapeContext(0, 0);
+    defer(kbts_DestroyShapeContext(context));
+    kbts_ShapePushFontFromFile(context, "data/Roboto-Medium.ttf", 0);
+
+    Str shape_text = S("Let's shape something!");
+
+	kbts_ShapeBegin(context, KBTS_DIRECTION_DONT_KNOW, KBTS_LANGUAGE_DONT_KNOW);
+	kbts_ShapeUtf8(context,
+            (char *)shape_text.ptr, shape_text.count,
+            KBTS_USER_ID_GENERATION_MODE_CODEPOINT_INDEX);
+	kbts_ShapeEnd(context);
+
+    // Layout runs naively left to right.
+    kbts_run Run = {};
+    int CursorX = 0, CursorY = 0;
+    u64 run_idx = 0;
+    while (kbts_ShapeRun(context, &Run))
+    {
+        log_info("Run idx = %" PRIu64, run_idx);
+        u64 glyph_idx = 0;
+        kbts_glyph *Glyph = nullptr;
+        while (kbts_GlyphIteratorNext(&Run.Glyphs, &Glyph))
+        {
+            int GlyphX = CursorX + Glyph->OffsetX;
+            int GlyphY = CursorY + Glyph->OffsetY;
+
+            // DisplayGlyph(Glyph->Id, GlyphX, GlyphY);
+            log_info("Display glyph: idx = %" PRIu64 ", id = %d, x = %d, y = %d\n", glyph_idx, Glyph->Id, GlyphX, GlyphY);
+
+            CursorX += Glyph->AdvanceX;
+            CursorY += Glyph->AdvanceY;
+            glyph_idx++;
+        }
+        run_idx++;
+    }
 }

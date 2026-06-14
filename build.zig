@@ -8,6 +8,9 @@ const blitter_sources: []const []const u8 = &.{
 
 const thirdparty_c_sources: []const []const u8 = &.{
     "3rdparty/xao.c",
+};
+
+const thirdparty_cpp_sources: []const []const u8 = &.{
     "3rdparty/yyjson.c",
     "3rdparty/kb_text_shape.c",
 };
@@ -70,7 +73,11 @@ pub fn build(b: *std.Build) !void {
             .link_libcpp = true,
         }),
     });
-    simdutf.root_module.addCSourceFiles(.{ .files = simdutf_sources, .flags = cpp_flags });
+    simdutf.root_module.addCSourceFiles(.{
+        .files = simdutf_sources,
+        .flags = cpp_flags,
+        .language = .cpp,
+    });
     simdutf.installHeader(b.path("3rdparty/simdutf_c.h"), "simdutf_c.h");
     try cdb_targets.append(b.allocator, simdutf);
 
@@ -84,8 +91,21 @@ pub fn build(b: *std.Build) !void {
             .link_libcpp = false,
         }),
     });
-    blitter.root_module.addCSourceFiles(.{ .files = blitter_sources_plat, .flags = blitter_flags });
-    blitter.root_module.addCSourceFiles(.{ .files = thirdparty_c_sources, .flags = c_flags });
+    blitter.root_module.addCSourceFiles(.{
+        .files = blitter_sources_plat,
+        .flags = blitter_flags,
+        .language = .cpp,
+    });
+    blitter.root_module.addCSourceFiles(.{
+        .files = thirdparty_c_sources,
+        .flags = c_flags,
+        .language = .c,
+    });
+    blitter.root_module.addCSourceFiles(.{
+        .files = thirdparty_cpp_sources,
+        .flags = cpp_flags,
+        .language = .cpp,
+    });
     blitter.root_module.linkLibrary(simdutf);
     blitter.root_module.linkLibrary(sdl.artifact("SDL3"));
     blitter.root_module.linkLibrary(sdl_ttf.artifact("SDL3_ttf"));
