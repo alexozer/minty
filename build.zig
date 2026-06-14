@@ -1,6 +1,22 @@
 const std = @import("std");
 const zcc = @import("compile_commands");
 
+const blitter_sources: []const []const u8 = &.{
+    "src/main.cpp",
+    "src/base.cpp",
+};
+
+const thirdparty_c_sources: []const []const u8 = &.{
+    "3rdparty/xao.c",
+    "3rdparty/yyjson.c",
+    "3rdparty/kb_text_shape.c",
+};
+
+// Build in separate library to (maybe?) avoid linking libcpp
+const simdutf_sources: []const []const u8 = &.{
+    "3rdparty/simdutf.cpp",
+};
+
 const cxx_flags: []const []const u8 = &.{
     "-Wall",
     "-Wshadow",
@@ -17,7 +33,7 @@ const cxx_flags: []const []const u8 = &.{
 };
 
 const c_flags: []const []const u8 = .{
-    "-std=c99",
+    "-std=c11",
 } ++ cxx_flags;
 
 const cpp_flags: []const []const u8 = .{
@@ -25,23 +41,6 @@ const cpp_flags: []const []const u8 = .{
     "-fno-exceptions",
     "-fno-rtti",
 } ++ cxx_flags;
-
-const blitter_sources: []const []const u8 = &.{
-    "src/main.cpp",
-    "src/base.cpp",
-};
-
-const xao_sources: []const []const u8 = &.{
-    "src/xao.c",
-};
-
-const yyjson_sources: []const []const u8 = &.{
-    "3rdparty/yyjson.c",
-};
-
-const simdutf_sources: []const []const u8 = &.{
-    "3rdparty/simdutf.cpp",
-};
 
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
@@ -63,13 +62,6 @@ pub fn build(b: *std.Build) !void {
     const sdl_ttf = b.dependency("SDL_ttf", .{ .optimize = optimize, .target = target });
     try cdb_targets.append(b.allocator, sdl_ttf.artifact("SDL3_ttf"));
 
-    // const raylib = b.dependency("raylib", .{ .optimize = optimize, .target = target });
-    // try targets.append(b.allocator, raylib.artifact("raylib"));
-
-    // Build simdutf separately so we can compile with libcpp headers, but not
-    // link libcpp in final executable
-    // TODO: do we need to build main.cpp with the C header to get small build
-    // size? See singlefile in downloads
     const simdutf = b.addLibrary(.{
         .name = "simdutf",
         .root_module = b.createModule(.{
@@ -82,30 +74,6 @@ pub fn build(b: *std.Build) !void {
     simdutf.installHeader(b.path("3rdparty/simdutf_c.h"), "simdutf_c.h");
     try cdb_targets.append(b.allocator, simdutf);
 
-    const yyjson = b.addLibrary(.{
-        .name = "yyjson",
-        .root_module = b.createModule(.{
-            .target = target,
-            .optimize = optimize,
-            .link_libc = true,
-        }),
-    });
-    yyjson.root_module.addCSourceFiles(.{ .files = yyjson_sources, .flags = c_flags, });
-    yyjson.installHeader(b.path("3rdparty/yyjson.h"), "yyjson.h");
-    try cdb_targets.append(b.allocator, yyjson);
-
-    const xao = b.addLibrary(.{
-        .name = "xao",
-        .root_module = b.createModule(.{
-            .target = target,
-            .optimize = optimize,
-            .link_libc = true,
-        }),
-    });
-    xao.root_module.addCSourceFiles(.{ .files = xao_sources, .flags = c_flags });
-    xao.installHeader(b.path("src/xao.h"), "xao.h");
-    try cdb_targets.append(b.allocator, xao);
-
     const blitter = b.addExecutable(.{
         .name = "blitter",
         .root_module = b.createModule(.{
@@ -117,12 +85,10 @@ pub fn build(b: *std.Build) !void {
         }),
     });
     blitter.root_module.addCSourceFiles(.{ .files = blitter_sources_plat, .flags = blitter_flags });
+    blitter.root_module.addCSourceFiles(.{ .files = thirdparty_c_sources, .flags = c_flags });
     blitter.root_module.linkLibrary(simdutf);
-    blitter.root_module.linkLibrary(yyjson);
-    blitter.root_module.linkLibrary(xao);
     blitter.root_module.linkLibrary(sdl.artifact("SDL3"));
     blitter.root_module.linkLibrary(sdl_ttf.artifact("SDL3_ttf"));
-    // blitter.root_module.linkLibrary(raylib.artifact("raylib"));
     try cdb_targets.append(b.allocator, blitter);
 
     b.installArtifact(blitter);
