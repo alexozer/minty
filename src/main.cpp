@@ -1039,7 +1039,7 @@ Box *prerender_contents(Arena *arena, App *app, f32 width, f32 height) {
 Box *prerender(Arena *arena, App *app) {
     i32 width = 0;
     i32 height = 0;
-    assert(SDL_GetRenderOutputSize(app->renderer, &width, &height));
+    SDL_GetRenderOutputSize(app->renderer, &width, &height);
 
     constexpr f32 PADDING = 10;
     Box *timer = prerender_contents(arena, app, (f32)width - (PADDING * 2.f), (f32)height - (PADDING * 2.f));
