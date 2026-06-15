@@ -1,3 +1,4 @@
+#include "SDL3/SDL_pixels.h"
 #include "base.hpp"
 
 #include <stdarg.h>
@@ -9,7 +10,8 @@
 #include <SDL3/SDL_render.h>
 #include <SDL3/SDL_stdinc.h>
 #include <SDL3/SDL_video.h>
-#include "SDL3/SDL_keycode.h"
+#include <SDL3/SDL_keycode.h>
+#include <SDL3/SDL_gpu.h>
 #include <SDL3_ttf/SDL_ttf.h>
 
 extern "C" {
@@ -54,10 +56,7 @@ struct FileDef {
     Arr<SegmentDef> segments;
     SplitRecord personal_best;
     Arr<Opt<Duration>> golds;
-
-    // TODO organize better
-    Arr<SDL_Surface *> surfaces;
-    Arr<SDL_Texture *> textures;
+    Arr<SDL_Surface *> icons;
 };
 
 enum class TimerMode {
@@ -78,6 +77,9 @@ struct Timer {
 struct Session {
     FileDef *file;
     Timer *timer;
+
+    // TODO probably segment renderer state better
+    Arr<SDL_GPUTexture *> textures;
 };
 
 struct SegSummary {
@@ -410,12 +412,11 @@ Arr<SegmentDef> parse_livesplit_segments(Arena *arena, ErrorContext *err, xao_Re
     return vec_arr(&segments);
 }
 
-void load_timer_textures(Arena *arena, ErrorContext *err, SDL_Renderer *renderer, FileDef *file) {
-    err_scope(err, "Load segment textures");
+// TODO avoid leaking stuff on error
+void load_timer_textures(Arena *arena, ErrorContext *err, FileDef *file) {
+    err_scope(err, "Load segment icon textures");
 
-    file->surfaces = arena_push_arr<SDL_Surface *>(arena, file->segments.count);
-    file->textures = arena_push_arr<SDL_Texture *>(arena, file->segments.count);
-
+    Arr<SDL_Surface *> icons = arena_push_arr<SDL_Surface *>(arena, file->segments.count);
     for (u64 i = 0; i < file->segments.count; i++) {
         if (arr_is_empty(file->segments[i].icon)) {
             continue;
@@ -426,18 +427,13 @@ void load_timer_textures(Arena *arena, ErrorContext *err, SDL_Renderer *renderer
         SDL_IOStream *png_stream = SDL_IOFromMem(file->segments[i].icon.ptr, file->segments[i].icon.count);
         defer(SDL_CloseIO(png_stream));
 
-        file->surfaces[i] = SDL_LoadPNG_IO(png_stream, false);
-        if (file->surfaces[i] == nullptr) {
-            err_report(err, "Failed to load surface from PNG: %s", SDL_GetError());
-            return;
-        }
-
-        file->textures[i] = SDL_CreateTextureFromSurface(renderer, file->surfaces[i]);
-        if (file->textures[i] == nullptr) {
-            err_report(err, "Failed to create texture: %s", SDL_GetError());
+        icons[i] = SDL_LoadPNG_IO(png_stream, false);
+        if (icons[i] == nullptr) {
+            err_report(err, "%s", SDL_GetError());
             return;
         }
     }
+    file->icons = icons;
 }
 
 FileDef *parse_livesplit_lss(Arena *arena, ErrorContext *err, Str xml) {
@@ -497,7 +493,7 @@ FileDef *parse_livesplit_lss(Arena *arena, ErrorContext *err, Str xml) {
     return file;
 }
 
-FileDef *load_livesplit_lss(Arena *arena, ErrorContext *err, SDL_Renderer *renderer, Str lss_path) {
+FileDef *load_livesplit_lss(Arena *arena, ErrorContext *err, Str lss_path) {
     err_scope(err, "Load LiveSplit LSS file '%.*s'", SF(lss_path));
 
     Arena *scratch = arena_acquire();
@@ -508,7 +504,7 @@ FileDef *load_livesplit_lss(Arena *arena, ErrorContext *err, SDL_Renderer *rende
     char *lss_path_cstr = str_to_c(scratch, lss_path);
     void *lss_buf = SDL_LoadFile(lss_path_cstr, &size);
     if (lss_buf == nullptr) {
-        err_report(err, "Failed to load file: %s", SDL_GetError());
+        err_report(err, "%s", SDL_GetError());
         return arena_push<FileDef>(arena);
     }
     defer(SDL_free(lss_buf));
@@ -516,7 +512,7 @@ FileDef *load_livesplit_lss(Arena *arena, ErrorContext *err, SDL_Renderer *rende
     Str xml = { .ptr = (u8 *)lss_buf, .count = (u64)size };
 
     FileDef *file_def = parse_livesplit_lss(arena, err, xml);
-    load_timer_textures(arena, err, renderer, file_def);
+    load_timer_textures(arena, err, file_def);
 
     return file_def;
 }
@@ -542,11 +538,14 @@ struct App {
 
     Arena *session_arena;
     Session *session; // Nullable
+
+    SDL_GPUDevice *device;
 };
 
 void init_text(ErrorContext *err, App *app) {
     if (!TTF_Init()) {
-        log_fatal("Failed to initialize text engine: %s", SDL_GetError());
+        err_report(err, "%s", SDL_GetError());
+        return;
     }
 
     const char *font_path = "data/Roboto-Medium.ttf";
@@ -557,7 +556,7 @@ void init_text(ErrorContext *err, App *app) {
         // TODO arena allocate
         font_buf = SDL_LoadFile(font_path, &font_file_size);
         if (font_buf == nullptr) {
-            err_report(err, "Failed to open font: %s", SDL_GetError());
+            err_report(err, "%s", SDL_GetError());
             return;
         }
     }
@@ -568,14 +567,14 @@ void init_text(ErrorContext *err, App *app) {
     app->font_medium = TTF_OpenFontIO(SDL_IOFromConstMem(ttf.ptr, ttf.count), true, 18.0f);
     app->font_large = TTF_OpenFontIO(SDL_IOFromConstMem(ttf.ptr, ttf.count), true, 64.0f);
     if (app->font_small == nullptr || app->font_medium == nullptr || app->font_large == nullptr) {
-        err_report(err, "Couldn't open font: %s", SDL_GetError());
+        err_report(err, "%s", SDL_GetError());
         return;
     }
 
     /* Create the text engine */
     app->text_engine = TTF_CreateRendererTextEngine(app->renderer);
     if (app->text_engine == nullptr) {
-        err_report(err, "Couldn't create text engine: %s", SDL_GetError());
+        err_report(err, "%s", SDL_GetError());
         return;
     }
 }
@@ -589,13 +588,13 @@ void init_window(ErrorContext *err, App *app) {
     err_scope(err, "Initialize window");
 
     if (!SDL_SetAppMetadata("Blitter", "0.0.1", nullptr)) {
-        err_report(err, "Failed to set app metadata: %s", SDL_GetError());
+        err_report(err, "%s", SDL_GetError());
         return;
     }
 
     SDL_PropertiesID props = SDL_CreateProperties();
     if (props == 0) {
-        err_report(err, "Unable to create properties: %s", SDL_GetError());
+        err_report(err, "%s", SDL_GetError());
         return;
     }
     defer(SDL_DestroyProperties(props));
@@ -608,35 +607,35 @@ void init_window(ErrorContext *err, App *app) {
 
     app->window = SDL_CreateWindowWithProperties(props);
     if (app->window == nullptr) {
-        err_report(err, "Unable to create window: %s", SDL_GetError());
+        err_report(err, "%s", SDL_GetError());
         return;
     }
 
     if (!SDL_SetWindowMinimumSize(app->window, MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)) {
-        err_report(err, "Unable to set min window dimensions: %s", SDL_GetError());
+        err_report(err, "%s", SDL_GetError());
         return;
     }
     if (!SDL_SetWindowHitTest(app->window, hittest_callback, nullptr)) {
-        err_report(err, "Unable to set window hit test callback: %s", SDL_GetError());
+        err_report(err, "%s", SDL_GetError());
         return;
     }
-
-    app->renderer = SDL_CreateRenderer(app->window, nullptr);
-    if (app->renderer == nullptr) {
-        err_report(err, "Unable to create renderer: %s", SDL_GetError());
-        return;
-    }
-    SDL_SetRenderVSync(app->renderer, 1);
 }
 
-Session *create_session(ErrorContext *err, Arena *arena, SDL_Renderer *renderer, Str path) {
+void init_session_render_resources(ErrorContext *err, Arena *arena, SDL_GPUDevice *device,
+        Session *session);
+
+Session *create_session(ErrorContext *err, Arena *arena, App *app, Str path) {
     Session *session = arena_push<Session>(arena);
 
-    session->file = load_livesplit_lss(arena, err, renderer, path);
+    session->file = load_livesplit_lss(arena, err, path);
     session->timer = arena_push<Timer>(arena);
+    init_session_render_resources(err, app->session_arena, app->device, app->session);
 
     return session;
 }
+
+void init_renderer(ErrorContext *err, App *app);
+void do_render(App *app);
 
 App *init_app(ErrorContext *err) {
     Arena *root_arena = arena_acquire();
@@ -644,7 +643,8 @@ App *init_app(ErrorContext *err) {
     app->app_arena = root_arena;
 
     init_window(err, app);
-    init_text(err, app);
+    // init_text(err, app);
+    init_renderer(err, app);
 
     if (g_argv.count < 2) {
         log_fatal("Usage: blitter <path-to-splits-file>");
@@ -652,7 +652,7 @@ App *init_app(ErrorContext *err) {
     Str path = str_from_c(g_argv[1]);
 
     app->session_arena = arena_acquire();
-    app->session = create_session(err, app->session_arena, app->renderer, path);
+    app->session = create_session(err, app->session_arena, app, path);
 
     return app;
 }
@@ -674,7 +674,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
     *appstate = app;
 
     // TODO remove
-    shape_test();
+    // shape_test();
 
     return SDL_APP_CONTINUE;
 }
@@ -759,7 +759,7 @@ void SDL_AppQuit(void* appstate, SDL_AppResult result) {
 }
 
 //
-// MARK:Rendering
+// MARK:UI
 //
 
 enum class BoxType {
@@ -1165,7 +1165,8 @@ void render(App *app) {
 
 SDL_AppResult SDL_AppIterate(void* appstate) {
     App *app = (App *)appstate;
-    render(app);
+    do_render(app);
+    // render(app);
     return SDL_APP_CONTINUE;
 }
 
@@ -1208,5 +1209,124 @@ void shape_test() {
             glyph_idx++;
         }
         run_idx++;
+    }
+}
+
+//
+// MARK:Renderer
+//
+
+void init_session_render_resources(ErrorContext *err, Arena *arena, SDL_GPUDevice *device,
+        Session *session) {
+    //
+    // Build transfer buffer
+    //
+
+    // TODO 32-byte align each image... some SDL_GPU API said it's necessary for some hardware
+    u64 total_icon_size = 0;
+    for (u64 i = 0; i < session->file->icons.count; i++) {
+        SDL_Surface *surface = session->file->icons[i];
+        if (surface != nullptr) {
+            u64 size = surface->h * surface->pitch;
+            total_icon_size += size;
+        }
+    }
+
+    // TODO reuse transfer buffer
+    SDL_GPUTransferBufferCreateInfo transfer_buffer_info = {
+        .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+        .size = (u32)total_icon_size,
+    };
+    SDL_GPUTransferBuffer *transfer_buffer = SDL_CreateGPUTransferBuffer(device, &transfer_buffer_info);
+    if (transfer_buffer == nullptr) {
+        err_report(err, "%s", SDL_GetError());
+        return;
+    }
+
+    void *buf = SDL_MapGPUTransferBuffer(device, transfer_buffer, false);
+    if (buf == nullptr) {
+        err_report(err, "%s", SDL_GetError());
+        return;
+    }
+
+    u64 offset = 0;
+    for (u64 i = 0; i < session->file->icons.count; i++) {
+        SDL_Surface *surface = session->file->icons[i];
+        if (surface != nullptr) {
+            u64 size = surface->h * surface->pitch;
+            memcpy((u8 *)buf + offset, surface->pixels, size);
+            offset += size;
+        }
+    }
+
+    SDL_UnmapGPUTransferBuffer(device, transfer_buffer);
+
+    //
+    // Upload textures
+    //
+
+    SDL_GPUCommandBuffer *command_buffer = SDL_AcquireGPUCommandBuffer(device);
+    if (command_buffer == nullptr) {
+        err_report(err, "%s", SDL_GetError());
+        return;
+    }
+
+    SDL_GPUCopyPass *pass = SDL_BeginGPUCopyPass(command_buffer);
+    if (pass == nullptr) {
+        err_report(err, "%s", SDL_GetError());
+        return;
+    }
+
+    Arr<SDL_GPUTexture *> textures = arena_push_arr<SDL_GPUTexture *>(arena, session->file->icons.count);
+
+    for (u64 i = 0; i < session->file->icons.count; i++) {
+        SDL_Surface *surface = session->file->icons[i];
+        if (surface != nullptr) {
+            u64 size = surface->h * surface->pitch;
+
+            SDL_GPUTextureCreateInfo info = {
+                .type = SDL_GPU_TEXTURETYPE_2D,
+                .format = SDL_GetGPUTextureFormatFromPixelFormat(surface->format),
+                .usage = SDL_GPU_TEXTUREUSAGE_SAMPLER,
+                .width = (u32)surface->w,
+                .height = (u32)surface->h,
+                .layer_count_or_depth = 1,
+                .num_levels = 1,
+            };
+
+            SDL_GPUTexture *texture = SDL_CreateGPUTexture(device, &info);
+            if (texture == nullptr) {
+                err_report(err, "%s", SDL_GetError());
+                return;
+            }
+
+            // SDL_UploadToGPUTexture(pass,
+
+        }
+    }
+
+    SDL_EndGPUCopyPass(pass);
+
+    if (!SDL_SubmitGPUCommandBuffer(command_buffer)) {
+        err_report(err, "%s", SDL_GetError());
+        return;
+    }
+}
+
+// TODO toggle through build system or something
+constexpr bool RENDERER_DEBUG_MODE = true;
+
+void init_renderer(ErrorContext *err, App *app) {
+    err_scope(err, "Initialize custom renderer");
+
+    app->device = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_MSL, RENDERER_DEBUG_MODE, nullptr);
+    if (app->device == nullptr) {
+        err_report(err, "%s", SDL_GetError());
+        return;
+    }
+
+    if (!SDL_ClaimWindowForGPUDevice(app->device, app->window)) {
+        err_report(err, "%s", SDL_GetError());
+        return;
     }
 }
