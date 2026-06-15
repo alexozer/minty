@@ -80,6 +80,7 @@ struct Session {
 
     // TODO probably segment renderer state better
     Arr<SDL_GPUTexture *> textures;
+    Arr<SDL_GPUSampler *> sampler;
 };
 
 struct SegSummary {
@@ -424,22 +425,16 @@ void load_timer_textures(Arena *arena, ErrorContext *err, FileDef *file) {
 
         err_scope(err, "Load icon texture for segment '%.*s'", SF(file->segments[i].name));
 
-        SDL_IOStream *png_stream = SDL_IOFromMem(file->segments[i].icon.ptr, file->segments[i].icon.count);
+        SDL_IOStream *png_stream = try_sdl(err, SDL_IOFromMem(file->segments[i].icon.ptr, file->segments[i].icon.count));
         defer(SDL_CloseIO(png_stream));
 
-        icons[i] = SDL_LoadPNG_IO(png_stream, false);
-        if (icons[i] == nullptr) {
-            err_report(err, "%s", SDL_GetError());
-            return;
-        }
+        icons[i] = try_sdl(err, SDL_LoadPNG_IO(png_stream, false));
     }
     file->icons = icons;
 }
 
-FileDef *parse_livesplit_lss(Arena *arena, ErrorContext *err, Str xml) {
+FileDef *parse_livesplit_lss(Arena *arena, ErrorContext *err, FileDef *file, Str xml) {
     err_scope(err, "Parse LiveSplit LSS");
-
-    FileDef *file = arena_push<FileDef>(arena);
 
     if (!str_is_valid_utf8(xml)) {
         err_report(err, "Invalid UTF-8");
@@ -484,7 +479,6 @@ FileDef *parse_livesplit_lss(Arena *arena, ErrorContext *err, Str xml) {
             return file;
         }
     }
-
     if (str_is_empty(file->game_name)) {
         err_report(err, "Empty game name");
         return file;
@@ -496,25 +490,23 @@ FileDef *parse_livesplit_lss(Arena *arena, ErrorContext *err, Str xml) {
 FileDef *load_livesplit_lss(Arena *arena, ErrorContext *err, Str lss_path) {
     err_scope(err, "Load LiveSplit LSS file '%.*s'", SF(lss_path));
 
+    FileDef *file = arena_push<FileDef>(arena);
+
     Arena *scratch = arena_acquire();
     defer(arena_release(scratch));
 
     // TODO arena allocate
     size_t size = 0;
     char *lss_path_cstr = str_to_c(scratch, lss_path);
-    void *lss_buf = SDL_LoadFile(lss_path_cstr, &size);
-    if (lss_buf == nullptr) {
-        err_report(err, "%s", SDL_GetError());
-        return arena_push<FileDef>(arena);
-    }
+    void *lss_buf = try_sdl(err, file, SDL_LoadFile(lss_path_cstr, &size));
     defer(SDL_free(lss_buf));
 
     Str xml = { .ptr = (u8 *)lss_buf, .count = (u64)size };
 
-    FileDef *file_def = parse_livesplit_lss(arena, err, xml);
-    load_timer_textures(arena, err, file_def);
+    file = parse_livesplit_lss(arena, err, file, xml);
+    load_timer_textures(arena, err, file);
 
-    return file_def;
+    return file;
 }
 
 //
@@ -529,7 +521,7 @@ constexpr i32 MIN_WINDOW_HEIGHT = 100;
 struct App {
     Arena *app_arena; // Lives for duration of application
     SDL_Window* window;
-    SDL_Renderer* renderer;
+    SDL_Renderer* renderer; // TODO remove
     TTF_Font *font_small;
     TTF_Font *font_medium;
     TTF_Font *font_large;
@@ -543,10 +535,7 @@ struct App {
 };
 
 void init_text(ErrorContext *err, App *app) {
-    if (!TTF_Init()) {
-        err_report(err, "%s", SDL_GetError());
-        return;
-    }
+    try_sdl(err, TTF_Init());
 
     const char *font_path = "data/Roboto-Medium.ttf";
     size_t font_file_size = 0;
@@ -554,29 +543,17 @@ void init_text(ErrorContext *err, App *app) {
     {
         err_scope(err, "Load font '%s", font_path);
         // TODO arena allocate
-        font_buf = SDL_LoadFile(font_path, &font_file_size);
-        if (font_buf == nullptr) {
-            err_report(err, "%s", SDL_GetError());
-            return;
-        }
+        font_buf = try_sdl(err, SDL_LoadFile(font_path, &font_file_size));
     }
     Arr<u8> ttf = { .ptr = (u8 *)font_buf, .count = (u64)font_file_size };
 
     /* Open the font */
-    app->font_small = TTF_OpenFontIO(SDL_IOFromConstMem(ttf.ptr, ttf.count), true, 15.0f);
-    app->font_medium = TTF_OpenFontIO(SDL_IOFromConstMem(ttf.ptr, ttf.count), true, 18.0f);
-    app->font_large = TTF_OpenFontIO(SDL_IOFromConstMem(ttf.ptr, ttf.count), true, 64.0f);
-    if (app->font_small == nullptr || app->font_medium == nullptr || app->font_large == nullptr) {
-        err_report(err, "%s", SDL_GetError());
-        return;
-    }
+    app->font_small = try_sdl(err, TTF_OpenFontIO(SDL_IOFromConstMem(ttf.ptr, ttf.count), true, 15.0f));
+    app->font_medium = try_sdl(err, TTF_OpenFontIO(SDL_IOFromConstMem(ttf.ptr, ttf.count), true, 18.0f));
+    app->font_large = try_sdl(err, TTF_OpenFontIO(SDL_IOFromConstMem(ttf.ptr, ttf.count), true, 64.0f));
 
     /* Create the text engine */
-    app->text_engine = TTF_CreateRendererTextEngine(app->renderer);
-    if (app->text_engine == nullptr) {
-        err_report(err, "%s", SDL_GetError());
-        return;
-    }
+    app->text_engine = try_sdl(err, TTF_CreateRendererTextEngine(app->renderer));
 }
 
 SDL_HitTestResult hittest_callback(SDL_Window* window, const SDL_Point *point, void *data) {
@@ -587,38 +564,20 @@ SDL_HitTestResult hittest_callback(SDL_Window* window, const SDL_Point *point, v
 void init_window(ErrorContext *err, App *app) {
     err_scope(err, "Initialize window");
 
-    if (!SDL_SetAppMetadata("Blitter", "0.0.1", nullptr)) {
-        err_report(err, "%s", SDL_GetError());
-        return;
-    }
+    try_sdl(err, SDL_SetAppMetadata("Blitter", "0.0.1", nullptr));
 
-    SDL_PropertiesID props = SDL_CreateProperties();
-    if (props == 0) {
-        err_report(err, "%s", SDL_GetError());
-        return;
-    }
+    SDL_PropertiesID props = try_sdl(err, SDL_CreateProperties());
     defer(SDL_DestroyProperties(props));
 
-    SDL_SetStringProperty(props, SDL_PROP_WINDOW_CREATE_TITLE_STRING, "Blitter");
-    SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN, true);
-    SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_BORDERLESS_BOOLEAN, true);
-    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, DEFAULT_WINDOW_WIDTH);
-    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, DEFAULT_WINDOW_HEIGHT);
+    try_sdl(err, SDL_SetStringProperty(props, SDL_PROP_WINDOW_CREATE_TITLE_STRING, "Blitter"));
+    try_sdl(err, SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN, true));
+    try_sdl(err, SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_BORDERLESS_BOOLEAN, true));
+    try_sdl(err, SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, DEFAULT_WINDOW_WIDTH));
+    try_sdl(err, SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, DEFAULT_WINDOW_HEIGHT));
 
-    app->window = SDL_CreateWindowWithProperties(props);
-    if (app->window == nullptr) {
-        err_report(err, "%s", SDL_GetError());
-        return;
-    }
-
-    if (!SDL_SetWindowMinimumSize(app->window, MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)) {
-        err_report(err, "%s", SDL_GetError());
-        return;
-    }
-    if (!SDL_SetWindowHitTest(app->window, hittest_callback, nullptr)) {
-        err_report(err, "%s", SDL_GetError());
-        return;
-    }
+    app->window = try_sdl(err, SDL_CreateWindowWithProperties(props));
+    try_sdl(err, SDL_SetWindowMinimumSize(app->window, MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT));
+    try_sdl(err, SDL_SetWindowHitTest(app->window, hittest_callback, nullptr));
 }
 
 void init_session_render_resources(ErrorContext *err, Arena *arena, SDL_GPUDevice *device,
@@ -629,27 +588,27 @@ Session *create_session(ErrorContext *err, Arena *arena, App *app, Str path) {
 
     session->file = load_livesplit_lss(arena, err, path);
     session->timer = arena_push<Timer>(arena);
-    init_session_render_resources(err, app->session_arena, app->device, app->session);
+    init_session_render_resources(err, app->session_arena, app->device, session);
 
     return session;
 }
 
-void init_renderer(ErrorContext *err, App *app);
-void do_render(App *app);
+void re_init(ErrorContext *err, App *app);
+void re_render(App *app);
 
 App *init_app(ErrorContext *err) {
+    if (g_argv.count < 2) {
+        log_fatal("Usage: blitter <path-to-splits-file>");
+    }
+    Str path = str_from_c(g_argv[1]);
+
     Arena *root_arena = arena_acquire();
     App *app = arena_push<App>(root_arena);
     app->app_arena = root_arena;
 
     init_window(err, app);
     // init_text(err, app);
-    init_renderer(err, app);
-
-    if (g_argv.count < 2) {
-        log_fatal("Usage: blitter <path-to-splits-file>");
-    }
-    Str path = str_from_c(g_argv[1]);
+    re_init(err, app);
 
     app->session_arena = arena_acquire();
     app->session = create_session(err, app->session_arena, app, path);
@@ -685,7 +644,7 @@ void try_load_new_session(App *app, Str lss_path) {
     defer(arena_release(err_base.arena));
 
     Arena *session_arena = arena_acquire();
-    Session *session = create_session(err, session_arena, app->renderer, lss_path);
+    Session *session = create_session(err, session_arena, app, lss_path);
     if (err_failed(err)) {
         err_log(err);
         arena_release(session_arena);
@@ -745,10 +704,14 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
     }
 
     if (event->common.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event->button.button == SDL_BUTTON_RIGHT) {
-        char *clipboard_cstr = SDL_GetClipboardText();
-        defer(SDL_free(clipboard_cstr));
-        Str clipboard = str_trim(str_from_c(clipboard_cstr));
-        try_load_new_session(app, clipboard);
+        if (SDL_HasClipboardText()) {
+            char *clipboard_cstr = SDL_GetClipboardText();
+            defer(SDL_free(clipboard_cstr));
+            Str clipboard = str_trim(str_from_c(clipboard_cstr));
+            if (!str_is_empty(clipboard)) { // Empty iff SDL failed to allocate it
+                try_load_new_session(app, clipboard);
+            }
+        }
     }
 
     return SDL_APP_CONTINUE;
@@ -781,7 +744,7 @@ struct Box {
     f32 scale;
 
     // Texture stuff
-    SDL_Texture *texture;
+    SDL_GPUTexture *texture;
 
     SDL_FColor color;
 
@@ -815,7 +778,7 @@ Box *make_empty_box(Arena *arena, f32 width, f32 height) {
     return box;
 }
 
-Box *make_texture_box(Arena *arena, SDL_Texture *texture, f32 width, f32 height) {
+Box *make_texture_box(Arena *arena, SDL_GPUTexture *texture, f32 width, f32 height) {
     Box *box = arena_push<Box>(arena);
     box->type = BoxType::Texture;
     box->width = max(width, 0.0f);
@@ -989,8 +952,9 @@ Box *prerender_segment(Arena *arena, App *app, f32 width, u64 idx) {
     constexpr f32 ICON_INNER = 36.f;
     constexpr f32 ICON_OUTER = 44.f;
     Box *icon = nullptr;
-    if (!arr_is_empty(app->session->file->segments[idx].icon)) {
-        icon = make_texture_box(arena, app->session->file->textures[idx], ICON_INNER, ICON_INNER);
+    // TODO don't just use first icon
+    if (!arr_is_empty(app->session->file->segments[0].icon)) {
+        icon = make_texture_box(arena, app->session->textures[0], ICON_INNER, ICON_INNER);
     } else {
         icon = make_empty_box(arena, ICON_INNER, ICON_INNER);
     }
@@ -1075,7 +1039,7 @@ Box *prerender_contents(Arena *arena, App *app, f32 width, f32 height) {
 Box *prerender(Arena *arena, App *app) {
     i32 width = 0;
     i32 height = 0;
-    SDL_GetRenderOutputSize(app->renderer, &width, &height);
+    assert(SDL_GetRenderOutputSize(app->renderer, &width, &height));
 
     constexpr f32 PADDING = 10;
     Box *timer = prerender_contents(arena, app, (f32)width - (PADDING * 2.f), (f32)height - (PADDING * 2.f));
@@ -1118,25 +1082,25 @@ void render_box(App *app, Box *box, SDL_FPoint where) {
         break;
     }
     case BoxType::Texture: {
-        f32 src_ratio = (f32)box->texture->w / (f32)box->texture->h;
-        f32 dst_ratio = box->width / box->height;
-
-        // Scale to fit
-        SDL_FRect dest = {};
-        if (src_ratio > dst_ratio) {
-            f32 scale = box->width / (f32)box->texture->w;
-            dest.w = box->width;
-            dest.h = (f32)box->texture->h * scale;
-            dest.x = where.x;
-            dest.y = where.y + ((box->height - dest.h) / 2.f);
-        } else {
-            f32 scale = box->height / (f32)box->texture->h;
-            dest.w = (f32)box->texture->w * scale;
-            dest.h = box->height;
-            dest.x = where.x + ((box->width - dest.w) / 2.f);
-            dest.y = where.y;
-        }
-        SDL_RenderTexture(app->renderer, box->texture, nullptr, &dest);
+        // f32 src_ratio = (f32)box->texture->w / (f32)box->texture->h;
+        // f32 dst_ratio = box->width / box->height;
+        //
+        // // Scale to fit
+        // SDL_FRect dest = {};
+        // if (src_ratio > dst_ratio) {
+        //     f32 scale = box->width / (f32)box->texture->w;
+        //     dest.w = box->width;
+        //     dest.h = (f32)box->texture->h * scale;
+        //     dest.x = where.x;
+        //     dest.y = where.y + ((box->height - dest.h) / 2.f);
+        // } else {
+        //     f32 scale = box->height / (f32)box->texture->h;
+        //     dest.w = (f32)box->texture->w * scale;
+        //     dest.h = box->height;
+        //     dest.x = where.x + ((box->width - dest.w) / 2.f);
+        //     dest.y = where.y;
+        // }
+        // SDL_RenderTexture(app->renderer, box->texture, nullptr, &dest);
         break;
     }
     case BoxType::SolidColor: {
@@ -1165,7 +1129,7 @@ void render(App *app) {
 
 SDL_AppResult SDL_AppIterate(void* appstate) {
     App *app = (App *)appstate;
-    do_render(app);
+    re_render(app);
     // render(app);
     return SDL_APP_CONTINUE;
 }
@@ -1222,111 +1186,70 @@ void init_session_render_resources(ErrorContext *err, Arena *arena, SDL_GPUDevic
     // Build transfer buffer
     //
 
-    // TODO 32-byte align each image... some SDL_GPU API said it's necessary for some hardware
-    u64 total_icon_size = 0;
-    for (u64 i = 0; i < session->file->icons.count; i++) {
-        SDL_Surface *surface = session->file->icons[i];
-        if (surface != nullptr) {
-            u64 size = surface->h * surface->pitch;
-            total_icon_size += size;
-        }
-    }
+    SDL_Surface *icon = session->file->icons[0];
+    u64 icon_size = icon->h * icon->pitch;
 
-    // TODO reuse transfer buffer
+    // TODO reuse transfer buffer and/or destroy?
     SDL_GPUTransferBufferCreateInfo transfer_buffer_info = {
         .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-        .size = (u32)total_icon_size,
+        .size = (u32)icon_size,
     };
-    SDL_GPUTransferBuffer *transfer_buffer = SDL_CreateGPUTransferBuffer(device, &transfer_buffer_info);
-    if (transfer_buffer == nullptr) {
-        err_report(err, "%s", SDL_GetError());
-        return;
-    }
+    SDL_GPUTransferBuffer *transfer_buffer = try_sdl(err, SDL_CreateGPUTransferBuffer(device, &transfer_buffer_info));
 
-    void *buf = SDL_MapGPUTransferBuffer(device, transfer_buffer, false);
-    if (buf == nullptr) {
-        err_report(err, "%s", SDL_GetError());
-        return;
-    }
-
-    u64 offset = 0;
-    for (u64 i = 0; i < session->file->icons.count; i++) {
-        SDL_Surface *surface = session->file->icons[i];
-        if (surface != nullptr) {
-            u64 size = surface->h * surface->pitch;
-            memcpy((u8 *)buf + offset, surface->pixels, size);
-            offset += size;
-        }
-    }
-
+    void *buf = try_sdl(err, SDL_MapGPUTransferBuffer(device, transfer_buffer, false));
+    memcpy((u8 *)buf, icon->pixels, icon_size);
     SDL_UnmapGPUTransferBuffer(device, transfer_buffer);
 
     //
     // Upload textures
     //
 
-    SDL_GPUCommandBuffer *command_buffer = SDL_AcquireGPUCommandBuffer(device);
-    if (command_buffer == nullptr) {
-        err_report(err, "%s", SDL_GetError());
-        return;
-    }
+    SDL_GPUCommandBuffer *command_buffer = try_sdl(err, SDL_AcquireGPUCommandBuffer(device));
+    SDL_GPUCopyPass *pass = try_sdl(err, SDL_BeginGPUCopyPass(command_buffer));
 
-    SDL_GPUCopyPass *pass = SDL_BeginGPUCopyPass(command_buffer);
-    if (pass == nullptr) {
-        err_report(err, "%s", SDL_GetError());
-        return;
-    }
+    SDL_GPUTextureCreateInfo info = {
+        .type = SDL_GPU_TEXTURETYPE_2D,
+        .format = SDL_GetGPUTextureFormatFromPixelFormat(icon->format),
+        .usage = SDL_GPU_TEXTUREUSAGE_SAMPLER,
+        .width = (u32)icon->w,
+        .height = (u32)icon->h,
+        .layer_count_or_depth = 1,
+        .num_levels = 1,
+    };
 
-    Arr<SDL_GPUTexture *> textures = arena_push_arr<SDL_GPUTexture *>(arena, session->file->icons.count);
+    SDL_GPUTexture *texture = try_sdl(err, SDL_CreateGPUTexture(device, &info));
+    session->textures = arena_push_arr<SDL_GPUTexture *>(arena, 1);
+    session->textures[0] = texture;
 
-    for (u64 i = 0; i < session->file->icons.count; i++) {
-        SDL_Surface *surface = session->file->icons[i];
-        if (surface != nullptr) {
-            u64 size = surface->h * surface->pitch;
-
-            SDL_GPUTextureCreateInfo info = {
-                .type = SDL_GPU_TEXTURETYPE_2D,
-                .format = SDL_GetGPUTextureFormatFromPixelFormat(surface->format),
-                .usage = SDL_GPU_TEXTUREUSAGE_SAMPLER,
-                .width = (u32)surface->w,
-                .height = (u32)surface->h,
-                .layer_count_or_depth = 1,
-                .num_levels = 1,
-            };
-
-            SDL_GPUTexture *texture = SDL_CreateGPUTexture(device, &info);
-            if (texture == nullptr) {
-                err_report(err, "%s", SDL_GetError());
-                return;
-            }
-
-            // SDL_UploadToGPUTexture(pass,
-
-        }
-    }
+    SDL_GPUTextureTransferInfo src = {
+        .transfer_buffer = transfer_buffer,
+    };
+    SDL_GPUTextureRegion dest = {
+        .texture = texture,
+        .mip_level = 0,
+        .layer = 0,
+        .x = 0,
+        .y = 0,
+        .z = 0,
+        .w = (u32)icon->w,
+        .h = (u32)icon->h,
+        .d = 0,
+    };
+    SDL_UploadToGPUTexture(pass, &src, &dest, false);
 
     SDL_EndGPUCopyPass(pass);
 
-    if (!SDL_SubmitGPUCommandBuffer(command_buffer)) {
-        err_report(err, "%s", SDL_GetError());
-        return;
-    }
+    try_sdl(err, SDL_SubmitGPUCommandBuffer(command_buffer));
 }
 
 // TODO toggle through build system or something
 constexpr bool RENDERER_DEBUG_MODE = true;
 
-void init_renderer(ErrorContext *err, App *app) {
+void re_init(ErrorContext *err, App *app) {
     err_scope(err, "Initialize custom renderer");
+    app->device = try_sdl(err, SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_MSL, RENDERER_DEBUG_MODE, nullptr));
+    try_sdl(err, SDL_ClaimWindowForGPUDevice(app->device, app->window));
+}
 
-    app->device = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_MSL, RENDERER_DEBUG_MODE, nullptr);
-    if (app->device == nullptr) {
-        err_report(err, "%s", SDL_GetError());
-        return;
-    }
-
-    if (!SDL_ClaimWindowForGPUDevice(app->device, app->window)) {
-        err_report(err, "%s", SDL_GetError());
-        return;
-    }
+void re_render(App *app) {
 }

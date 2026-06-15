@@ -69,7 +69,7 @@ constexpr u64 next_pow2(u64 x) {
 #define log_info(...) SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, __VA_ARGS__)
 #define log_warn(...) SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, __VA_ARGS__)
 #define log_error(...) SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, __VA_ARGS__)
-#define log_fatal(...) SDL_LogCritical(SDL_LOG_CATEGORY_APPLICATION, __VA_ARGS__); exit(1)
+#define log_fatal(...) SDL_LogCritical(SDL_LOG_CATEGORY_APPLICATION, __VA_ARGS__); abort()
 
 [[noreturn]] void log__assert(const char *cond, const char *file, int line);
 #define log_assert(cond) if ((cond) == false) log__assert(#cond, __FILE_NAME__, __LINE__)
@@ -504,3 +504,31 @@ Str base64_encode(Arena *arena, Arr<u8> a);
 //
 
 void thread_init(int argc, char **argv);
+
+//
+// SDL helpers
+//
+
+// TODO: consider arena-based resource management instead of defer() everywhere
+
+#define try_sdl_ret_void(err, func_call) ({ \
+    __typeof__(func_call) _ret = (func_call); \
+    if (!_ret) { \
+        err_report((err), "%s", SDL_GetError()); \
+        return; \
+    } \
+    _ret; \
+})
+
+#define try_sdl_ret_value(err, ret, func_call) ({ \
+    __typeof__(func_call) _ret = (func_call); \
+    if (!_ret) { \
+        err_report((err), "%s", SDL_GetError()); \
+        return (ret); \
+    } \
+    _ret; \
+})
+
+#define EXPAND(x)                           x
+#define GET_MACRO(_1, _2, _3, name, ...)    name
+#define try_sdl(...)    EXPAND( GET_MACRO(__VA_ARGS__, try_sdl_ret_value, try_sdl_ret_void)(__VA_ARGS__) )
