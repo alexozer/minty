@@ -77,3 +77,4 @@ For all new textures:
 
 <!-- For a first pass: just rect pack, transfer buffer pack, and upload in one go -->
 Make basic UI engine use atlas
+    Box renderer just appends to list of verts/indices for now

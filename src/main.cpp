@@ -521,6 +521,11 @@ struct Atlas {
     Arr<SDL_Rect> placements;
 };
 
+struct PosTexVertex {
+    float x, y, z;
+    float u, v;
+};
+
 struct App {
     Arena *app_arena; // Lives for duration of application
     SDL_Window* window;
@@ -749,7 +754,7 @@ struct Box {
     f32 scale;
 
     // Texture stuff
-    SDL_GPUTexture *texture;
+    u64 texture_idx;
 
     SDL_FColor color;
 
@@ -783,12 +788,12 @@ Box *make_empty_box(Arena *arena, f32 width, f32 height) {
     return box;
 }
 
-Box *make_texture_box(Arena *arena, SDL_GPUTexture *texture, f32 width, f32 height) {
+Box *make_texture_box(Arena *arena, u64 texture_idx, f32 width, f32 height) {
     Box *box = arena_push<Box>(arena);
     box->type = BoxType::Texture;
     box->width = max(width, 0.0f);
     box->height = max(height, 0.0f);
-    box->texture = texture;
+    box->texture_idx = texture_idx;
     return box;
 }
 
@@ -957,12 +962,12 @@ Box *prerender_segment(Arena *arena, App *app, f32 width, u64 idx) {
     constexpr f32 ICON_INNER = 36.f;
     constexpr f32 ICON_OUTER = 44.f;
     Box *icon = nullptr;
-    // TODO don't just use first icon
-    if (!arr_is_empty(app->session->file->segments[0].icon)) {
-        icon = make_texture_box(arena, app->atlas->texture, ICON_INNER, ICON_INNER);
-    } else {
-        icon = make_empty_box(arena, ICON_INNER, ICON_INNER);
-    }
+
+    // TODO handle empty icons
+    icon = make_texture_box(arena, idx, ICON_INNER, ICON_INNER);
+    // } else {
+    //     icon = make_empty_box(arena, ICON_INNER, ICON_INNER);
+    // }
     icon = align_box_center_horiz(arena, icon, ICON_OUTER);
     icon = align_box_center_vert(arena, icon, ICON_OUTER);
 
@@ -1055,7 +1060,53 @@ Box *prerender(Arena *arena, App *app) {
     return timer;
 }
 
-void render_box(App *app, Box *box, SDL_FPoint where) {
+struct RenderMesh {
+    Vec<PosTexVertex> vertices;
+    Vec<u16> indices;
+};
+
+void push_atlas_quad(Arena *arena, Atlas *atlas, RenderMesh *mesh, SDL_Rect *src, SDL_FRect *dst) {
+    PosTexVertex vertices[] = {{
+        .x = dst->x,
+        .y = dst->y,
+        .z = 0,
+        .u = (f32)src->x / (f32)atlas->width,
+        .v = (f32)src->y / (f32)atlas->height,
+    }, {
+        .x = dst->x + dst->w,
+        .y = dst->y,
+        .z = 0,
+        .u = (f32)(src->x + src->w) / (f32)atlas->width,
+        .v = (f32)src->y / (f32)atlas->height,
+    }, {
+        .x = dst->x + dst->w,
+        .y = dst->y + dst->h,
+        .z = 0,
+        .u = (f32)(src->x + src->w) / (f32)atlas->width,
+        .v = (f32)(src->y + src->h) / (f32)atlas->height,
+    }, {
+        .x = dst->x,
+        .y = dst->y + dst->h,
+        .z = 0,
+        .u = (f32)src->x / (f32)atlas->width,
+        .v = (f32)(src->y + src->h) / (f32)atlas->height,
+    }};
+
+    u16 indices[] = {
+        (u16)(mesh->vertices.count + 0),
+        (u16)(mesh->vertices.count + 1),
+        (u16)(mesh->vertices.count + 2),
+        (u16)(mesh->vertices.count + 2),
+        (u16)(mesh->vertices.count + 1),
+        (u16)(mesh->vertices.count + 3),
+    };
+
+    // TODO allocate in-place to avoid copy
+    vec_extend(arena, &mesh->vertices, arr_from_c(vertices));
+    vec_extend(arena, &mesh->indices, arr_from_c(indices));
+}
+
+void render_box(Arena *arena, Box *box, SDL_FPoint where, Atlas *atlas, RenderMesh *mesh) {
     switch (box->type) {
     case BoxType::Empty: {
         break;
@@ -1063,7 +1114,7 @@ void render_box(App *app, Box *box, SDL_FPoint where) {
     case BoxType::LeftToRightStack: {
         for (u64 i = 0; i < box->children.count; i++) {
             SDL_FPoint child_bbox = compute_box_bbox(box->children[i]);
-            render_box(app, box->children[i], where);
+            render_box(arena, box->children[i], where, atlas, mesh);
             where.x += child_bbox.x;
         }
         break;
@@ -1071,47 +1122,49 @@ void render_box(App *app, Box *box, SDL_FPoint where) {
     case BoxType::TopToBottomStack: {
         for (u64 i = 0; i < box->children.count; i++) {
             SDL_FPoint child_bbox = compute_box_bbox(box->children[i]);
-            render_box(app, box->children[i], where);
+            render_box(arena, box->children[i], where, atlas, mesh);
             where.y += child_bbox.y;
         }
         break;
     }
     case BoxType::BackToFrontStack: {
         for (u64 i = 0; i < box->children.count; i++) {
-            render_box(app, box->children[i], where);
+            render_box(arena, box->children[i], where, atlas, mesh);
         }
         break;
     }
     case BoxType::Text: {
-        TTF_DrawRendererText(box->text_obj, where.x, where.y);
+        // TTF_DrawRendererText(box->text_obj, where.x, where.y);
         break;
     }
     case BoxType::Texture: {
-        // f32 src_ratio = (f32)box->texture->w / (f32)box->texture->h;
-        // f32 dst_ratio = box->width / box->height;
-        //
-        // // Scale to fit
-        // SDL_FRect dest = {};
-        // if (src_ratio > dst_ratio) {
-        //     f32 scale = box->width / (f32)box->texture->w;
-        //     dest.w = box->width;
-        //     dest.h = (f32)box->texture->h * scale;
-        //     dest.x = where.x;
-        //     dest.y = where.y + ((box->height - dest.h) / 2.f);
-        // } else {
-        //     f32 scale = box->height / (f32)box->texture->h;
-        //     dest.w = (f32)box->texture->w * scale;
-        //     dest.h = box->height;
-        //     dest.x = where.x + ((box->width - dest.w) / 2.f);
-        //     dest.y = where.y;
-        // }
-        // SDL_RenderTexture(app->renderer, box->texture, nullptr, &dest);
+        SDL_Rect *src = &atlas->placements[box->texture_idx];
+
+        f32 src_ratio = (f32)src->w / (f32)src->h;
+        f32 dst_ratio = box->width / box->height;
+
+        // Scale to fit
+        SDL_FRect dest = {};
+        if (src_ratio > dst_ratio) {
+            f32 scale = box->width / (f32)src->w;
+            dest.w = box->width;
+            dest.h = (f32)src->h * scale;
+            dest.x = where.x;
+            dest.y = where.y + ((box->height - dest.h) / 2.f);
+        } else {
+            f32 scale = box->height / (f32)src->h;
+            dest.w = (f32)src->w * scale;
+            dest.h = box->height;
+            dest.x = where.x + ((box->width - dest.w) / 2.f);
+            dest.y = where.y;
+        }
+        push_atlas_quad(arena, atlas, mesh, src, &dest);
         break;
     }
     case BoxType::SolidColor: {
-        SDL_SetRenderDrawColorFloat(app->renderer, box->color.r, box->color.g, box->color.b, box->color.a);
-        SDL_FRect r = { .x = where.x, .y = where.y, .w = box->width, .h = box->height };
-        SDL_RenderFillRect(app->renderer, &r);
+        // SDL_SetRenderDrawColorFloat(app->renderer, box->color.r, box->color.g, box->color.b, box->color.a);
+        // SDL_FRect r = { .x = where.x, .y = where.y, .w = box->width, .h = box->height };
+        // SDL_RenderFillRect(app->renderer, &r);
         break;
     }
     }
@@ -1119,15 +1172,16 @@ void render_box(App *app, Box *box, SDL_FPoint where) {
 
 void render(App *app) {
     // Frame arena
-    Arena *arena = arena_acquire();
-    defer(arena_release(arena));
+    Arena *frame_arena = arena_acquire();
+    defer(arena_release(frame_arena));
 
-    Box *box = prerender(arena, app);
+    Box *box = prerender(frame_arena, app);
 
     SDL_SetRenderDrawColor(app->renderer, 5, 0, 8, 255);
     SDL_RenderClear(app->renderer);
 
-    render_box(app, box, {});
+    RenderMesh mesh = {};
+    render_box(frame_arena, box, { .x = 0, .y = 0 }, app->atlas, &mesh);
 
     SDL_RenderPresent(app->renderer);
 }
@@ -1326,11 +1380,6 @@ Atlas *re_pack_and_upload_textures(Arena *arena, SDL_GPUDevice *device, SDL_GPUC
 
 // TODO toggle through build system or something
 constexpr bool RENDERER_DEBUG_MODE = true;
-
-struct PosTexVertex {
-    float x, y, z;
-    float u, v;
-};
 
 void re_init_pipeline(ErrorContext *err, App *app) {
     err_scope(err, "Init pipeline");

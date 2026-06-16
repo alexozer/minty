@@ -129,7 +129,23 @@ Arr<T> arena_push_arr(Arena *arena, u64 count) {
 // Arrays
 //
 
+// Horrible nonsense to strip references (&) from types
+template <typename T>
+struct remove_reference {
+    using type = T;
+};
+template <typename T>
+struct remove_reference<T&> {
+    using type = T;
+};
+template <typename T>
+struct remove_reference<T&&> {
+    using type = T;
+};
+
 #define c_arr_count(a) (sizeof((a)) / sizeof((a)[0]))
+#define c_arr_elem_type(a) remove_reference<decltype(*(a))>::type
+#define arr_from_c(a) ( (Arr<c_arr_elem_type(a)>) { .ptr = (a), .count = c_arr_count(a) } )
 
 template <typename T>
 Arr<T> arr_from_null_terminated(T *v) {
