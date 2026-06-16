@@ -19,6 +19,7 @@ extern "C" {
 }
 #include <yyjson.h>
 #include <kb_text_shape.h>
+#include <stb_rect_pack.h>
 
 //
 // MARK:Timer
@@ -77,10 +78,6 @@ struct Timer {
 struct Session {
     FileDef *file;
     Timer *timer;
-
-    // TODO probably segment renderer state better
-    SDL_GPUTexture *texture;
-    SDL_GPUSampler *sampler;
 };
 
 struct SegSummary {
@@ -516,6 +513,14 @@ constexpr i32 DEFAULT_WINDOW_HEIGHT = 600;
 constexpr i32 MIN_WINDOW_WIDTH = 200;
 constexpr i32 MIN_WINDOW_HEIGHT = 100;
 
+struct Atlas {
+    u64 width;
+    u64 height;
+    SDL_GPUTexture *texture;
+    SDL_GPUSampler *sampler;
+    Arr<SDL_Rect> placements;
+};
+
 struct App {
     Arena *app_arena; // Lives for duration of application
     SDL_Window* window;
@@ -534,6 +539,7 @@ struct App {
     SDL_GPUTransferBuffer *vert_transfer_buffer;
     SDL_GPUBuffer *vert_buffer;
     SDL_GPUBuffer *index_buffer;
+    Atlas *atlas;
 };
 
 void init_text(ErrorContext *err, App *app) {
@@ -953,7 +959,7 @@ Box *prerender_segment(Arena *arena, App *app, f32 width, u64 idx) {
     Box *icon = nullptr;
     // TODO don't just use first icon
     if (!arr_is_empty(app->session->file->segments[0].icon)) {
-        icon = make_texture_box(arena, app->session->texture, ICON_INNER, ICON_INNER);
+        icon = make_texture_box(arena, app->atlas->texture, ICON_INNER, ICON_INNER);
     } else {
         icon = make_empty_box(arena, ICON_INNER, ICON_INNER);
     }
@@ -1176,6 +1182,147 @@ void shape_test() {
 }
 
 //
+// MARK:Atlas packing
+//
+
+constexpr u64 ATLAS_WIDTH_PX = 2048;
+
+struct RE_TransferBufEntry {
+    u64 offset;
+    u64 size;
+};
+
+u64 sdl_surface_size(SDL_Surface *surface) {
+    return (u64)surface->h * (u64)surface->pitch;
+}
+
+Atlas *re_pack_and_upload_textures(Arena *arena, SDL_GPUDevice *device, SDL_GPUCopyPass *pass, Arr<SDL_Surface *> textures) {
+    log_assert(textures.count > 0);
+    SDL_PixelFormat sdl_pixel_format = textures[0]->format;
+    for (u64 i = 1; i < textures.count; i++) {
+        log_assert(sdl_pixel_format == textures[i]->format);
+    }
+
+    Arena *scratch = arena_acquire();
+    defer(arena_release(scratch));
+
+    //
+    // Compute atlas packing
+    //
+
+    stbrp_context packer_ctx = {};
+    Arr<stbrp_node> packer_nodes = arena_push_arr<stbrp_node>(scratch, textures.count * 2 /* ?? */);
+    stbrp_init_target(&packer_ctx, (i32)ATLAS_WIDTH_PX, (i32)ATLAS_WIDTH_PX, packer_nodes.ptr, (i32)packer_nodes.count);
+    stbrp_setup_allow_out_of_mem(&packer_ctx, true);
+
+    Arr<stbrp_rect> rects = arena_push_arr<stbrp_rect>(scratch, textures.count);
+    for (u64 i = 0; i < textures.count; i++) {
+        rects[i].id = (i32)i;
+        rects[i].w = textures[i]->w;
+        rects[i].h = textures[i]->h;
+    }
+
+    log_assert(stbrp_pack_rects(&packer_ctx, rects.ptr, (i32)rects.count) == 1);
+
+    //
+    // Pack textures into transfer buffer
+    //
+
+    // TODO reuse transfer buffer and/or destroy?
+    SDL_GPUTransferBufferCreateInfo transfer_buffer_info = {
+        .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+        .size = (u32)(ATLAS_WIDTH_PX * ATLAS_WIDTH_PX * 4),
+    };
+    SDL_GPUTransferBuffer *transfer_buffer = SDL_CreateGPUTransferBuffer(device, &transfer_buffer_info);
+
+    void *buf = SDL_MapGPUTransferBuffer(device, transfer_buffer, false);
+    u64 offset = 0;
+    for (u64 i = 0; i < textures.count; i++) {
+        if (i > 0) {
+            u64 prev_size = sdl_surface_size(textures[i - 1]);
+            offset = align_to(offset + prev_size, 512);
+        }
+        u64 size = sdl_surface_size(textures[i]);
+        SDL_memcpy((u8 *)buf + offset, textures[i]->pixels, size);
+    }
+    SDL_UnmapGPUTransferBuffer(device, transfer_buffer);
+
+    //
+    // Upload textures
+    //
+
+    SDL_GPUTextureCreateInfo gpu_texture_info = {
+        .type = SDL_GPU_TEXTURETYPE_2D,
+        .format = SDL_GetGPUTextureFormatFromPixelFormat(sdl_pixel_format),
+        .usage = SDL_GPU_TEXTUREUSAGE_SAMPLER,
+        .width = ATLAS_WIDTH_PX,
+        .height = ATLAS_WIDTH_PX,
+        .layer_count_or_depth = 1,
+        .num_levels = 1,
+    };
+    SDL_GPUTexture *texture = SDL_CreateGPUTexture(device, &gpu_texture_info);
+    SDL_SetGPUTextureName(device, texture, "Segment icons");
+
+    offset = 0;
+    for (u64 i = 0; i < textures.count; i++) {
+        if (i > 0) {
+            u64 prev_size = sdl_surface_size(textures[i - 1]);
+            offset = align_to(offset + prev_size, 512);
+        }
+
+        SDL_GPUTextureTransferInfo src = {
+            .transfer_buffer = transfer_buffer,
+            .offset = (u32)offset,
+        };
+        SDL_GPUTextureRegion dest = {
+            .texture = texture,
+            .mip_level = 0,
+            .layer = 0,
+            .x = (u32)rects[i].x,
+            .y = (u32)rects[i].y,
+            .z = 0,
+            .w = (u32)textures[i]->w,
+            .h = (u32)textures[i]->h,
+            .d = 0,
+        };
+        SDL_UploadToGPUTexture(pass, &src, &dest, false);
+    }
+
+    //
+    // Make sampler (doesn't super duper need to happen here but w/e)
+    //
+
+    SDL_GPUSamplerCreateInfo sampler_info = {
+        .min_filter = SDL_GPU_FILTER_LINEAR,
+        .mag_filter = SDL_GPU_FILTER_LINEAR,
+        .mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_LINEAR,
+        .address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+        .address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+        .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+    };
+    SDL_GPUSampler *sampler = SDL_CreateGPUSampler(device, &sampler_info);
+
+    //
+    // Return atlas descriptor
+    //
+
+    Atlas *atlas = arena_push<Atlas>(arena);
+    atlas->width = ATLAS_WIDTH_PX;
+    atlas->height = ATLAS_WIDTH_PX;
+    atlas->texture = texture;
+    atlas->sampler = sampler;
+    atlas->placements = arena_push_arr<SDL_Rect>(arena, textures.count);
+    for (u64 i = 0; i < textures.count; i++) {
+        atlas->placements[i].x = rects[i].x;
+        atlas->placements[i].y = rects[i].y;
+        atlas->placements[i].w = rects[i].w;
+        atlas->placements[i].h = rects[i].h;
+    }
+
+    return atlas;
+}
+
+//
 // MARK:Renderer
 //
 
@@ -1186,82 +1333,6 @@ struct PosTexVertex {
     float x, y, z;
     float u, v;
 };
-
-void re_init_textures(ErrorContext *err, Arena *arena, SDL_GPUDevice *device,
-        Session *session) {
-    err_scope(err, "Init textures");
-
-    //
-    // Build transfer buffer
-    //
-
-    SDL_Surface *icon = session->file->icons[0];
-    u64 icon_size = (u64)icon->h * (u64)icon->pitch;
-
-    // TODO reuse transfer buffer and/or destroy?
-    SDL_GPUTransferBufferCreateInfo transfer_buffer_info = {
-        .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-        .size = (u32)icon_size,
-    };
-    SDL_GPUTransferBuffer *transfer_buffer = try_sdl(err, SDL_CreateGPUTransferBuffer(device, &transfer_buffer_info));
-
-    void *buf = try_sdl(err, SDL_MapGPUTransferBuffer(device, transfer_buffer, false));
-    memcpy((u8 *)buf, icon->pixels, icon_size);
-    SDL_UnmapGPUTransferBuffer(device, transfer_buffer);
-
-    //
-    // Upload textures
-    //
-
-    SDL_GPUCommandBuffer *command_buffer = try_sdl(err, SDL_AcquireGPUCommandBuffer(device));
-    SDL_GPUCopyPass *pass = try_sdl(err, SDL_BeginGPUCopyPass(command_buffer));
-
-    SDL_GPUTextureCreateInfo info = {
-        .type = SDL_GPU_TEXTURETYPE_2D,
-        .format = SDL_GetGPUTextureFormatFromPixelFormat(icon->format),
-        .usage = SDL_GPU_TEXTUREUSAGE_SAMPLER,
-        .width = (u32)icon->w,
-        .height = (u32)icon->h,
-        .layer_count_or_depth = 1,
-        .num_levels = 1,
-    };
-
-    session->texture = try_sdl(err, SDL_CreateGPUTexture(device, &info));
-    SDL_SetGPUTextureName(device, session->texture, "Segment icons");
-
-    SDL_GPUTextureTransferInfo src = {
-        .transfer_buffer = transfer_buffer,
-    };
-    SDL_GPUTextureRegion dest = {
-        .texture = session->texture,
-        .mip_level = 0,
-        .layer = 0,
-        .x = 0,
-        .y = 0,
-        .z = 0,
-        .w = (u32)icon->w,
-        .h = (u32)icon->h,
-        .d = 0,
-    };
-    SDL_UploadToGPUTexture(pass, &src, &dest, false);
-
-    SDL_EndGPUCopyPass(pass);
-
-    try_sdl(err, SDL_SubmitGPUCommandBuffer(command_buffer));
-
-    //
-    // Create sampler
-    //
-    SDL_GPUSamplerCreateInfo sampler_info = {
-        .min_filter = SDL_GPU_FILTER_LINEAR,
-        .mag_filter = SDL_GPU_FILTER_LINEAR,
-        .mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_LINEAR,
-        .address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
-        .address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
-        .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
-    };
-    session->sampler = try_sdl(err, SDL_CreateGPUSampler(device, &sampler_info));
-}
 
 void re_init_pipeline(ErrorContext *err, App *app) {
     err_scope(err, "Init pipeline");
@@ -1426,7 +1497,12 @@ void re_init(ErrorContext *err, App *app) {
     try_sdl(err, SDL_ClaimWindowForGPUDevice(app->device, app->window));
     re_init_pipeline(err, app);
     re_init_vertex_buffers(err, app);
-    re_init_textures(err, app->app_arena, app->device, app->session);
+
+    SDL_GPUCommandBuffer *command_buffer = try_sdl(err, SDL_AcquireGPUCommandBuffer(app->device));
+    SDL_GPUCopyPass *pass = try_sdl(err, SDL_BeginGPUCopyPass(command_buffer));
+    app->atlas = re_pack_and_upload_textures(app->session_arena, app->device, pass, app->session->file->icons);
+    SDL_EndGPUCopyPass(pass);
+    try_sdl(err, SDL_SubmitGPUCommandBuffer(command_buffer));
 }
 
 void re_render(App *app) {
@@ -1453,8 +1529,8 @@ void re_render(App *app) {
     SDL_GPUBufferBinding vert_buffer_bindings[] = {{ .buffer = app->vert_buffer, .offset = 0 }};
     SDL_GPUBufferBinding index_buffer_binding = { .buffer = app->index_buffer, .offset = 0 };
     SDL_GPUTextureSamplerBinding tex_sampler_bindings[] = {{
-        .texture = app->session->texture,
-        .sampler = app->session->sampler,
+        .texture = app->atlas->texture,
+        .sampler = app->atlas->sampler,
     }};
 
     SDL_BindGPUGraphicsPipeline(pass, app->pipeline);
@@ -1469,3 +1545,4 @@ void re_render(App *app) {
 
     SDL_SubmitGPUCommandBuffer(command_buffer);
 }
+

@@ -11,8 +11,9 @@ const thirdparty_c_sources: []const []const u8 = &.{
 };
 
 const thirdparty_cpp_sources: []const []const u8 = &.{
-    "3rdparty/yyjson.c",
-    "3rdparty/kb_text_shape.c",
+    "3rdparty/yyjson.cpp",
+    "3rdparty/kb_text_shape.cpp",
+    "3rdparty/stb_rect_pack.cpp",
 };
 
 // Build in separate library to (maybe?) avoid linking libcpp

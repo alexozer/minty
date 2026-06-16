@@ -16,10 +16,12 @@
 <!-- Load/unload session -->
 <!--     Right-click menu? -->
 Draw split/segment times
+Either handle SDL errors or assert their absence
 
 ## Research
 
 <!-- File Pilot render system interview -->
+Split icon atlasing
 Blog posts on text rendering / SDFs
 kb_text_shape shaping/segmentation
 GPU font rendering (slug)
@@ -62,3 +64,15 @@ Box can have
         In this case, box width/height is determined by children?
         Maybe only for vertical?
     Maybe also allow option for absolute size with children?
+
+# Split icon atlasing
+
+Instead of computing atlases CPU-side, we can use transfer buffers / partial
+texture upload to pack them on GPU at runtime!
+
+For all new textures:
+    Pack with stb_rect_pack, for now
+    Pack into transfer buffer
+    Upload to new positions in a copy pass
+
+For a first pass: just rect pack, transfer buffer pack, and upload in one go
