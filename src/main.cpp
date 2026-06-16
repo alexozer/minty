@@ -1376,9 +1376,9 @@ void re_upload_vertex_data(App *app, SDL_GPUCommandBuffer *command_buffer) {
     );
 
     transfer_data[0] = (PosTexVertex) { -1,  1, 0, 0, 0 };
-    transfer_data[1] = (PosTexVertex) {  1,  1, 0, 4, 0 };
-    transfer_data[2] = (PosTexVertex) {  1, -1, 0, 4, 4 };
-    transfer_data[3] = (PosTexVertex) { -1, -1, 0, 0, 4 };
+    transfer_data[1] = (PosTexVertex) {  1,  1, 0, 1, 0 };
+    transfer_data[2] = (PosTexVertex) {  1, -1, 0, 1, 1 };
+    transfer_data[3] = (PosTexVertex) { -1, -1, 0, 0, 1 };
 
     u16* indexData = (u16*) &transfer_data[4];
     indexData[0] = 0;
