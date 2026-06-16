@@ -75,4 +75,5 @@ For all new textures:
     Pack into transfer buffer
     Upload to new positions in a copy pass
 
-For a first pass: just rect pack, transfer buffer pack, and upload in one go
+<!-- For a first pass: just rect pack, transfer buffer pack, and upload in one go -->
+Make basic UI engine use atlas
