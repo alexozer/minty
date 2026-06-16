@@ -1,4 +1,3 @@
-#include "SDL3/SDL_pixels.h"
 #include "base.hpp"
 
 #include <stdarg.h>
@@ -12,6 +11,7 @@
 #include <SDL3/SDL_video.h>
 #include <SDL3/SDL_keycode.h>
 #include <SDL3/SDL_gpu.h>
+#include <SDL3/SDL_pixels.h>
 #include <SDL3_ttf/SDL_ttf.h>
 
 extern "C" {
@@ -79,8 +79,8 @@ struct Session {
     Timer *timer;
 
     // TODO probably segment renderer state better
-    Arr<SDL_GPUTexture *> textures;
-    Arr<SDL_GPUSampler *> sampler;
+    SDL_GPUTexture *texture;
+    SDL_GPUSampler *sampler;
 };
 
 struct SegSummary {
@@ -531,6 +531,9 @@ struct App {
 
     SDL_GPUDevice *device;
     SDL_GPUGraphicsPipeline *pipeline;
+    SDL_GPUTransferBuffer *vert_transfer_buffer;
+    SDL_GPUBuffer *vert_buffer;
+    SDL_GPUBuffer *index_buffer;
 };
 
 void init_text(ErrorContext *err, App *app) {
@@ -579,15 +582,11 @@ void init_window(ErrorContext *err, App *app) {
     try_sdl(err, SDL_SetWindowHitTest(app->window, hittest_callback, nullptr));
 }
 
-void init_session_render_resources(ErrorContext *err, Arena *arena, SDL_GPUDevice *device,
-        Session *session);
-
 Session *create_session(ErrorContext *err, Arena *arena, App *app, Str path) {
     Session *session = arena_push<Session>(arena);
 
     session->file = load_livesplit_lss(arena, err, path);
     session->timer = arena_push<Timer>(arena);
-    init_session_render_resources(err, app->session_arena, app->device, session);
 
     return session;
 }
@@ -607,10 +606,11 @@ App *init_app(ErrorContext *err) {
 
     init_window(err, app);
     // init_text(err, app);
-    re_init(err, app);
 
     app->session_arena = arena_acquire();
     app->session = create_session(err, app->session_arena, app, path);
+
+    re_init(err, app);
 
     return app;
 }
@@ -953,7 +953,7 @@ Box *prerender_segment(Arena *arena, App *app, f32 width, u64 idx) {
     Box *icon = nullptr;
     // TODO don't just use first icon
     if (!arr_is_empty(app->session->file->segments[0].icon)) {
-        icon = make_texture_box(arena, app->session->textures[0], ICON_INNER, ICON_INNER);
+        icon = make_texture_box(arena, app->session->texture, ICON_INNER, ICON_INNER);
     } else {
         icon = make_empty_box(arena, ICON_INNER, ICON_INNER);
     }
@@ -1144,11 +1144,11 @@ void shape_test() {
 
     Str shape_text = S("Let's shape something!");
 
-	kbts_ShapeBegin(context, KBTS_DIRECTION_DONT_KNOW, KBTS_LANGUAGE_DONT_KNOW);
-	kbts_ShapeUtf8(context,
+    kbts_ShapeBegin(context, KBTS_DIRECTION_DONT_KNOW, KBTS_LANGUAGE_DONT_KNOW);
+    kbts_ShapeUtf8(context,
             (char *)shape_text.ptr, (i32)shape_text.count,
             KBTS_USER_ID_GENERATION_MODE_CODEPOINT_INDEX);
-	kbts_ShapeEnd(context);
+    kbts_ShapeEnd(context);
 
     // Layout runs naively left to right.
     kbts_run Run = {};
@@ -1179,8 +1179,18 @@ void shape_test() {
 // MARK:Renderer
 //
 
-void init_session_render_resources(ErrorContext *err, Arena *arena, SDL_GPUDevice *device,
+// TODO toggle through build system or something
+constexpr bool RENDERER_DEBUG_MODE = true;
+
+struct PosTexVertex {
+    float x, y, z;
+    float u, v;
+};
+
+void re_init_textures(ErrorContext *err, Arena *arena, SDL_GPUDevice *device,
         Session *session) {
+    err_scope(err, "Init textures");
+
     //
     // Build transfer buffer
     //
@@ -1216,15 +1226,14 @@ void init_session_render_resources(ErrorContext *err, Arena *arena, SDL_GPUDevic
         .num_levels = 1,
     };
 
-    SDL_GPUTexture *texture = try_sdl(err, SDL_CreateGPUTexture(device, &info));
-    session->textures = arena_push_arr<SDL_GPUTexture *>(arena, 1);
-    session->textures[0] = texture;
+    session->texture = try_sdl(err, SDL_CreateGPUTexture(device, &info));
+    SDL_SetGPUTextureName(device, session->texture, "Segment icons");
 
     SDL_GPUTextureTransferInfo src = {
         .transfer_buffer = transfer_buffer,
     };
     SDL_GPUTextureRegion dest = {
-        .texture = texture,
+        .texture = session->texture,
         .mip_level = 0,
         .layer = 0,
         .x = 0,
@@ -1239,21 +1248,23 @@ void init_session_render_resources(ErrorContext *err, Arena *arena, SDL_GPUDevic
     SDL_EndGPUCopyPass(pass);
 
     try_sdl(err, SDL_SubmitGPUCommandBuffer(command_buffer));
+
+    //
+    // Create sampler
+    //
+    SDL_GPUSamplerCreateInfo sampler_info = {
+        .min_filter = SDL_GPU_FILTER_LINEAR,
+        .mag_filter = SDL_GPU_FILTER_LINEAR,
+        .mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_LINEAR,
+        .address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+        .address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+        .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+    };
+    session->sampler = try_sdl(err, SDL_CreateGPUSampler(device, &sampler_info));
 }
 
-// TODO toggle through build system or something
-constexpr bool RENDERER_DEBUG_MODE = true;
-
-struct PosTexVertex {
-    float x, y, z;
-    float u, v;
-};
-
-void re_init(ErrorContext *err, App *app) {
-    err_scope(err, "Initialize renderer");
-
-    app->device = try_sdl(err, SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_MSL, RENDERER_DEBUG_MODE, nullptr));
-    try_sdl(err, SDL_ClaimWindowForGPUDevice(app->device, app->window));
+void re_init_pipeline(ErrorContext *err, App *app) {
+    err_scope(err, "Init pipeline");
 
     size_t vert_shader_size = 0;
     size_t frag_shader_size = 0;
@@ -1279,14 +1290,16 @@ void re_init(ErrorContext *err, App *app) {
         .format = SDL_GPU_SHADERFORMAT_MSL,
         .stage = SDL_GPU_SHADERSTAGE_FRAGMENT,
         .num_samplers = 1,
-        .num_storage_textures = 1,
+        .num_storage_textures = 0,
         .num_storage_buffers = 0,
         .num_uniform_buffers = 0,
         .props = 0,
     };
 
     SDL_GPUShader *vert_shader = try_sdl(err, SDL_CreateGPUShader(app->device, &vert_info));
+    defer(SDL_ReleaseGPUShader(app->device, vert_shader));
     SDL_GPUShader *frag_shader = try_sdl(err, SDL_CreateGPUShader(app->device, &frag_info));
+    defer(SDL_ReleaseGPUShader(app->device, frag_shader));
 
     SDL_GPUColorTargetDescription color_target_descs[] = {{
         .format = SDL_GetGPUSwapchainTextureFormat(app->device, app->window),
@@ -1331,22 +1344,128 @@ void re_init(ErrorContext *err, App *app) {
     app->pipeline = try_sdl(err, SDL_CreateGPUGraphicsPipeline(app->device, &pipeline_create_info));
 }
 
+void re_init_vertex_buffers(ErrorContext *err, App *app) {
+    err_scope(err, "Init vertex buffers");
+
+    SDL_GPUBufferCreateInfo vert_info = {
+        .usage = SDL_GPU_BUFFERUSAGE_VERTEX,
+        .size = sizeof(PosTexVertex) * 4,
+    };
+    app->vert_buffer = try_sdl(err, SDL_CreateGPUBuffer(app->device, &vert_info));
+    SDL_SetGPUBufferName(app->device, app->vert_buffer, "Icon vertex buffer");
+
+    SDL_GPUBufferCreateInfo index_info = {
+        .usage = SDL_GPU_BUFFERUSAGE_INDEX,
+        .size = sizeof(u16) * 6,
+    };
+    app->index_buffer = try_sdl(err, SDL_CreateGPUBuffer(app->device, &index_info));
+    SDL_SetGPUBufferName(app->device, app->index_buffer, "Icon index buffer");
+
+    SDL_GPUTransferBufferCreateInfo transfer_buffer_info = {
+        .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+        .size = (sizeof(PosTexVertex) * 4) + (sizeof(u16) * 6)
+    };
+    app->vert_transfer_buffer = try_sdl(err, SDL_CreateGPUTransferBuffer(app->device, &transfer_buffer_info));
+}
+
+void re_upload_vertex_data(App *app, SDL_GPUCommandBuffer *command_buffer) {
+    PosTexVertex* transfer_data = (PosTexVertex *)SDL_MapGPUTransferBuffer(
+        app->device,
+        app->vert_transfer_buffer,
+        false
+    );
+
+    transfer_data[0] = (PosTexVertex) { -1,  1, 0, 0, 0 };
+    transfer_data[1] = (PosTexVertex) {  1,  1, 0, 4, 0 };
+    transfer_data[2] = (PosTexVertex) {  1, -1, 0, 4, 4 };
+    transfer_data[3] = (PosTexVertex) { -1, -1, 0, 0, 4 };
+
+    u16* indexData = (u16*) &transfer_data[4];
+    indexData[0] = 0;
+    indexData[1] = 1;
+    indexData[2] = 2;
+    indexData[3] = 0;
+    indexData[4] = 2;
+    indexData[5] = 3;
+
+    SDL_UnmapGPUTransferBuffer(app->device, app->vert_transfer_buffer);
+
+    SDL_GPUCopyPass *pass = SDL_BeginGPUCopyPass(command_buffer);
+
+    // Upload vertex data
+    SDL_GPUTransferBufferLocation vert_src = {
+        .transfer_buffer = app->vert_transfer_buffer,
+        .offset = 0
+    };
+    SDL_GPUBufferRegion vert_dest = {
+        .buffer = app->vert_buffer,
+        .offset = 0,
+        .size = sizeof(PosTexVertex) * 4
+    };
+    SDL_UploadToGPUBuffer(pass, &vert_src, &vert_dest, false);
+
+    // Upload index data
+    SDL_GPUTransferBufferLocation index_src = {
+        .transfer_buffer = app->vert_transfer_buffer,
+        .offset = sizeof(PosTexVertex) * 4
+    };
+    SDL_GPUBufferRegion index_dest = {
+        .buffer = app->index_buffer,
+        .offset = 0,
+        .size = sizeof(u16) * 6
+    };
+    SDL_UploadToGPUBuffer(pass, &index_src, &index_dest, false);
+
+    SDL_EndGPUCopyPass(pass);
+}
+
+void re_init(ErrorContext *err, App *app) {
+    err_scope(err, "Initialize renderer");
+
+    app->device = try_sdl(err, SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_MSL, RENDERER_DEBUG_MODE, nullptr));
+    try_sdl(err, SDL_ClaimWindowForGPUDevice(app->device, app->window));
+    re_init_pipeline(err, app);
+    re_init_vertex_buffers(err, app);
+    re_init_textures(err, app->app_arena, app->device, app->session);
+}
+
 void re_render(App *app) {
     SDL_GPUCommandBuffer *command_buffer = SDL_AcquireGPUCommandBuffer(app->device);
+
+    re_upload_vertex_data(app, command_buffer);
+
     SDL_GPUTexture *swapchain = nullptr;
     u32 width = 0;
     u32 height = 0;
     SDL_WaitAndAcquireGPUSwapchainTexture(command_buffer, app->window, &swapchain, &width, &height);
 
-    // SDL_GPURenderPass *pass = SDL_BeginGPURenderPass(command_buffer);
-    //
-    // SDL_BindGPUGraphicsPipeline(pass, app->pipeline);
+    SDL_GPUColorTargetInfo color_target_infos[] = {{
+        .texture = swapchain,
+        .clear_color = { 0.f, 0.f, 0.f, 1.f },
+        .load_op = SDL_GPU_LOADOP_CLEAR,
+        .store_op = SDL_GPU_STOREOP_STORE,
+    }};
+    SDL_GPURenderPass *pass = SDL_BeginGPURenderPass(
+            command_buffer,
+            color_target_infos,
+            c_arr_count(color_target_infos),
+            nullptr);
+    SDL_GPUBufferBinding vert_buffer_bindings[] = {{ .buffer = app->vert_buffer, .offset = 0 }};
+    SDL_GPUBufferBinding index_buffer_binding = { .buffer = app->index_buffer, .offset = 0 };
+    SDL_GPUTextureSamplerBinding tex_sampler_bindings[] = {{
+        .texture = app->session->texture,
+        .sampler = app->session->sampler,
+    }};
+
+    SDL_BindGPUGraphicsPipeline(pass, app->pipeline);
+
     // SDL_SetGPUViewport(pass);
-    // SDL_BindGPUVertexBuffers(pass);
-    // SDL_BindGPUVertexSamplers(pass);
-    // SDL_DrawGPUPrimitives(pass);
-    //
-    // SDL_EndGPURenderPass(pass);
+    SDL_BindGPUVertexBuffers(pass, 0, vert_buffer_bindings, c_arr_count(vert_buffer_bindings));
+    SDL_BindGPUIndexBuffer(pass, &index_buffer_binding, SDL_GPU_INDEXELEMENTSIZE_16BIT);
+    SDL_BindGPUFragmentSamplers(pass, 0, tex_sampler_bindings, c_arr_count(tex_sampler_bindings));
+    SDL_DrawGPUIndexedPrimitives(pass, 6, 1, 0, 0, 0);
+
+    SDL_EndGPURenderPass(pass);
 
     SDL_SubmitGPUCommandBuffer(command_buffer);
 }
