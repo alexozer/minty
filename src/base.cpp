@@ -369,6 +369,6 @@ void err_log(ErrorContext *ctx) {
     }
 }
 
-bool err_failed(ErrorContext *ctx) {
+bool err_occurred(ErrorContext *ctx) {
     return !vec_is_empty(&ctx->ctx_stack);
 }

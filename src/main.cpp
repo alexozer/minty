@@ -618,6 +618,9 @@ App *init_app(ErrorContext *err) {
 
     app->session_arena = arena_acquire();
     app->session = create_session(err, app->session_arena, app, path);
+    if (err_occurred(err)) {
+        return app;
+    }
 
     re_init(err, app);
 
@@ -634,7 +637,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
     defer(arena_release(err_base.arena));
 
     App *app = init_app(err);
-    if (err_failed(err)) {
+    if (err_occurred(err)) {
         err_log(err);
         return SDL_APP_FAILURE;
     }
@@ -653,7 +656,7 @@ void try_load_new_session(App *app, Str lss_path) {
 
     Arena *session_arena = arena_acquire();
     Session *session = create_session(err, session_arena, app, lss_path);
-    if (err_failed(err)) {
+    if (err_occurred(err)) {
         err_log(err);
         arena_release(session_arena);
         return;
@@ -1174,7 +1177,6 @@ void render(App *app) {
 SDL_AppResult SDL_AppIterate(void* appstate) {
     App *app = (App *)appstate;
     re_render(app);
-    // render(app);
     return SDL_APP_CONTINUE;
 }
 
@@ -1320,7 +1322,7 @@ Atlas *re_pack_and_upload_textures(Arena *arena, SDL_GPUDevice *device, SDL_GPUC
             .z = 0,
             .w = (u32)textures[i]->w,
             .h = (u32)textures[i]->h,
-            .d = 0,
+            .d = 1,
         };
         SDL_UploadToGPUTexture(pass, &src, &dest, false);
     }
@@ -1470,7 +1472,7 @@ void re_init_vertex_buffers(ErrorContext *err, App *app) {
 
     SDL_GPUTransferBufferCreateInfo transfer_buffer_info = {
         .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-        .size = (sizeof(PosTexVertex) * 4) + (sizeof(u16) * 6)
+        .size = (sizeof(PosTexVertex) * VERTEX_BUFFER_SIZE) + (sizeof(u16) * INDEX_BUFFER_SIZE)
     };
     app->vertex_transfer_buffer = try_sdl(err, SDL_CreateGPUTransferBuffer(app->device, &transfer_buffer_info));
 }
@@ -1579,7 +1581,7 @@ void re_render(App *app) {
     SDL_BindGPUVertexBuffers(pass, 0, vertex_buffer_bindings, c_arr_count(vertex_buffer_bindings));
     SDL_BindGPUIndexBuffer(pass, &index_buffer_binding, SDL_GPU_INDEXELEMENTSIZE_16BIT);
     SDL_BindGPUFragmentSamplers(pass, 0, tex_sampler_bindings, c_arr_count(tex_sampler_bindings));
-    SDL_DrawGPUIndexedPrimitives(pass, 6, 1, 0, 0, 0);
+    SDL_DrawGPUIndexedPrimitives(pass, (u32)mesh.indices.count, 1, 0, 0, 0);
 
     SDL_EndGPURenderPass(pass);
 

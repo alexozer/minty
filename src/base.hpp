@@ -362,7 +362,7 @@ struct ErrorContext {
 __attribute__((format(printf, 2, 3)))
 void err_push_ctx(ErrorContext *ctx, const char *format, ...);
 void err_log(ErrorContext *ctx);
-bool err_failed(ErrorContext *ctx);
+bool err_occurred(ErrorContext *ctx);
 
 #define err_scope(err, format, ...) \
     DeferCtx CONCAT(_err_scope_, __LINE__)([&] (u64 _err_scope_count_) { \
