@@ -352,7 +352,7 @@ void timer_apply_action(Arena *arena, Session *session, TimerAction action, Inst
 
 bool eq(xao_Value v, const char *s) {
     u64 size = (u64)v.end - (u64)v.start;
-    return size == strlen(s) && memcmp(v.start, s, size) == 0;
+    return size == SDL_strlen(s) && SDL_memcmp(v.start, s, size) == 0;
 }
 
 Str xml_str(xao_Value v) {
@@ -388,7 +388,7 @@ Arr<SegmentDef> parse_livesplit_segments(Arena *arena, ErrorContext *err, xao_Re
     Vec<SegmentDef> segments = {};
     xao_Value seg_tag = {};
     while (xao_iter_tags(r, segments_tag, &seg_tag)) {
-        SegmentDef *seg = vec_push(arena, &segments, {});
+        SegmentDef *seg = vec_push_zero(arena, &segments);
         xao_Value attr_tag = {};
         while (xao_iter_tags(r, seg_tag, &attr_tag)) {
             if (eq(attr_tag, "Name")) {
@@ -1062,48 +1062,60 @@ struct RenderMesh {
     Vec<u16> indices;
 };
 
-void push_atlas_quad(Arena *arena, Atlas *atlas, RenderMesh *mesh, SDL_Rect *src, SDL_FRect *dst) {
-    PosTexVertex vertices[] = {{
-        .x = dst->x,
-        .y = dst->y,
-        .z = 0,
-        .u = (f32)src->x / (f32)atlas->width,
-        .v = (f32)src->y / (f32)atlas->height,
-    }, {
-        .x = dst->x + dst->w,
-        .y = dst->y,
-        .z = 0,
-        .u = (f32)(src->x + src->w) / (f32)atlas->width,
-        .v = (f32)src->y / (f32)atlas->height,
-    }, {
-        .x = dst->x + dst->w,
-        .y = dst->y + dst->h,
-        .z = 0,
-        .u = (f32)(src->x + src->w) / (f32)atlas->width,
-        .v = (f32)(src->y + src->h) / (f32)atlas->height,
-    }, {
-        .x = dst->x,
-        .y = dst->y + dst->h,
-        .z = 0,
-        .u = (f32)src->x / (f32)atlas->width,
-        .v = (f32)(src->y + src->h) / (f32)atlas->height,
-    }};
-
-    u16 indices[] = {
-        (u16)(mesh->vertices.count + 0),
-        (u16)(mesh->vertices.count + 1),
-        (u16)(mesh->vertices.count + 2),
-        (u16)(mesh->vertices.count + 2),
-        (u16)(mesh->vertices.count + 1),
-        (u16)(mesh->vertices.count + 3),
-    };
-
-    // TODO allocate in-place to avoid copy
-    vec_extend(arena, &mesh->vertices, arr_from_c(vertices));
-    vec_extend(arena, &mesh->indices, arr_from_c(indices));
+// TODO for pixel-perfect rendering, need to understand rounding/UV mapping
+// w.r.t. pixel center better
+void window_to_ndc(PosTexVertex *vertex, f32 window_width, f32 window_height) {
+    vertex->x = (vertex->x / window_width) * 2.f - 0.5f;
+    vertex->y = (1.f - (vertex->y / window_height)) * 2.f - 0.5f;
 }
 
-void re_build_boxes_mesh(Arena *arena, Box *box, SDL_FPoint where, Atlas *atlas, RenderMesh *mesh) {
+void push_atlas_quad(Arena *arena, f32 width, f32 height, Atlas *atlas, RenderMesh *mesh, SDL_Rect *src, SDL_FRect *dst) {
+    Arr<u16> indices = vec_extend_zero(arena, &mesh->indices, 6);
+    indices[0] = (u16)(mesh->vertices.count + 0);
+    indices[1] = (u16)(mesh->vertices.count + 1);
+    indices[2] = (u16)(mesh->vertices.count + 2);
+    indices[3] = (u16)(mesh->vertices.count + 2);
+    indices[4] = (u16)(mesh->vertices.count + 1);
+    indices[5] = (u16)(mesh->vertices.count + 3);
+
+    Arr<PosTexVertex> vertices = vec_extend_zero(arena, &mesh->vertices, 4);
+    vertices[0] = {
+        .x = dst->x,
+        .y = dst->y,
+        .z = 0,
+        .u = (f32)src->x / (f32)atlas->width,
+        .v = (f32)src->y / (f32)atlas->height,
+    };
+    vertices[1] = {
+        .x = dst->x + dst->w,
+        .y = dst->y,
+        .z = 0,
+        .u = (f32)(src->x + src->w) / (f32)atlas->width,
+        .v = (f32)src->y / (f32)atlas->height,
+    };
+    vertices[2] = {
+        .x = dst->x + dst->w,
+        .y = dst->y + dst->h,
+        .z = 0,
+        .u = (f32)(src->x + src->w) / (f32)atlas->width,
+        .v = (f32)(src->y + src->h) / (f32)atlas->height,
+    };
+    vertices[3] = {
+        .x = dst->x,
+        .y = dst->y + dst->h,
+        .z = 0,
+        .u = (f32)src->x / (f32)atlas->width,
+        .v = (f32)(src->y + src->h) / (f32)atlas->height,
+    };
+
+    // TODO less awkward way to do this?
+    window_to_ndc(&vertices[0], width, height);
+    window_to_ndc(&vertices[1], width, height);
+    window_to_ndc(&vertices[2], width, height);
+    window_to_ndc(&vertices[3], width, height);
+}
+
+void re_build_boxes_mesh(Arena *arena, f32 width, f32 height, Box *box, SDL_FPoint where, Atlas *atlas, RenderMesh *mesh) {
     switch (box->type) {
     case BoxType::Empty: {
         break;
@@ -1111,7 +1123,7 @@ void re_build_boxes_mesh(Arena *arena, Box *box, SDL_FPoint where, Atlas *atlas,
     case BoxType::LeftToRightStack: {
         for (u64 i = 0; i < box->children.count; i++) {
             SDL_FPoint child_bbox = compute_box_bbox(box->children[i]);
-            re_build_boxes_mesh(arena, box->children[i], where, atlas, mesh);
+            re_build_boxes_mesh(arena, width, height, box->children[i], where, atlas, mesh);
             where.x += child_bbox.x;
         }
         break;
@@ -1119,14 +1131,14 @@ void re_build_boxes_mesh(Arena *arena, Box *box, SDL_FPoint where, Atlas *atlas,
     case BoxType::TopToBottomStack: {
         for (u64 i = 0; i < box->children.count; i++) {
             SDL_FPoint child_bbox = compute_box_bbox(box->children[i]);
-            re_build_boxes_mesh(arena, box->children[i], where, atlas, mesh);
+            re_build_boxes_mesh(arena, width, height, box->children[i], where, atlas, mesh);
             where.y += child_bbox.y;
         }
         break;
     }
     case BoxType::BackToFrontStack: {
         for (u64 i = 0; i < box->children.count; i++) {
-            re_build_boxes_mesh(arena, box->children[i], where, atlas, mesh);
+            re_build_boxes_mesh(arena, width, height, box->children[i], where, atlas, mesh);
         }
         break;
     }
@@ -1155,7 +1167,7 @@ void re_build_boxes_mesh(Arena *arena, Box *box, SDL_FPoint where, Atlas *atlas,
             dest.x = where.x + ((box->width - dest.w) / 2.f);
             dest.y = where.y;
         }
-        push_atlas_quad(arena, atlas, mesh, src, &dest);
+        push_atlas_quad(arena, width, height, atlas, mesh, src, &dest);
         break;
     }
     case BoxType::SolidColor: {
@@ -1554,7 +1566,7 @@ void re_render(App *app) {
 
     Box *box = prerender(frame_arena, app, width, height);
     RenderMesh mesh = {};
-    re_build_boxes_mesh(frame_arena, box, { .x = 0, .y = 0 }, app->atlas, &mesh);
+    re_build_boxes_mesh(frame_arena, (f32)width, (f32)height, box, { .x = 0, .y = 0 }, app->atlas, &mesh);
     re_upload_vertex_data(app, command_buffer, &mesh);
 
     SDL_GPUColorTargetInfo color_target_infos[] = {{

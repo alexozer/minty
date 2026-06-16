@@ -272,9 +272,15 @@ void vec__grow(Arena *arena, Vec<T> *vec, u64 new_cap) {
 }
 
 template <typename T>
-T *vec_push(Arena *arena, Vec<T> *vec, T val) {
+void vec_push(Arena *arena, Vec<T> *vec, T val) {
     vec__grow(arena, vec, vec->count + 1);
     vec->ptr[vec->count] = val;
+    vec->count++;
+}
+
+template <typename T>
+T *vec_push_zero(Arena *arena, Vec<T> *vec) {
+    vec__grow(arena, vec, vec->count + 1);
     return &vec->ptr[vec->count++];
 }
 
@@ -285,13 +291,22 @@ void vec_pop(Vec<T> *vec) {
 }
 
 template <typename T>
-Arr<T> vec_extend(Arena *arena, Vec<T> *vec, Arr<T> arr) {
+void vec_extend(Arena *arena, Vec<T> *vec, Arr<T> arr) {
     vec__grow(arena, vec, vec->count + arr.count);
 
     u64 start = vec->count;
     vec->count += arr.count;
     Arr<T> a = arr_slice(vec_arr(vec), start, vec->count);
     arr_copy(a, arr);
+}
+
+template <typename T>
+Arr<T> vec_extend_zero(Arena *arena, Vec<T> *vec, u64 count) {
+    vec__grow(arena, vec, vec->count + count);
+
+    u64 start = vec->count;
+    vec->count += count;
+    Arr<T> a = arr_slice(vec_arr(vec), start, vec->count);
 
     return a;
 }

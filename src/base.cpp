@@ -32,13 +32,13 @@ void arena_release(Arena *arena) {
         log_fatal("FATAL: tried to release too many arenas!");
     }
     s_arena_stack[--s_arena_stack_top] = arena;
-    memset(arena->data, 0, arena->offset);
+    SDL_memset(arena->data, 0, arena->offset);
     arena->offset = 0;
 }
 
 char *str_to_c(Arena *arena, Str s) {
     Arr<char> cstr = arena_push_arr<char>(arena, s.count + 1);
-    memcpy(cstr.ptr, s.ptr, s.count);
+    SDL_memcpy(cstr.ptr, s.ptr, s.count);
     return cstr.ptr;
 }
 
@@ -84,7 +84,7 @@ Str str_trim(Str s) {
 
 Str str_clone(Arena *arena, Str s) {
     Str clone = arena_push_arr<u8>(arena, s.count);
-    memcpy(clone.ptr, s.ptr, s.count);
+    SDL_memcpy(clone.ptr, s.ptr, s.count);
     return clone;
 }
 
