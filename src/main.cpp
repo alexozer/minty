@@ -6,7 +6,6 @@
 #define SDL_MAIN_USE_CALLBACKS
 #include <SDL3/SDL_main.h>
 #include <SDL3/SDL_init.h>
-#include <SDL3/SDL_render.h>
 #include <SDL3/SDL_stdinc.h>
 #include <SDL3/SDL_video.h>
 #include <SDL3/SDL_keycode.h>
@@ -529,7 +528,6 @@ struct PosTexVertex {
 struct App {
     Arena *app_arena; // Lives for duration of application
     SDL_Window* window;
-    SDL_Renderer* renderer; // TODO remove
     TTF_Font *font_small;
     TTF_Font *font_medium;
     TTF_Font *font_large;
@@ -541,8 +539,8 @@ struct App {
 
     SDL_GPUDevice *device;
     SDL_GPUGraphicsPipeline *pipeline;
-    SDL_GPUTransferBuffer *vert_transfer_buffer;
-    SDL_GPUBuffer *vert_buffer;
+    SDL_GPUTransferBuffer *vertex_transfer_buffer;
+    SDL_GPUBuffer *vertex_buffer;
     SDL_GPUBuffer *index_buffer;
     Atlas *atlas;
 };
@@ -566,7 +564,7 @@ void init_text(ErrorContext *err, App *app) {
     app->font_large = try_sdl(err, TTF_OpenFontIO(SDL_IOFromConstMem(ttf.ptr, ttf.count), true, 64.0f));
 
     /* Create the text engine */
-    app->text_engine = try_sdl(err, TTF_CreateRendererTextEngine(app->renderer));
+    // app->text_engine = try_sdl(err, TTF_CreateRendererTextEngine(app->renderer));
 }
 
 SDL_HitTestResult hittest_callback(SDL_Window* window, const SDL_Point *point, void *data) {
@@ -1046,11 +1044,7 @@ Box *prerender_contents(Arena *arena, App *app, f32 width, f32 height) {
     return root;
 }
 
-Box *prerender(Arena *arena, App *app) {
-    i32 width = 0;
-    i32 height = 0;
-    SDL_GetRenderOutputSize(app->renderer, &width, &height);
-
+Box *prerender(Arena *arena, App *app, u64 width, u64 height) {
     constexpr f32 PADDING = 10;
     Box *timer = prerender_contents(arena, app, (f32)width - (PADDING * 2.f), (f32)height - (PADDING * 2.f));
     timer = pad_box_left(arena, timer, PADDING);
@@ -1106,7 +1100,7 @@ void push_atlas_quad(Arena *arena, Atlas *atlas, RenderMesh *mesh, SDL_Rect *src
     vec_extend(arena, &mesh->indices, arr_from_c(indices));
 }
 
-void render_box(Arena *arena, Box *box, SDL_FPoint where, Atlas *atlas, RenderMesh *mesh) {
+void re_build_boxes_mesh(Arena *arena, Box *box, SDL_FPoint where, Atlas *atlas, RenderMesh *mesh) {
     switch (box->type) {
     case BoxType::Empty: {
         break;
@@ -1114,7 +1108,7 @@ void render_box(Arena *arena, Box *box, SDL_FPoint where, Atlas *atlas, RenderMe
     case BoxType::LeftToRightStack: {
         for (u64 i = 0; i < box->children.count; i++) {
             SDL_FPoint child_bbox = compute_box_bbox(box->children[i]);
-            render_box(arena, box->children[i], where, atlas, mesh);
+            re_build_boxes_mesh(arena, box->children[i], where, atlas, mesh);
             where.x += child_bbox.x;
         }
         break;
@@ -1122,14 +1116,14 @@ void render_box(Arena *arena, Box *box, SDL_FPoint where, Atlas *atlas, RenderMe
     case BoxType::TopToBottomStack: {
         for (u64 i = 0; i < box->children.count; i++) {
             SDL_FPoint child_bbox = compute_box_bbox(box->children[i]);
-            render_box(arena, box->children[i], where, atlas, mesh);
+            re_build_boxes_mesh(arena, box->children[i], where, atlas, mesh);
             where.y += child_bbox.y;
         }
         break;
     }
     case BoxType::BackToFrontStack: {
         for (u64 i = 0; i < box->children.count; i++) {
-            render_box(arena, box->children[i], where, atlas, mesh);
+            re_build_boxes_mesh(arena, box->children[i], where, atlas, mesh);
         }
         break;
     }
@@ -1175,15 +1169,6 @@ void render(App *app) {
     Arena *frame_arena = arena_acquire();
     defer(arena_release(frame_arena));
 
-    Box *box = prerender(frame_arena, app);
-
-    SDL_SetRenderDrawColor(app->renderer, 5, 0, 8, 255);
-    SDL_RenderClear(app->renderer);
-
-    RenderMesh mesh = {};
-    render_box(frame_arena, box, { .x = 0, .y = 0 }, app->atlas, &mesh);
-
-    SDL_RenderPresent(app->renderer);
 }
 
 SDL_AppResult SDL_AppIterate(void* appstate) {
@@ -1381,6 +1366,10 @@ Atlas *re_pack_and_upload_textures(Arena *arena, SDL_GPUDevice *device, SDL_GPUC
 // TODO toggle through build system or something
 constexpr bool RENDERER_DEBUG_MODE = true;
 
+// TODO define these in a more principled way
+constexpr u64 VERTEX_BUFFER_SIZE = 10240;
+constexpr u64 INDEX_BUFFER_SIZE = 5120;
+
 void re_init_pipeline(ErrorContext *err, App *app) {
     err_scope(err, "Init pipeline");
 
@@ -1467,14 +1456,14 @@ void re_init_vertex_buffers(ErrorContext *err, App *app) {
 
     SDL_GPUBufferCreateInfo vert_info = {
         .usage = SDL_GPU_BUFFERUSAGE_VERTEX,
-        .size = sizeof(PosTexVertex) * 4,
+        .size = VERTEX_BUFFER_SIZE,
     };
-    app->vert_buffer = try_sdl(err, SDL_CreateGPUBuffer(app->device, &vert_info));
-    SDL_SetGPUBufferName(app->device, app->vert_buffer, "Icon vertex buffer");
+    app->vertex_buffer = try_sdl(err, SDL_CreateGPUBuffer(app->device, &vert_info));
+    SDL_SetGPUBufferName(app->device, app->vertex_buffer, "Icon vertex buffer");
 
     SDL_GPUBufferCreateInfo index_info = {
         .usage = SDL_GPU_BUFFERUSAGE_INDEX,
-        .size = sizeof(u16) * 6,
+        .size = INDEX_BUFFER_SIZE,
     };
     app->index_buffer = try_sdl(err, SDL_CreateGPUBuffer(app->device, &index_info));
     SDL_SetGPUBufferName(app->device, app->index_buffer, "Icon index buffer");
@@ -1483,54 +1472,49 @@ void re_init_vertex_buffers(ErrorContext *err, App *app) {
         .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
         .size = (sizeof(PosTexVertex) * 4) + (sizeof(u16) * 6)
     };
-    app->vert_transfer_buffer = try_sdl(err, SDL_CreateGPUTransferBuffer(app->device, &transfer_buffer_info));
+    app->vertex_transfer_buffer = try_sdl(err, SDL_CreateGPUTransferBuffer(app->device, &transfer_buffer_info));
 }
 
-void re_upload_vertex_data(App *app, SDL_GPUCommandBuffer *command_buffer) {
-    PosTexVertex* transfer_data = (PosTexVertex *)SDL_MapGPUTransferBuffer(
+void re_upload_vertex_data(App *app, SDL_GPUCommandBuffer *command_buffer, RenderMesh *mesh) {
+    u64 vertex_data_size = mesh->vertices.count * sizeof(mesh->vertices[0]);
+    u64 index_data_size = mesh->indices.count * sizeof(mesh->indices[0]);
+    log_assert(vertex_data_size <= VERTEX_BUFFER_SIZE);
+    log_assert(index_data_size <= INDEX_BUFFER_SIZE);
+
+    void *transfer_data = (PosTexVertex *)SDL_MapGPUTransferBuffer(
         app->device,
-        app->vert_transfer_buffer,
+        app->vertex_transfer_buffer,
         false
     );
 
-    transfer_data[0] = (PosTexVertex) { -1,  1, 0, 0, 0 };
-    transfer_data[1] = (PosTexVertex) {  1,  1, 0, 1, 0 };
-    transfer_data[2] = (PosTexVertex) {  1, -1, 0, 1, 1 };
-    transfer_data[3] = (PosTexVertex) { -1, -1, 0, 0, 1 };
+    SDL_memcpy(transfer_data, mesh->vertices.ptr, vertex_data_size);
+    SDL_memcpy((u8 *)transfer_data + vertex_data_size, mesh->indices.ptr, index_data_size);
 
-    u16* indexData = (u16*) &transfer_data[4];
-    indexData[0] = 0;
-    indexData[1] = 1;
-    indexData[2] = 2;
-    indexData[3] = 0;
-    indexData[4] = 2;
-    indexData[5] = 3;
-
-    SDL_UnmapGPUTransferBuffer(app->device, app->vert_transfer_buffer);
+    SDL_UnmapGPUTransferBuffer(app->device, app->vertex_transfer_buffer);
 
     SDL_GPUCopyPass *pass = SDL_BeginGPUCopyPass(command_buffer);
 
     // Upload vertex data
     SDL_GPUTransferBufferLocation vert_src = {
-        .transfer_buffer = app->vert_transfer_buffer,
+        .transfer_buffer = app->vertex_transfer_buffer,
         .offset = 0
     };
     SDL_GPUBufferRegion vert_dest = {
-        .buffer = app->vert_buffer,
+        .buffer = app->vertex_buffer,
         .offset = 0,
-        .size = sizeof(PosTexVertex) * 4
+        .size = (u32)vertex_data_size,
     };
     SDL_UploadToGPUBuffer(pass, &vert_src, &vert_dest, false);
 
     // Upload index data
     SDL_GPUTransferBufferLocation index_src = {
-        .transfer_buffer = app->vert_transfer_buffer,
-        .offset = sizeof(PosTexVertex) * 4
+        .transfer_buffer = app->vertex_transfer_buffer,
+        .offset = (u32)vertex_data_size,
     };
     SDL_GPUBufferRegion index_dest = {
         .buffer = app->index_buffer,
         .offset = 0,
-        .size = sizeof(u16) * 6
+        .size = (u32)index_data_size,
     };
     SDL_UploadToGPUBuffer(pass, &index_src, &index_dest, false);
 
@@ -1554,14 +1538,22 @@ void re_init(ErrorContext *err, App *app) {
 }
 
 void re_render(App *app) {
+    Arena *frame_arena = arena_acquire();
+    defer(arena_release(frame_arena));
+
     SDL_GPUCommandBuffer *command_buffer = SDL_AcquireGPUCommandBuffer(app->device);
 
-    re_upload_vertex_data(app, command_buffer);
-
+    // TODO should we get the window width and height earlier since
+    // SDL_WaitAndAcquireGPUSwapchainTexture() blocks?
     SDL_GPUTexture *swapchain = nullptr;
     u32 width = 0;
     u32 height = 0;
     SDL_WaitAndAcquireGPUSwapchainTexture(command_buffer, app->window, &swapchain, &width, &height);
+
+    Box *box = prerender(frame_arena, app, width, height);
+    RenderMesh mesh = {};
+    re_build_boxes_mesh(frame_arena, box, { .x = 0, .y = 0 }, app->atlas, &mesh);
+    re_upload_vertex_data(app, command_buffer, &mesh);
 
     SDL_GPUColorTargetInfo color_target_infos[] = {{
         .texture = swapchain,
@@ -1574,7 +1566,7 @@ void re_render(App *app) {
             color_target_infos,
             c_arr_count(color_target_infos),
             nullptr);
-    SDL_GPUBufferBinding vert_buffer_bindings[] = {{ .buffer = app->vert_buffer, .offset = 0 }};
+    SDL_GPUBufferBinding vertex_buffer_bindings[] = {{ .buffer = app->vertex_buffer, .offset = 0 }};
     SDL_GPUBufferBinding index_buffer_binding = { .buffer = app->index_buffer, .offset = 0 };
     SDL_GPUTextureSamplerBinding tex_sampler_bindings[] = {{
         .texture = app->atlas->texture,
@@ -1584,7 +1576,7 @@ void re_render(App *app) {
     SDL_BindGPUGraphicsPipeline(pass, app->pipeline);
 
     // SDL_SetGPUViewport(pass);
-    SDL_BindGPUVertexBuffers(pass, 0, vert_buffer_bindings, c_arr_count(vert_buffer_bindings));
+    SDL_BindGPUVertexBuffers(pass, 0, vertex_buffer_bindings, c_arr_count(vertex_buffer_bindings));
     SDL_BindGPUIndexBuffer(pass, &index_buffer_binding, SDL_GPU_INDEXELEMENTSIZE_16BIT);
     SDL_BindGPUFragmentSamplers(pass, 0, tex_sampler_bindings, c_arr_count(tex_sampler_bindings));
     SDL_DrawGPUIndexedPrimitives(pass, 6, 1, 0, 0, 0);
@@ -1593,4 +1585,3 @@ void re_render(App *app) {
 
     SDL_SubmitGPUCommandBuffer(command_buffer);
 }
-
