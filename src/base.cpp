@@ -363,8 +363,8 @@ void err_log(ErrorContext *ctx) {
         log_error("");
         log_error("Caused By:");
         log_error("");
-        for (i64 i = (i64) count - 2; i >= 0; i--) {
-            log_error("  Failed: %.*s", SF(ctx->ctx_stack[i]));
+        for (u64 i = count - 1; i > 0; i--) {
+            log_error("  Failed: %.*s", SF(ctx->ctx_stack[i - 1]));
         }
     }
 }

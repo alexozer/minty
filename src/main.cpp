@@ -433,12 +433,12 @@ void load_timer_textures(Arena *arena, ErrorContext *err, FileDef *file) {
     file->icons = icons;
 }
 
-FileDef *parse_livesplit_lss(Arena *arena, ErrorContext *err, FileDef *file, Str xml) {
+void parse_livesplit_lss(Arena *arena, ErrorContext *err, FileDef *file, Str xml) {
     err_scope(err, "Parse LiveSplit LSS");
 
     if (!str_is_valid_utf8(xml)) {
         err_report(err, "Invalid UTF-8");
-        return file;
+        return;
     }
 
     xao_Reader r = xao_reader((char *)xml.ptr, xml.count);
@@ -465,26 +465,24 @@ FileDef *parse_livesplit_lss(Arena *arena, ErrorContext *err, FileDef *file, Str
 
     if (r.error != nullptr) {
         err_report(err, "Failed to parse LSS XML: %s", r.error);
-        return file;
+        return;
     }
 
     // Basic validation
     if (arr_is_empty(file->segments)) {
         err_report(err, "No segments found");
-        return file;
+        return;
     }
     for (u64 i = 0; i < file->segments.count; i++) {
         if (str_is_empty(file->segments[i].name)) {
             err_report(err, "Segment %" PRIu64 " has no name", i + 1);
-            return file;
+            return;
         }
     }
     if (str_is_empty(file->game_name)) {
         err_report(err, "Empty game name");
-        return file;
+        return;
     }
-
-    return file;
 }
 
 FileDef *load_livesplit_lss(Arena *arena, ErrorContext *err, Str lss_path) {
@@ -503,7 +501,7 @@ FileDef *load_livesplit_lss(Arena *arena, ErrorContext *err, Str lss_path) {
 
     Str xml = { .ptr = (u8 *)lss_buf, .count = (u64)size };
 
-    file = parse_livesplit_lss(arena, err, file, xml);
+    parse_livesplit_lss(arena, err, file, xml);
     load_timer_textures(arena, err, file);
 
     return file;
@@ -532,6 +530,7 @@ struct App {
     Session *session; // Nullable
 
     SDL_GPUDevice *device;
+    SDL_GPUGraphicsPipeline *pipeline;
 };
 
 void init_text(ErrorContext *err, App *app) {
@@ -1147,7 +1146,7 @@ void shape_test() {
 
 	kbts_ShapeBegin(context, KBTS_DIRECTION_DONT_KNOW, KBTS_LANGUAGE_DONT_KNOW);
 	kbts_ShapeUtf8(context,
-            (char *)shape_text.ptr, shape_text.count,
+            (char *)shape_text.ptr, (i32)shape_text.count,
             KBTS_USER_ID_GENERATION_MODE_CODEPOINT_INDEX);
 	kbts_ShapeEnd(context);
 
@@ -1187,7 +1186,7 @@ void init_session_render_resources(ErrorContext *err, Arena *arena, SDL_GPUDevic
     //
 
     SDL_Surface *icon = session->file->icons[0];
-    u64 icon_size = icon->h * icon->pitch;
+    u64 icon_size = (u64)icon->h * (u64)icon->pitch;
 
     // TODO reuse transfer buffer and/or destroy?
     SDL_GPUTransferBufferCreateInfo transfer_buffer_info = {
@@ -1245,11 +1244,109 @@ void init_session_render_resources(ErrorContext *err, Arena *arena, SDL_GPUDevic
 // TODO toggle through build system or something
 constexpr bool RENDERER_DEBUG_MODE = true;
 
+struct PosTexVertex {
+    float x, y, z;
+    float u, v;
+};
+
 void re_init(ErrorContext *err, App *app) {
-    err_scope(err, "Initialize custom renderer");
+    err_scope(err, "Initialize renderer");
+
     app->device = try_sdl(err, SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_MSL, RENDERER_DEBUG_MODE, nullptr));
     try_sdl(err, SDL_ClaimWindowForGPUDevice(app->device, app->window));
+
+    size_t vert_shader_size = 0;
+    size_t frag_shader_size = 0;
+    // TODO arena allocate
+    void *vert_shader_text = try_sdl(err, SDL_LoadFile("src/shaders/vert.msl", &vert_shader_size));
+    void *frag_shader_text = try_sdl(err, SDL_LoadFile("src/shaders/frag.msl", &frag_shader_size));
+
+    SDL_GPUShaderCreateInfo vert_info = {
+        .code_size = vert_shader_size,
+        .code = (u8 *)vert_shader_text,
+        .format = SDL_GPU_SHADERFORMAT_MSL,
+        .stage = SDL_GPU_SHADERSTAGE_VERTEX,
+        .num_samplers = 0,
+        .num_storage_textures = 0,
+        .num_storage_buffers = 0,
+        .num_uniform_buffers = 0,
+        .props = 0,
+    };
+
+    SDL_GPUShaderCreateInfo frag_info = {
+        .code_size = frag_shader_size,
+        .code = (u8 *)frag_shader_text,
+        .format = SDL_GPU_SHADERFORMAT_MSL,
+        .stage = SDL_GPU_SHADERSTAGE_FRAGMENT,
+        .num_samplers = 1,
+        .num_storage_textures = 1,
+        .num_storage_buffers = 0,
+        .num_uniform_buffers = 0,
+        .props = 0,
+    };
+
+    SDL_GPUShader *vert_shader = try_sdl(err, SDL_CreateGPUShader(app->device, &vert_info));
+    SDL_GPUShader *frag_shader = try_sdl(err, SDL_CreateGPUShader(app->device, &frag_info));
+
+    SDL_GPUColorTargetDescription color_target_descs[] = {{
+        .format = SDL_GetGPUSwapchainTextureFormat(app->device, app->window),
+    }};
+
+    SDL_GPUVertexBufferDescription vertex_buffer_descs[] = {{
+        .slot = 0,
+        .pitch = sizeof(PosTexVertex),
+        .input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX,
+        .instance_step_rate = 0,
+    }};
+
+    SDL_GPUVertexAttribute vertex_attrs[] = {
+        {
+            .location = 0,
+            .buffer_slot = 0,
+            .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
+            .offset = 0,
+        }, {
+            .location = 1,
+            .buffer_slot = 0,
+            .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2,
+            .offset = sizeof(float) * 3,
+        }
+    };
+
+    SDL_GPUGraphicsPipelineCreateInfo pipeline_create_info = {
+        .vertex_shader = vert_shader,
+        .fragment_shader = frag_shader,
+        .vertex_input_state = {
+            .vertex_buffer_descriptions = vertex_buffer_descs,
+            .num_vertex_buffers = c_arr_count(vertex_buffer_descs),
+            .vertex_attributes = vertex_attrs,
+            .num_vertex_attributes = c_arr_count(vertex_attrs),
+        },
+        .primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
+        .target_info = {
+            .color_target_descriptions = color_target_descs,
+            .num_color_targets = c_arr_count(color_target_descs),
+        },
+    };
+    app->pipeline = try_sdl(err, SDL_CreateGPUGraphicsPipeline(app->device, &pipeline_create_info));
 }
 
 void re_render(App *app) {
+    SDL_GPUCommandBuffer *command_buffer = SDL_AcquireGPUCommandBuffer(app->device);
+    SDL_GPUTexture *swapchain = nullptr;
+    u32 width = 0;
+    u32 height = 0;
+    SDL_WaitAndAcquireGPUSwapchainTexture(command_buffer, app->window, &swapchain, &width, &height);
+
+    // SDL_GPURenderPass *pass = SDL_BeginGPURenderPass(command_buffer);
+    //
+    // SDL_BindGPUGraphicsPipeline(pass, app->pipeline);
+    // SDL_SetGPUViewport(pass);
+    // SDL_BindGPUVertexBuffers(pass);
+    // SDL_BindGPUVertexSamplers(pass);
+    // SDL_DrawGPUPrimitives(pass);
+    //
+    // SDL_EndGPURenderPass(pass);
+
+    SDL_SubmitGPUCommandBuffer(command_buffer);
 }

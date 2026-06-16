@@ -23,6 +23,7 @@ const simdutf_sources: []const []const u8 = &.{
 const cxx_flags: []const []const u8 = &.{
     "-Wall",
     "-Wshadow",
+    "-Wconversion",
     "-Wimplicit-fallthrough",
     "-isystem", "3rdparty",
     "-DYYJSON_DISABLE_INCR_READER=1",

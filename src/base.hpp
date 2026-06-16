@@ -129,6 +129,8 @@ Arr<T> arena_push_arr(Arena *arena, u64 count) {
 // Arrays
 //
 
+#define c_arr_count(a) (sizeof((a)) / sizeof((a)[0]))
+
 template <typename T>
 Arr<T> arr_from_null_terminated(T *v) {
     u64 count = 0;
@@ -512,7 +514,7 @@ void thread_init(int argc, char **argv);
 // TODO: consider arena-based resource management instead of defer() everywhere
 
 #define try_sdl_ret_void(err, func_call) ({ \
-    __typeof__(func_call) _ret = (func_call); \
+    decltype(func_call) _ret = (func_call); \
     if (!_ret) { \
         err_report((err), "%s", SDL_GetError()); \
         return; \
@@ -521,7 +523,7 @@ void thread_init(int argc, char **argv);
 })
 
 #define try_sdl_ret_value(err, ret, func_call) ({ \
-    __typeof__(func_call) _ret = (func_call); \
+    decltype(func_call) _ret = (func_call); \
     if (!_ret) { \
         err_report((err), "%s", SDL_GetError()); \
         return (ret); \
