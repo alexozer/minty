@@ -507,11 +507,6 @@ FileDef *load_livesplit_lss(Arena *arena, ErrorContext *err, Str lss_path) {
 // Main
 //
 
-constexpr i32 DEFAULT_WINDOW_WIDTH = 360;
-constexpr i32 DEFAULT_WINDOW_HEIGHT = 600;
-constexpr i32 MIN_WINDOW_WIDTH = 200;
-constexpr i32 MIN_WINDOW_HEIGHT = 100;
-
 struct PxSize {
     u16 w, h;
 };
@@ -525,14 +520,8 @@ struct PxRect {
     u16 w, h;
 };
 
-// // Try using single type for now - in theory you could get more enforcement out
-// // of e.g. offset vs. size types
-// struct Vec2u {
-//     union {
-//         struct { u16 x; u16 y; };
-//         struct { u16 width; u16 height; };
-//     };
-// };
+constexpr PxSize DEFAULT_WINDOW_SIZE = { .w = 360, .h = 600 };
+constexpr PxSize MIN_WINDOW_SIZE = { .w = 200, .h = 100 };
 
 struct Atlas {
     PxSize size;
@@ -604,11 +593,11 @@ void init_window(ErrorContext *err, App *app) {
     try_sdl(err, SDL_SetStringProperty(props, SDL_PROP_WINDOW_CREATE_TITLE_STRING, "Blitter"));
     try_sdl(err, SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN, true));
     try_sdl(err, SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_BORDERLESS_BOOLEAN, true));
-    try_sdl(err, SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, DEFAULT_WINDOW_WIDTH));
-    try_sdl(err, SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, DEFAULT_WINDOW_HEIGHT));
+    try_sdl(err, SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, DEFAULT_WINDOW_SIZE.w));
+    try_sdl(err, SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, DEFAULT_WINDOW_SIZE.h));
 
     app->window = try_sdl(err, SDL_CreateWindowWithProperties(props));
-    try_sdl(err, SDL_SetWindowMinimumSize(app->window, MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT));
+    try_sdl(err, SDL_SetWindowMinimumSize(app->window, MIN_WINDOW_SIZE.w, MIN_WINDOW_SIZE.h));
     try_sdl(err, SDL_SetWindowHitTest(app->window, hittest_callback, nullptr));
 }
 
@@ -864,7 +853,7 @@ PxSize compute_box_bbox_uncached(Box *box) {
                 total = child_bbox;
             } else {
                 total.w = max(total.w, child_bbox.w);
-                total.w = max(total.w, child_bbox.w);
+                total.h = max(total.h, child_bbox.h);
             }
         }
         return total;
@@ -975,8 +964,8 @@ Box *align_box_center_vert(Arena *arena, Box *box, u16 height) {
 }
 
 Box *prerender_segment(Arena *arena, App *app, u16 width, u64 idx) {
-    constexpr u16 ICON_INNER = {36};
-    constexpr u16 ICON_OUTER = {44};
+    constexpr u16 ICON_INNER = 36;
+    constexpr u16 ICON_OUTER = 44;
     Box *icon = nullptr;
 
     // TODO handle empty icons
@@ -1065,7 +1054,7 @@ Box *prerender_contents(Arena *arena, App *app, PxSize size) {
 }
 
 Box *prerender(Arena *arena, App *app, PxSize window_size) {
-    constexpr u16 PADDING = {10};
+    constexpr u16 PADDING = 10;
     PxSize content_size = {
         .w = (u16)(window_size.w - PADDING * 2),
         .h = (u16)(window_size.h - PADDING * 2),
@@ -1157,7 +1146,7 @@ void re_build_boxes_mesh(Arena *arena, PxSize window_size, Box *box, PxPos where
         for (u64 i = 0; i < box->children.count; i++) {
             PxSize child_bbox = compute_box_bbox(box->children[i]);
             re_build_boxes_mesh(arena, window_size, box->children[i], where, atlas, mesh);
-            where.y += child_bbox.w;
+            where.y += child_bbox.h;
         }
         break;
     }
@@ -1175,7 +1164,7 @@ void re_build_boxes_mesh(Arena *arena, PxSize window_size, Box *box, PxPos where
         PxRect src = atlas->placements[box->texture_idx];
 
         f32 src_ratio = (f32)src.w / (f32)src.h;
-        f32 dst_ratio = (f32)box->bbox.opt.w / (f32)box->bbox.opt.w;
+        f32 dst_ratio = (f32)box->bbox.opt.w / (f32)box->bbox.opt.h;
 
         // Scale to fit
         PxRect dest = {};
