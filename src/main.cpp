@@ -538,7 +538,10 @@ struct App {
     TTF_Font *font_medium;
     TTF_Font *font_large;
     TTF_TextEngine *text_engine;
+
     SDL_Keycode prev_keys;
+    // TODO: float-based scrolling on NDC could mess with pixel-perfect alignment
+    f32 scroll;
 
     Arena *session_arena;
     Session *session; // Nullable
@@ -726,6 +729,10 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
                 try_load_new_session(app, clipboard);
             }
         }
+    }
+
+    if (event->common.type == SDL_EVENT_MOUSE_WHEEL) {
+        app->scroll += event->wheel.y;
     }
 
     return SDL_APP_CONTINUE;
@@ -1578,6 +1585,9 @@ void re_render(App *app) {
     vec_prealloc(frame_arena, &mesh.vertices, MAX_VERTEX_COUNT);
     vec_prealloc(frame_arena, &mesh.indices, MAX_INDEX_COUNT);
     re_build_boxes_mesh(frame_arena, window_size, box, { .x = 0, .y = 0 }, app->atlas, &mesh);
+    for (u64 i = 0; i < mesh.vertices.count; i++) {
+        mesh.vertices[i].y -= app->scroll * 0.1f;
+    }
     re_upload_vertex_data(app, command_buffer, &mesh);
 
     SDL_GPUColorTargetInfo color_target_infos[] = {{

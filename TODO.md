@@ -81,6 +81,8 @@ For all new textures:
 Make basic UI engine use atlas
     Box renderer just appends to list of verts/indices for now
 
+<!-- Scroll to see icons! -->
+
 BUGS:
 
 <!-- - Atlas bleeding issues -->
