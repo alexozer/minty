@@ -1428,6 +1428,15 @@ void re_init_pipeline(ErrorContext *err, App *app) {
 
     SDL_GPUColorTargetDescription color_target_descs[] = {{
         .format = SDL_GetGPUSwapchainTextureFormat(app->device, app->window),
+        .blend_state = {
+            .src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA,
+            .dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+            .color_blend_op = SDL_GPU_BLENDOP_ADD,
+            .src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA,
+            .dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+            .alpha_blend_op = SDL_GPU_BLENDOP_ADD,
+            .enable_blend = true,
+        },
     }};
 
     SDL_GPUVertexBufferDescription vertex_buffer_descs[] = {{

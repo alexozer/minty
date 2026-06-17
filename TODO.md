@@ -86,5 +86,7 @@ BUGS:
 <!-- - Atlas bleeding issues -->
 <!-- - Weird incorrect positioning -->
 <!-- - Memory leak? -->
-- Pixelated textures, compared to SDL renderer
-- Corrupted textures?
+<!-- - Stuff not aligned to pixel boundaries (more important for text though) -->
+<!-- - Pixelated textures, compared to SDL renderer -->
+<!-- - Corrupted textures? -->
+    <!-- - These both look like I just need to alpha blend properly -->
