@@ -75,8 +75,8 @@ struct Timer {
 };
 
 struct Session {
-    FileDef *file;
-    Timer *timer;
+    FileDef file;
+    Timer timer;
 };
 
 struct SegSummary {
@@ -96,8 +96,8 @@ struct SegSummary {
 };
 
 Arr<SegSummary> calc_seg_summary(Arena *arena, Session *session) {
-    Timer *timer = session->timer;
-    FileDef *file = session->file;
+    Timer *timer = &session->timer;
+    FileDef *file = &session->file;
 
     Arr<SegSummary> summary = arena_push_arr<SegSummary>(arena, timer->live_splits.count);
 
@@ -223,8 +223,8 @@ Duration timer_get_elapsed(Timer *timer, Instant event_time) {
 void timer_apply_action_init(Arena *arena, Session *session, TimerAction action, Instant t) {
     switch (action) {
     case TimerAction::Split: {
-        session->timer->mode = TimerMode::Running;
-        session->timer->start_time = t;
+        session->timer.mode = TimerMode::Running;
+        session->timer.start_time = t;
         break;
     }
     default: {}
@@ -232,8 +232,8 @@ void timer_apply_action_init(Arena *arena, Session *session, TimerAction action,
 }
 
 void timer_apply_action_running(Arena *arena, Session *session, TimerAction action, Instant t) {
-    Timer *timer = session->timer;
-    FileDef *file = session->file;
+    Timer *timer = &session->timer;
+    FileDef *file = &session->file;
 
     switch (action) {
     case TimerAction::Split: {
@@ -278,8 +278,8 @@ void timer_apply_action_running(Arena *arena, Session *session, TimerAction acti
 }
 
 void timer_apply_action_paused(Arena *arena, Session *session, TimerAction action, Instant t) {
-    Timer *timer = session->timer;
-    FileDef *file = session->file;
+    Timer *timer = &session->timer;
+    FileDef *file = &session->file;
 
     switch (action) {
     case TimerAction::Pause: {
@@ -304,8 +304,8 @@ void timer_apply_action_paused(Arena *arena, Session *session, TimerAction actio
 }
 
 void timer_apply_action_finished(Arena *arena, Session *session, TimerAction action, Instant t) {
-    Timer *timer = session->timer;
-    FileDef *file = session->file;
+    Timer *timer = &session->timer;
+    FileDef *file = &session->file;
 
     switch (action) {
     case TimerAction::UndoSplit: {
@@ -330,7 +330,7 @@ void timer_apply_action_finished(Arena *arena, Session *session, TimerAction act
 }
 
 void timer_apply_action(Arena *arena, Session *session, TimerAction action, Instant t) {
-    switch (session->timer->mode) {
+    switch (session->timer.mode) {
     case TimerMode::Init: {
         timer_apply_action_init(arena, session, action, t);
         break;
@@ -481,10 +481,8 @@ void parse_livesplit_lss(Arena *arena, ErrorContext *err, FileDef *file, Str xml
     }
 }
 
-FileDef *load_livesplit_lss(Arena *arena, ErrorContext *err, Str lss_path) {
+void load_livesplit_lss(Arena *arena, ErrorContext *err, Str lss_path, FileDef *file) {
     err_scope(err, "Load LiveSplit LSS file '%.*s'", SF(lss_path));
-
-    FileDef *file = arena_push<FileDef>(arena);
 
     Arena *scratch = arena_acquire();
     defer(arena_release(scratch));
@@ -492,15 +490,13 @@ FileDef *load_livesplit_lss(Arena *arena, ErrorContext *err, Str lss_path) {
     // TODO arena allocate
     size_t size = 0;
     char *lss_path_cstr = str_to_c(scratch, lss_path);
-    void *lss_buf = try_sdl(err, file, SDL_LoadFile(lss_path_cstr, &size));
+    void *lss_buf = try_sdl(err, SDL_LoadFile(lss_path_cstr, &size));
     defer(SDL_free(lss_buf));
 
     Str xml = { .ptr = (u8 *)lss_buf, .count = (u64)size };
 
     parse_livesplit_lss(arena, err, file, xml);
     load_timer_textures(arena, err, file);
-
-    return file;
 }
 
 //
@@ -603,10 +599,7 @@ void init_window(ErrorContext *err, App *app) {
 
 Session *create_session(ErrorContext *err, Arena *arena, App *app, Str path) {
     Session *session = arena_push<Session>(arena);
-
-    session->file = load_livesplit_lss(arena, err, path);
-    session->timer = arena_push<Timer>(arena);
-
+    load_livesplit_lss(arena, err, path, &session->file);
     return session;
 }
 
@@ -978,7 +971,7 @@ Box *prerender_segment(Arena *arena, App *app, u16 width, u64 idx) {
 
     SDL_FColor text_color = { .r = 1.f, .g = 1.f, .b = 1.f, .a = 1.f };
     Box *pad = make_empty_box(arena, { .w = 10, .h = 0 });
-    Box *title = make_text_box(arena, app->text_engine, app->font_medium, app->session->file->segments[idx].name, text_color);
+    Box *title = make_text_box(arena, app->text_engine, app->font_medium, app->session->file.segments[idx].name, text_color);
     Box *title_centered = align_box_center_vert(arena, title, ICON_OUTER);
 
     Box *row_front = arena_push<Box>(arena);
@@ -987,7 +980,7 @@ Box *prerender_segment(Arena *arena, App *app, u16 width, u64 idx) {
     vec_push(arena, &row_front->children, pad);
     vec_push(arena, &row_front->children, title_centered);
 
-    if (app->session->timer->mode == TimerMode::Running && idx == app->session->timer->live_splits.count) {
+    if (app->session->timer.mode == TimerMode::Running && idx == app->session->timer.live_splits.count) {
         PxSize row_front_bbox = compute_box_bbox(row_front);
         SDL_FColor bg_color = { .r = 0.f, .g = 0.3f, .b = 0.90f, .a = 1.f };
         PxSize row_back_size = { .w = width, .h = row_front_bbox.h };
@@ -1008,9 +1001,9 @@ Box *prerender_contents(Arena *arena, App *app, PxSize size) {
     SDL_FColor color = { .r = 1.f, .g = 1.f, .b = 1.f, .a = 1.f };
 
     Box *game_name = make_text_box(arena, app->text_engine, app->font_medium,
-            app->session->file->game_name, color);
+            app->session->file.game_name, color);
     Box *cat_name = make_text_box(arena, app->text_engine, app->font_medium,
-            app->session->file->category_name, color);
+            app->session->file.category_name, color);
 
     Box *game_name_centered = align_box_center_horiz(arena, game_name, size.w);
     Box *cat_name_centered = align_box_center_horiz(arena, cat_name, size.w);
@@ -1020,8 +1013,8 @@ Box *prerender_contents(Arena *arena, App *app, PxSize size) {
     vec_push(arena, &top->children, game_name_centered);
     vec_push(arena, &top->children, cat_name_centered);
 
-    for (u64 i = 0; i < app->session->file->segments.count; i++) {
-        if (!str_starts_with(app->session->file->segments[i].name, S("-"))) {
+    for (u64 i = 0; i < app->session->file.segments.count; i++) {
+        if (!str_starts_with(app->session->file.segments[i].name, S("-"))) {
             Box *segment = prerender_segment(arena, app, size.w, i);
             vec_push(arena, &top->children, segment);
         }
@@ -1030,7 +1023,7 @@ Box *prerender_contents(Arena *arena, App *app, PxSize size) {
     Box *bottom = arena_push<Box>(arena);
     bottom->type = BoxType::TopToBottomStack;
 
-    Duration t = timer_get_elapsed(app->session->timer, get_current_monotonic_time());
+    Duration t = timer_get_elapsed(&app->session->timer, get_current_monotonic_time());
     Str t_str = format_duration(arena, t, 2, false);
     Box *curr_time = make_text_box(arena, app->text_engine, app->font_large, t_str, color);
     PxSize curr_time_bbox = compute_box_bbox(curr_time);
@@ -1561,7 +1554,7 @@ void re_init(ErrorContext *err, App *app) {
     SDL_GPUCommandBuffer *command_buffer = try_sdl(err, SDL_AcquireGPUCommandBuffer(app->device));
     SDL_GPUCopyPass *pass = try_sdl(err, SDL_BeginGPUCopyPass(command_buffer));
     app->atlas = re_pack_and_upload_textures(
-            app->session_arena, app->device, pass, app->session->file->icons, { .w = 1024, .h = 1024 });
+            app->session_arena, app->device, pass, app->session->file.icons, { .w = 1024, .h = 1024 });
     SDL_EndGPUCopyPass(pass);
     try_sdl(err, SDL_SubmitGPUCommandBuffer(command_buffer));
 }
