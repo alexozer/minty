@@ -512,88 +512,17 @@ constexpr i32 DEFAULT_WINDOW_HEIGHT = 600;
 constexpr i32 MIN_WINDOW_WIDTH = 200;
 constexpr i32 MIN_WINDOW_HEIGHT = 100;
 
-struct PxDim {
-    // explicit constexpr PxDim(u16 dim): raw_dim{dim} {}
-    // Avoid touching directly unless conversion is needed! If I'm not diligent
-    // enough, I could add some accessors I suppose
-    u16 raw_dim;
-};
-
-// You can't add/sub offsets to offsets.
-struct PxOffset {
-    // explicit constexpr PxOffset(u16 offset): raw_offset{offset} {}
-    // Avoid touching directly unless conversion is needed! If I'm not diligent
-    // enough, I could add some accessors I suppose
-    u16 raw_offset;
-};
-
-PxDim operator+(PxDim a, PxDim b) {
-    return PxDim(a.raw_dim + b.raw_dim);
-}
-
-void operator+=(PxDim& a, PxDim b) {
-    a.raw_dim += b.raw_dim;
-}
-
-PxDim operator-(PxDim a, PxDim b) {
-    return PxDim(a.raw_dim - b.raw_dim);
-}
-
-void operator-=(PxDim& a, PxDim b) {
-    a.raw_dim -= b.raw_dim;
-}
-
-PxOffset operator+(PxOffset offset, PxDim dim) {
-    return PxOffset(offset.raw_offset + dim.raw_dim);
-}
-
-PxOffset operator+(PxDim dim, PxOffset offset) {
-    return PxOffset(offset.raw_offset + dim.raw_dim);
-}
-
-void operator+=(PxOffset& offset, PxDim dim) {
-    offset.raw_offset += dim.raw_dim;
-}
-
-PxOffset operator-(PxOffset offset, PxDim dim) {
-    return PxOffset(offset.raw_offset - dim.raw_dim);
-}
-
-void operator-=(PxOffset& offset, PxDim dim) {
-    offset.raw_offset -= dim.raw_dim;
-}
-
-bool operator>(PxDim a, PxDim b) {
-    return a.raw_dim > b.raw_dim;
-}
-
-bool operator<(PxDim a, PxDim b) {
-    return a.raw_dim < b.raw_dim;
-}
-
-bool operator>=(PxDim a, PxDim b) {
-    return a.raw_dim >= b.raw_dim;
-}
-
-bool operator<=(PxDim a, PxDim b) {
-    return a.raw_dim <= b.raw_dim;
-}
-
-bool operator==(PxDim a, PxDim b) {
-    return a.raw_dim == b.raw_dim;
-}
-
 struct PxSize {
-    PxDim width, height;
+    u16 w, h;
 };
 
 struct PxPos {
-    PxOffset x, y;
+    u16 x, y;
 };
 
 struct PxRect {
-    PxOffset x, y;
-    PxDim width, height;
+    u16 x, y;
+    u16 w, h;
 };
 
 // // Try using single type for now - in theory you could get more enforcement out
@@ -908,8 +837,8 @@ PxSize compute_box_bbox_uncached(Box *box) {
             if (i == 0) {
                 total = child_bbox;
             } else {
-                total.width += child_bbox.width;
-                total.height = max(total.height, child_bbox.height);
+                total.w += child_bbox.w;
+                total.h = max(total.h, child_bbox.h);
             }
         }
         return total;
@@ -921,8 +850,8 @@ PxSize compute_box_bbox_uncached(Box *box) {
             if (i == 0) {
                 total = child_bbox;
             } else {
-                total.width = max(total.width, child_bbox.width);
-                total.height += child_bbox.height;
+                total.w = max(total.w, child_bbox.w);
+                total.h += child_bbox.h;
             }
         }
         return total;
@@ -934,8 +863,8 @@ PxSize compute_box_bbox_uncached(Box *box) {
             if (i == 0) {
                 total = child_bbox;
             } else {
-                total.width = max(total.width, child_bbox.width);
-                total.width = max(total.width, child_bbox.width);
+                total.w = max(total.w, child_bbox.w);
+                total.w = max(total.w, child_bbox.w);
             }
         }
         return total;
@@ -944,7 +873,7 @@ PxSize compute_box_bbox_uncached(Box *box) {
         i32 width = 0;
         i32 height = 0;
         TTF_GetTextSize(box->text_obj, &width, &height);
-        return { .width = {(u16)width}, .height = {(u16)height} };
+        return { .w = (u16)width, .h = (u16)height };
     }
     case BoxType::Texture: {
         return box->bbox.opt;
@@ -961,9 +890,9 @@ PxSize compute_box_bbox(Box *box) {
     return bbox;
 }
 
-Box *pad_box_left(Arena *arena, Box *box, PxDim pad) {
+Box *pad_box_left(Arena *arena, Box *box, u16 pad) {
     PxSize bbox = compute_box_bbox(box);
-    Box *pad_box = make_empty_box(arena, { .width = pad, .height = bbox.height });
+    Box *pad_box = make_empty_box(arena, { .w = pad, .h = bbox.h });
 
     Box *parent_box = arena_push<Box>(arena);
     parent_box->type = BoxType::LeftToRightStack;
@@ -973,9 +902,9 @@ Box *pad_box_left(Arena *arena, Box *box, PxDim pad) {
     return parent_box;
 }
 
-Box *pad_box_right(Arena *arena, Box *box, PxDim pad) {
+Box *pad_box_right(Arena *arena, Box *box, u16 pad) {
     PxSize bbox = compute_box_bbox(box);
-    Box *pad_box = make_empty_box(arena, { .width = pad, .height = bbox.height });
+    Box *pad_box = make_empty_box(arena, { .w = pad, .h = bbox.h });
 
     Box *parent_box = arena_push<Box>(arena);
     parent_box->type = BoxType::LeftToRightStack;
@@ -985,9 +914,9 @@ Box *pad_box_right(Arena *arena, Box *box, PxDim pad) {
     return parent_box;
 }
 
-Box *pad_box_top(Arena *arena, Box *box, PxDim pad) {
+Box *pad_box_top(Arena *arena, Box *box, u16 pad) {
     PxSize bbox = compute_box_bbox(box);
-    Box *pad_box = make_empty_box(arena, { .width = bbox.width, .height = pad });
+    Box *pad_box = make_empty_box(arena, { .w = bbox.w, .h = pad });
 
     Box *parent_box = arena_push<Box>(arena);
     parent_box->type = BoxType::TopToBottomStack;
@@ -997,9 +926,9 @@ Box *pad_box_top(Arena *arena, Box *box, PxDim pad) {
     return parent_box;
 }
 
-Box *pad_box_bottom(Arena *arena, Box *box, PxDim pad) {
+Box *pad_box_bottom(Arena *arena, Box *box, u16 pad) {
     PxSize bbox = compute_box_bbox(box);
-    Box *pad_box = make_empty_box(arena, { .width = bbox.width, .height = pad });
+    Box *pad_box = make_empty_box(arena, { .w = bbox.w, .h = pad });
 
     Box *parent_box = arena_push<Box>(arena);
     parent_box->type = BoxType::TopToBottomStack;
@@ -1009,14 +938,14 @@ Box *pad_box_bottom(Arena *arena, Box *box, PxDim pad) {
     return parent_box;
 }
 
-Box *align_box_center_horiz(Arena *arena, Box *box, PxDim width) {
+Box *align_box_center_horiz(Arena *arena, Box *box, u16 width) {
     PxSize bbox = compute_box_bbox(box);
-    width = max(width, bbox.width);
-    PxDim left_pad = {.raw_dim = (u16)((width.raw_dim - bbox.width.raw_dim) / 2)};
-    PxDim right_pad = width - bbox.width - left_pad;
+    width = max(width, bbox.w);
+    u16 left_pad = (width - bbox.w) / 2;
+    u16 right_pad = width - bbox.w - left_pad;
 
-    Box *left_pad_box = make_empty_box(arena, {left_pad, bbox.height});
-    Box *right_pad_box = make_empty_box(arena, {right_pad, bbox.height});
+    Box *left_pad_box = make_empty_box(arena, {left_pad, bbox.h});
+    Box *right_pad_box = make_empty_box(arena, {right_pad, bbox.h});
 
     Box *parent = arena_push<Box>(arena);
     parent->type = BoxType::LeftToRightStack;
@@ -1027,14 +956,14 @@ Box *align_box_center_horiz(Arena *arena, Box *box, PxDim width) {
     return parent;
 }
 
-Box *align_box_center_vert(Arena *arena, Box *box, PxDim height) {
+Box *align_box_center_vert(Arena *arena, Box *box, u16 height) {
     PxSize bbox = compute_box_bbox(box);
-    height = max(height, bbox.height);
-    PxDim top_pad = {.raw_dim = (u16)((height.raw_dim - bbox.height.raw_dim) / 2)};
-    PxDim bottom_pad = height - bbox.height - top_pad;
+    height = max(height, bbox.h);
+    u16 top_pad = (height - bbox.h) / 2;
+    u16 bottom_pad = height - bbox.h - top_pad;
 
-    Box *top_pad_box = make_empty_box(arena, {bbox.width, top_pad});
-    Box *bottom_pad_box = make_empty_box(arena, {bbox.width, bottom_pad});
+    Box *top_pad_box = make_empty_box(arena, {bbox.w, top_pad});
+    Box *bottom_pad_box = make_empty_box(arena, {bbox.w, bottom_pad});
 
     Box *parent = arena_push<Box>(arena);
     parent->type = BoxType::TopToBottomStack;
@@ -1045,13 +974,13 @@ Box *align_box_center_vert(Arena *arena, Box *box, PxDim height) {
     return parent;
 }
 
-Box *prerender_segment(Arena *arena, App *app, PxDim width, u64 idx) {
-    constexpr PxDim ICON_INNER = {36};
-    constexpr PxDim ICON_OUTER = {44};
+Box *prerender_segment(Arena *arena, App *app, u16 width, u64 idx) {
+    constexpr u16 ICON_INNER = {36};
+    constexpr u16 ICON_OUTER = {44};
     Box *icon = nullptr;
 
     // TODO handle empty icons
-    icon = make_texture_box(arena, idx, {.width = ICON_INNER, .height = ICON_INNER});
+    icon = make_texture_box(arena, idx, {.w = ICON_INNER, .h = ICON_INNER});
     // } else {
     //     icon = make_empty_box(arena, ICON_INNER, ICON_INNER);
     // }
@@ -1059,7 +988,7 @@ Box *prerender_segment(Arena *arena, App *app, PxDim width, u64 idx) {
     icon = align_box_center_vert(arena, icon, ICON_OUTER);
 
     SDL_FColor text_color = { .r = 1.f, .g = 1.f, .b = 1.f, .a = 1.f };
-    Box *pad = make_empty_box(arena, { .width = {10}, .height = {0} });
+    Box *pad = make_empty_box(arena, { .w = 10, .h = 0 });
     Box *title = make_text_box(arena, app->text_engine, app->font_medium, app->session->file->segments[idx].name, text_color);
     Box *title_centered = align_box_center_vert(arena, title, ICON_OUTER);
 
@@ -1072,7 +1001,7 @@ Box *prerender_segment(Arena *arena, App *app, PxDim width, u64 idx) {
     if (app->session->timer->mode == TimerMode::Running && idx == app->session->timer->live_splits.count) {
         PxSize row_front_bbox = compute_box_bbox(row_front);
         SDL_FColor bg_color = { .r = 0.f, .g = 0.3f, .b = 0.90f, .a = 1.f };
-        PxSize row_back_size = { .width = width, .height = row_front_bbox.height };
+        PxSize row_back_size = { .w = width, .h = row_front_bbox.h };
         Box *row_back = make_solid_color_box(arena, bg_color, row_back_size);
 
         Box *row = arena_push<Box>(arena);
@@ -1094,8 +1023,8 @@ Box *prerender_contents(Arena *arena, App *app, PxSize size) {
     Box *cat_name = make_text_box(arena, app->text_engine, app->font_medium,
             app->session->file->category_name, color);
 
-    Box *game_name_centered = align_box_center_horiz(arena, game_name, size.width);
-    Box *cat_name_centered = align_box_center_horiz(arena, cat_name, size.width);
+    Box *game_name_centered = align_box_center_horiz(arena, game_name, size.w);
+    Box *cat_name_centered = align_box_center_horiz(arena, cat_name, size.w);
 
     Box *top = arena_push<Box>(arena);
     top->type = BoxType::TopToBottomStack;
@@ -1104,7 +1033,7 @@ Box *prerender_contents(Arena *arena, App *app, PxSize size) {
 
     for (u64 i = 0; i < app->session->file->segments.count; i++) {
         if (!str_starts_with(app->session->file->segments[i].name, S("-"))) {
-            Box *segment = prerender_segment(arena, app, size.width, i);
+            Box *segment = prerender_segment(arena, app, size.w, i);
             vec_push(arena, &top->children, segment);
         }
     }
@@ -1116,14 +1045,14 @@ Box *prerender_contents(Arena *arena, App *app, PxSize size) {
     Str t_str = format_duration(arena, t, 2, false);
     Box *curr_time = make_text_box(arena, app->text_engine, app->font_large, t_str, color);
     PxSize curr_time_bbox = compute_box_bbox(curr_time);
-    Box *curr_time_aligned = pad_box_left(arena, curr_time, size.width - curr_time_bbox.width);
+    Box *curr_time_aligned = pad_box_left(arena, curr_time, size.w - curr_time_bbox.w);
 
     vec_push(arena, &bottom->children, curr_time_aligned);
 
     // Put timer at bottom
     PxSize top_bbox = compute_box_bbox(top);
     PxSize bottom_bbox = compute_box_bbox(bottom);
-    PxSize vsep_size = { .width = {0}, .height = size.height - top_bbox.height - bottom_bbox.height };
+    PxSize vsep_size = { .w = 0, .h = (u16)(size.h - top_bbox.h - bottom_bbox.h) };
     Box *vsep = make_empty_box(arena, vsep_size);
 
     Box *root = arena_push<Box>(arena);
@@ -1136,10 +1065,10 @@ Box *prerender_contents(Arena *arena, App *app, PxSize size) {
 }
 
 Box *prerender(Arena *arena, App *app, PxSize window_size) {
-    constexpr PxDim PADDING = {10};
+    constexpr u16 PADDING = {10};
     PxSize content_size = {
-        .width = window_size.width - (PADDING + PADDING),
-        .height = window_size.height - (PADDING + PADDING),
+        .w = (u16)(window_size.w - PADDING * 2),
+        .h = (u16)(window_size.h - PADDING * 2),
     };
     Box *timer = prerender_contents(arena, app, content_size);
     timer = pad_box_left(arena, timer, PADDING);
@@ -1157,8 +1086,8 @@ struct RenderMesh {
 // TODO for pixel-perfect rendering, need to understand rounding/UV mapping
 // w.r.t. pixel center better
 void window_to_ndc(PosTexVertex *vertex, PxSize window_size) {
-    vertex->x = (vertex->x / (f32)window_size.width.raw_dim) * 2.f - 1.f;
-    vertex->y = -((vertex->y / (f32)window_size.height.raw_dim) * 2.f - 1.f);
+    vertex->x = (vertex->x / (f32)window_size.w) * 2.f - 1.f;
+    vertex->y = -((vertex->y / (f32)window_size.h) * 2.f - 1.f);
 }
 
 void push_atlas_quad(Arena *arena, PxSize window_size, Atlas *atlas, RenderMesh *mesh, PxRect src, PxRect dst) {
@@ -1173,35 +1102,35 @@ void push_atlas_quad(Arena *arena, PxSize window_size, Atlas *atlas, RenderMesh 
     Arr<PosTexVertex> vertices = vec_extend_zero(arena, &mesh->vertices, 4);
     // Top left
     vertices[0] = {
-        .x = (f32)dst.x.raw_offset,
-        .y = (f32)dst.y.raw_offset,
+        .x = (f32)dst.x,
+        .y = (f32)dst.y,
         .z = 0,
-        .u = (f32)src.x.raw_offset / (f32)atlas->size.width.raw_dim,
-        .v = (f32)src.y.raw_offset / (f32)atlas->size.height.raw_dim,
+        .u = (f32)src.x / (f32)atlas->size.w,
+        .v = (f32)src.y / (f32)atlas->size.h,
     };
     // Top right
     vertices[1] = {
-        .x = (f32)(dst.x + dst.width).raw_offset,
-        .y = (f32)dst.y.raw_offset,
+        .x = (f32)(dst.x + dst.w),
+        .y = (f32)dst.y,
         .z = 0,
-        .u = (f32)(src.x + src.width).raw_offset / (f32)atlas->size.width.raw_dim,
-        .v = (f32)src.y.raw_offset / (f32)atlas->size.height.raw_dim,
+        .u = (f32)(src.x + src.w) / (f32)atlas->size.w,
+        .v = (f32)src.y / (f32)atlas->size.h,
     };
     // Bottom left
     vertices[2] = {
-        .x = (f32)dst.x.raw_offset,
-        .y = (f32)(dst.y + dst.height).raw_offset,
+        .x = (f32)dst.x,
+        .y = (f32)(dst.y + dst.h),
         .z = 0,
-        .u = (f32)src.x.raw_offset / (f32)atlas->size.width.raw_dim,
-        .v = (f32)(src.y + src.height).raw_offset / (f32)atlas->size.height.raw_dim,
+        .u = (f32)src.x / (f32)atlas->size.w,
+        .v = (f32)(src.y + src.h) / (f32)atlas->size.h,
     };
     // Bottom right
     vertices[3] = {
-        .x = (f32)(dst.x + dst.width).raw_offset,
-        .y = (f32)(dst.y + dst.height).raw_offset,
+        .x = (f32)(dst.x + dst.w),
+        .y = (f32)(dst.y + dst.h),
         .z = 0,
-        .u = (f32)(src.x + src.width).raw_offset / (f32)atlas->size.width.raw_dim,
-        .v = (f32)(src.y + src.height).raw_offset / (f32)atlas->size.height.raw_dim,
+        .u = (f32)(src.x + src.w) / (f32)atlas->size.w,
+        .v = (f32)(src.y + src.h) / (f32)atlas->size.h,
     };
 
     // TODO less awkward way to do this?
@@ -1220,7 +1149,7 @@ void re_build_boxes_mesh(Arena *arena, PxSize window_size, Box *box, PxPos where
         for (u64 i = 0; i < box->children.count; i++) {
             PxSize child_bbox = compute_box_bbox(box->children[i]);
             re_build_boxes_mesh(arena, window_size, box->children[i], where, atlas, mesh);
-            where.x += child_bbox.width;
+            where.x += child_bbox.w;
         }
         break;
     }
@@ -1228,7 +1157,7 @@ void re_build_boxes_mesh(Arena *arena, PxSize window_size, Box *box, PxPos where
         for (u64 i = 0; i < box->children.count; i++) {
             PxSize child_bbox = compute_box_bbox(box->children[i]);
             re_build_boxes_mesh(arena, window_size, box->children[i], where, atlas, mesh);
-            where.y += child_bbox.width;
+            where.y += child_bbox.w;
         }
         break;
     }
@@ -1245,22 +1174,22 @@ void re_build_boxes_mesh(Arena *arena, PxSize window_size, Box *box, PxPos where
     case BoxType::Texture: {
         PxRect src = atlas->placements[box->texture_idx];
 
-        f32 src_ratio = (f32)src.width.raw_dim / (f32)src.height.raw_dim;
-        f32 dst_ratio = (f32)box->bbox.opt.width.raw_dim / (f32)box->bbox.opt.width.raw_dim;
+        f32 src_ratio = (f32)src.w / (f32)src.h;
+        f32 dst_ratio = (f32)box->bbox.opt.w / (f32)box->bbox.opt.w;
 
         // Scale to fit
         PxRect dest = {};
         if (src_ratio > dst_ratio) {
-            f32 scale = box->width / (f32)src->w;
-            dest.width = box->width;
-            dest.height = (f32)src->h * scale;
+            f32 scale = (f32)box->bbox.opt.w / (f32)src.w;
+            dest.w = box->bbox.opt.w;
+            dest.h = (u16)SDL_lroundf((f32)src.h * scale);
             dest.x = where.x;
-            dest.y = where.y + ((box->height - dest.h) / 2.f);
+            dest.y = where.y + (u16)SDL_lroundf((f32)(box->bbox.opt.h - dest.h) / 2.f);
         } else {
-            f32 scale = box->height / (f32)src->h;
-            dest.width = (f32)src->w * scale;
-            dest.height = box->height;
-            dest.x = where.x + ((box->width - dest.w) / 2.f);
+            f32 scale = (f32)box->bbox.opt.h / (f32)src.h;
+            dest.w = (u16)SDL_lroundf((f32)src.w * scale);
+            dest.h = box->bbox.opt.h;
+            dest.x = where.x + (u16)SDL_lroundf((f32)(box->bbox.opt.w - dest.w) / 2.f);
             dest.y = where.y;
         }
         push_atlas_quad(arena, window_size, atlas, mesh, src, dest);
@@ -1354,7 +1283,7 @@ Atlas *re_pack_and_upload_textures(Arena *arena, SDL_GPUDevice *device, SDL_GPUC
 
     stbrp_context packer_ctx = {};
     Arr<stbrp_node> packer_nodes = arena_push_arr<stbrp_node>(scratch, textures.count * 2 /* ?? */);
-    stbrp_init_target(&packer_ctx, (i32)atlas_size.width.raw_dim, (i32)atlas_size.height.raw_dim, packer_nodes.ptr, (i32)packer_nodes.count);
+    stbrp_init_target(&packer_ctx, (i32)atlas_size.w, (i32)atlas_size.h, packer_nodes.ptr, (i32)packer_nodes.count);
     stbrp_setup_allow_out_of_mem(&packer_ctx, true);
 
     Arr<stbrp_rect> rects = arena_push_arr<stbrp_rect>(scratch, textures.count);
@@ -1373,7 +1302,7 @@ Atlas *re_pack_and_upload_textures(Arena *arena, SDL_GPUDevice *device, SDL_GPUC
     // TODO reuse transfer buffer and/or destroy?
     SDL_GPUTransferBufferCreateInfo transfer_buffer_info = {
         .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-        .size = (u32)(atlas_width * atlas_height * 4),
+        .size = (u32)(atlas_size.w * atlas_size.h * 4),
     };
     SDL_GPUTransferBuffer *transfer_buffer = SDL_CreateGPUTransferBuffer(device, &transfer_buffer_info);
 
@@ -1397,8 +1326,8 @@ Atlas *re_pack_and_upload_textures(Arena *arena, SDL_GPUDevice *device, SDL_GPUC
         .type = SDL_GPU_TEXTURETYPE_2D,
         .format = SDL_GetGPUTextureFormatFromPixelFormat(sdl_pixel_format),
         .usage = SDL_GPU_TEXTUREUSAGE_SAMPLER,
-        .width = (u32)atlas_width,
-        .height = (u32)atlas_height,
+        .width = (u32)atlas_size.w,
+        .height = (u32)atlas_size.h,
         .layer_count_or_depth = 1,
         .num_levels = 1,
     };
@@ -1449,16 +1378,15 @@ Atlas *re_pack_and_upload_textures(Arena *arena, SDL_GPUDevice *device, SDL_GPUC
     //
 
     Atlas *atlas = arena_push<Atlas>(arena);
-    atlas->width = atlas_width;
-    atlas->height = atlas_height;
+    atlas->size = atlas_size;
     atlas->texture = texture;
     atlas->sampler = sampler;
-    atlas->placements = arena_push_arr<SDL_Rect>(arena, textures.count);
+    atlas->placements = arena_push_arr<PxRect>(arena, textures.count);
     for (u64 i = 0; i < textures.count; i++) {
-        atlas->placements[i].x = rects[i].x;
-        atlas->placements[i].y = rects[i].y;
-        atlas->placements[i].w = rects[i].w;
-        atlas->placements[i].h = rects[i].h;
+        atlas->placements[i].x = (u16)rects[i].x;
+        atlas->placements[i].y = (u16)rects[i].y;
+        atlas->placements[i].w = (u16)rects[i].w;
+        atlas->placements[i].h = (u16)rects[i].h;
     }
 
     return atlas;
@@ -1633,7 +1561,7 @@ void re_init(ErrorContext *err, App *app) {
     SDL_GPUCommandBuffer *command_buffer = try_sdl(err, SDL_AcquireGPUCommandBuffer(app->device));
     SDL_GPUCopyPass *pass = try_sdl(err, SDL_BeginGPUCopyPass(command_buffer));
     app->atlas = re_pack_and_upload_textures(
-            app->session_arena, app->device, pass, app->session->file->icons, 1024, 1024);
+            app->session_arena, app->device, pass, app->session->file->icons, { .w = 1024, .h = 1024 });
     SDL_EndGPUCopyPass(pass);
     try_sdl(err, SDL_SubmitGPUCommandBuffer(command_buffer));
 }
@@ -1650,10 +1578,11 @@ void re_render(App *app) {
     u32 width = 0;
     u32 height = 0;
     SDL_WaitAndAcquireGPUSwapchainTexture(command_buffer, app->window, &swapchain, &width, &height);
+    PxSize window_size = { .w = (u16)width, .h = (u16)height };
 
-    Box *box = prerender(frame_arena, app, width, height);
+    Box *box = prerender(frame_arena, app, window_size);
     RenderMesh mesh = {};
-    re_build_boxes_mesh(frame_arena, (f32)width, (f32)height, box, { .x = 0, .y = 0 }, app->atlas, &mesh);
+    re_build_boxes_mesh(frame_arena, window_size, box, { .x = 0, .y = 0 }, app->atlas, &mesh);
     re_upload_vertex_data(app, command_buffer, &mesh);
 
     SDL_GPUColorTargetInfo color_target_infos[] = {{
