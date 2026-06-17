@@ -591,6 +591,11 @@ struct PxPos {
     PxOffset x, y;
 };
 
+struct PxRect {
+    PxOffset x, y;
+    PxDim width, height;
+};
+
 // // Try using single type for now - in theory you could get more enforcement out
 // // of e.g. offset vs. size types
 // struct Vec2u {
@@ -601,10 +606,10 @@ struct PxPos {
 // };
 
 struct Atlas {
-    PxSize dims;
+    PxSize size;
     SDL_GPUTexture *texture;
     SDL_GPUSampler *sampler;
-    Arr<SDL_Rect> placements;
+    Arr<PxRect> placements;
 };
 
 struct PosTexVertex {
@@ -1131,8 +1136,12 @@ Box *prerender_contents(Arena *arena, App *app, PxSize size) {
 }
 
 Box *prerender(Arena *arena, App *app, PxSize window_size) {
-    constexpr f32 PADDING = 10;
-    Box *timer = prerender_contents(arena, app, (f32)width - (PADDING * 2.f), (f32)height - (PADDING * 2.f));
+    constexpr PxDim PADDING = {10};
+    PxSize content_size = {
+        .width = window_size.width - (PADDING + PADDING),
+        .height = window_size.height - (PADDING + PADDING),
+    };
+    Box *timer = prerender_contents(arena, app, content_size);
     timer = pad_box_left(arena, timer, PADDING);
     timer = pad_box_right(arena, timer, PADDING);
     timer = pad_box_top(arena, timer, PADDING);
@@ -1147,12 +1156,12 @@ struct RenderMesh {
 
 // TODO for pixel-perfect rendering, need to understand rounding/UV mapping
 // w.r.t. pixel center better
-void window_to_ndc(PosTexVertex *vertex, f32 window_width, f32 window_height) {
-    vertex->x = (vertex->x / window_width) * 2.f - 1.f;
-    vertex->y = -((vertex->y / window_height) * 2.f - 1.f);
+void window_to_ndc(PosTexVertex *vertex, PxSize window_size) {
+    vertex->x = (vertex->x / (f32)window_size.width.raw_dim) * 2.f - 1.f;
+    vertex->y = -((vertex->y / (f32)window_size.height.raw_dim) * 2.f - 1.f);
 }
 
-void push_atlas_quad(Arena *arena, f32 width, f32 height, Atlas *atlas, RenderMesh *mesh, SDL_Rect *src, SDL_FRect *dst) {
+void push_atlas_quad(Arena *arena, PxSize window_size, Atlas *atlas, RenderMesh *mesh, PxRect src, PxRect dst) {
     Arr<u16> indices = vec_extend_zero(arena, &mesh->indices, 6);
     indices[0] = (u16)(mesh->vertices.count + 0);
     indices[1] = (u16)(mesh->vertices.count + 1);
@@ -1164,68 +1173,68 @@ void push_atlas_quad(Arena *arena, f32 width, f32 height, Atlas *atlas, RenderMe
     Arr<PosTexVertex> vertices = vec_extend_zero(arena, &mesh->vertices, 4);
     // Top left
     vertices[0] = {
-        .x = dst->x,
-        .y = dst->y,
+        .x = (f32)dst.x.raw_offset,
+        .y = (f32)dst.y.raw_offset,
         .z = 0,
-        .u = (f32)src->x / (f32)atlas->width,
-        .v = (f32)src->y / (f32)atlas->height,
+        .u = (f32)src.x.raw_offset / (f32)atlas->size.width.raw_dim,
+        .v = (f32)src.y.raw_offset / (f32)atlas->size.height.raw_dim,
     };
     // Top right
     vertices[1] = {
-        .x = dst->x + dst->w,
-        .y = dst->y,
+        .x = (f32)(dst.x + dst.width).raw_offset,
+        .y = (f32)dst.y.raw_offset,
         .z = 0,
-        .u = (f32)(src->x + src->w) / (f32)atlas->width,
-        .v = (f32)src->y / (f32)atlas->height,
+        .u = (f32)(src.x + src.width).raw_offset / (f32)atlas->size.width.raw_dim,
+        .v = (f32)src.y.raw_offset / (f32)atlas->size.height.raw_dim,
     };
     // Bottom left
     vertices[2] = {
-        .x = dst->x,
-        .y = dst->y + dst->h,
+        .x = (f32)dst.x.raw_offset,
+        .y = (f32)(dst.y + dst.height).raw_offset,
         .z = 0,
-        .u = (f32)src->x / (f32)atlas->width,
-        .v = (f32)(src->y + src->h) / (f32)atlas->height,
+        .u = (f32)src.x.raw_offset / (f32)atlas->size.width.raw_dim,
+        .v = (f32)(src.y + src.height).raw_offset / (f32)atlas->size.height.raw_dim,
     };
     // Bottom right
     vertices[3] = {
-        .x = dst->x + dst->w,
-        .y = dst->y + dst->h,
+        .x = (f32)(dst.x + dst.width).raw_offset,
+        .y = (f32)(dst.y + dst.height).raw_offset,
         .z = 0,
-        .u = (f32)(src->x + src->w) / (f32)atlas->width,
-        .v = (f32)(src->y + src->h) / (f32)atlas->height,
+        .u = (f32)(src.x + src.width).raw_offset / (f32)atlas->size.width.raw_dim,
+        .v = (f32)(src.y + src.height).raw_offset / (f32)atlas->size.height.raw_dim,
     };
 
     // TODO less awkward way to do this?
-    window_to_ndc(&vertices[0], width, height);
-    window_to_ndc(&vertices[1], width, height);
-    window_to_ndc(&vertices[2], width, height);
-    window_to_ndc(&vertices[3], width, height);
+    window_to_ndc(&vertices[0], window_size);
+    window_to_ndc(&vertices[1], window_size);
+    window_to_ndc(&vertices[2], window_size);
+    window_to_ndc(&vertices[3], window_size);
 }
 
-void re_build_boxes_mesh(Arena *arena, f32 width, f32 height, Box *box, SDL_FPoint where, Atlas *atlas, RenderMesh *mesh) {
+void re_build_boxes_mesh(Arena *arena, PxSize window_size, Box *box, PxPos where, Atlas *atlas, RenderMesh *mesh) {
     switch (box->type) {
     case BoxType::Empty: {
         break;
     }
     case BoxType::LeftToRightStack: {
         for (u64 i = 0; i < box->children.count; i++) {
-            SDL_FPoint child_bbox = compute_box_bbox(box->children[i]);
-            re_build_boxes_mesh(arena, width, height, box->children[i], where, atlas, mesh);
-            where.x += child_bbox.x;
+            PxSize child_bbox = compute_box_bbox(box->children[i]);
+            re_build_boxes_mesh(arena, window_size, box->children[i], where, atlas, mesh);
+            where.x += child_bbox.width;
         }
         break;
     }
     case BoxType::TopToBottomStack: {
         for (u64 i = 0; i < box->children.count; i++) {
-            SDL_FPoint child_bbox = compute_box_bbox(box->children[i]);
-            re_build_boxes_mesh(arena, width, height, box->children[i], where, atlas, mesh);
-            where.y += child_bbox.y;
+            PxSize child_bbox = compute_box_bbox(box->children[i]);
+            re_build_boxes_mesh(arena, window_size, box->children[i], where, atlas, mesh);
+            where.y += child_bbox.width;
         }
         break;
     }
     case BoxType::BackToFrontStack: {
         for (u64 i = 0; i < box->children.count; i++) {
-            re_build_boxes_mesh(arena, width, height, box->children[i], where, atlas, mesh);
+            re_build_boxes_mesh(arena, window_size, box->children[i], where, atlas, mesh);
         }
         break;
     }
@@ -1234,27 +1243,27 @@ void re_build_boxes_mesh(Arena *arena, f32 width, f32 height, Box *box, SDL_FPoi
         break;
     }
     case BoxType::Texture: {
-        SDL_Rect *src = &atlas->placements[box->texture_idx];
+        PxRect src = atlas->placements[box->texture_idx];
 
-        f32 src_ratio = (f32)src->w / (f32)src->h;
-        f32 dst_ratio = box->width / box->height;
+        f32 src_ratio = (f32)src.width.raw_dim / (f32)src.height.raw_dim;
+        f32 dst_ratio = (f32)box->bbox.opt.width.raw_dim / (f32)box->bbox.opt.width.raw_dim;
 
         // Scale to fit
-        SDL_FRect dest = {};
+        PxRect dest = {};
         if (src_ratio > dst_ratio) {
             f32 scale = box->width / (f32)src->w;
-            dest.w = box->width;
-            dest.h = (f32)src->h * scale;
+            dest.width = box->width;
+            dest.height = (f32)src->h * scale;
             dest.x = where.x;
             dest.y = where.y + ((box->height - dest.h) / 2.f);
         } else {
             f32 scale = box->height / (f32)src->h;
-            dest.w = (f32)src->w * scale;
-            dest.h = box->height;
+            dest.width = (f32)src->w * scale;
+            dest.height = box->height;
             dest.x = where.x + ((box->width - dest.w) / 2.f);
             dest.y = where.y;
         }
-        push_atlas_quad(arena, width, height, atlas, mesh, src, &dest);
+        push_atlas_quad(arena, window_size, atlas, mesh, src, dest);
         break;
     }
     case BoxType::SolidColor: {
@@ -1329,7 +1338,7 @@ u64 sdl_surface_size(SDL_Surface *surface) {
     return (u64)surface->h * (u64)surface->pitch;
 }
 
-Atlas *re_pack_and_upload_textures(Arena *arena, SDL_GPUDevice *device, SDL_GPUCopyPass *pass, Arr<SDL_Surface *> textures, u64 atlas_width, u64 atlas_height) {
+Atlas *re_pack_and_upload_textures(Arena *arena, SDL_GPUDevice *device, SDL_GPUCopyPass *pass, Arr<SDL_Surface *> textures, PxSize atlas_size) {
     log_assert(textures.count > 0);
     SDL_PixelFormat sdl_pixel_format = textures[0]->format;
     for (u64 i = 1; i < textures.count; i++) {
@@ -1345,7 +1354,7 @@ Atlas *re_pack_and_upload_textures(Arena *arena, SDL_GPUDevice *device, SDL_GPUC
 
     stbrp_context packer_ctx = {};
     Arr<stbrp_node> packer_nodes = arena_push_arr<stbrp_node>(scratch, textures.count * 2 /* ?? */);
-    stbrp_init_target(&packer_ctx, (i32)atlas_width, (i32)atlas_height, packer_nodes.ptr, (i32)packer_nodes.count);
+    stbrp_init_target(&packer_ctx, (i32)atlas_size.width.raw_dim, (i32)atlas_size.height.raw_dim, packer_nodes.ptr, (i32)packer_nodes.count);
     stbrp_setup_allow_out_of_mem(&packer_ctx, true);
 
     Arr<stbrp_rect> rects = arena_push_arr<stbrp_rect>(scratch, textures.count);
