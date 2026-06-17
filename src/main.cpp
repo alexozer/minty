@@ -1065,8 +1065,8 @@ struct RenderMesh {
 // TODO for pixel-perfect rendering, need to understand rounding/UV mapping
 // w.r.t. pixel center better
 void window_to_ndc(PosTexVertex *vertex, f32 window_width, f32 window_height) {
-    vertex->x = (vertex->x / window_width) * 2.f - 0.5f;
-    vertex->y = (1.f - (vertex->y / window_height)) * 2.f - 0.5f;
+    vertex->x = (vertex->x / window_width) * 2.f - 1.f;
+    vertex->y = -((vertex->y / window_height) * 2.f - 1.f);
 }
 
 void push_atlas_quad(Arena *arena, f32 width, f32 height, Atlas *atlas, RenderMesh *mesh, SDL_Rect *src, SDL_FRect *dst) {
@@ -1079,6 +1079,7 @@ void push_atlas_quad(Arena *arena, f32 width, f32 height, Atlas *atlas, RenderMe
     indices[5] = (u16)(mesh->vertices.count + 3);
 
     Arr<PosTexVertex> vertices = vec_extend_zero(arena, &mesh->vertices, 4);
+    // Top left
     vertices[0] = {
         .x = dst->x,
         .y = dst->y,
@@ -1086,6 +1087,7 @@ void push_atlas_quad(Arena *arena, f32 width, f32 height, Atlas *atlas, RenderMe
         .u = (f32)src->x / (f32)atlas->width,
         .v = (f32)src->y / (f32)atlas->height,
     };
+    // Top right
     vertices[1] = {
         .x = dst->x + dst->w,
         .y = dst->y,
@@ -1093,18 +1095,20 @@ void push_atlas_quad(Arena *arena, f32 width, f32 height, Atlas *atlas, RenderMe
         .u = (f32)(src->x + src->w) / (f32)atlas->width,
         .v = (f32)src->y / (f32)atlas->height,
     };
+    // Bottom left
     vertices[2] = {
-        .x = dst->x + dst->w,
-        .y = dst->y + dst->h,
-        .z = 0,
-        .u = (f32)(src->x + src->w) / (f32)atlas->width,
-        .v = (f32)(src->y + src->h) / (f32)atlas->height,
-    };
-    vertices[3] = {
         .x = dst->x,
         .y = dst->y + dst->h,
         .z = 0,
         .u = (f32)src->x / (f32)atlas->width,
+        .v = (f32)(src->y + src->h) / (f32)atlas->height,
+    };
+    // Bottom right
+    vertices[3] = {
+        .x = dst->x + dst->w,
+        .y = dst->y + dst->h,
+        .z = 0,
+        .u = (f32)(src->x + src->w) / (f32)atlas->width,
         .v = (f32)(src->y + src->h) / (f32)atlas->height,
     };
 
