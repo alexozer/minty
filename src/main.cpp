@@ -1385,8 +1385,9 @@ Atlas *re_pack_and_upload_textures(Arena *arena, SDL_GPUDevice *device, SDL_GPUC
 constexpr bool RENDERER_DEBUG_MODE = true;
 
 // TODO define these in a more principled way
-constexpr u64 VERTEX_BUFFER_SIZE = 10240;
-constexpr u64 INDEX_BUFFER_SIZE = 5120;
+constexpr u64 MAX_QUAD_COUNT = 1024;
+constexpr u64 MAX_VERTEX_COUNT = MAX_QUAD_COUNT * 4;
+constexpr u64 MAX_INDEX_COUNT = MAX_QUAD_COUNT * 6;
 
 void re_init_pipeline(ErrorContext *err, App *app) {
     err_scope(err, "Init pipeline");
@@ -1479,34 +1480,35 @@ void re_init_pipeline(ErrorContext *err, App *app) {
 }
 
 void re_init_vertex_buffers(ErrorContext *err, App *app) {
-    err_scope(err, "Init vertex buffers");
+    err_scope(err, "Init vertex+index buffers");
 
     SDL_GPUBufferCreateInfo vert_info = {
         .usage = SDL_GPU_BUFFERUSAGE_VERTEX,
-        .size = VERTEX_BUFFER_SIZE,
+        .size = sizeof(PosTexVertex) * MAX_VERTEX_COUNT,
     };
     app->vertex_buffer = try_sdl(err, SDL_CreateGPUBuffer(app->device, &vert_info));
-    SDL_SetGPUBufferName(app->device, app->vertex_buffer, "Icon vertex buffer");
+    SDL_SetGPUBufferName(app->device, app->vertex_buffer, "THE vertex buffer");
 
     SDL_GPUBufferCreateInfo index_info = {
         .usage = SDL_GPU_BUFFERUSAGE_INDEX,
-        .size = INDEX_BUFFER_SIZE,
+        .size = sizeof(u16) * MAX_INDEX_COUNT,
     };
     app->index_buffer = try_sdl(err, SDL_CreateGPUBuffer(app->device, &index_info));
-    SDL_SetGPUBufferName(app->device, app->index_buffer, "Icon index buffer");
+    SDL_SetGPUBufferName(app->device, app->index_buffer, "THE index buffer");
 
     SDL_GPUTransferBufferCreateInfo transfer_buffer_info = {
         .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-        .size = (sizeof(PosTexVertex) * VERTEX_BUFFER_SIZE) + (sizeof(u16) * INDEX_BUFFER_SIZE)
+        .size = (sizeof(PosTexVertex) * MAX_VERTEX_COUNT) + (sizeof(u16) * MAX_INDEX_COUNT)
     };
     app->vertex_transfer_buffer = try_sdl(err, SDL_CreateGPUTransferBuffer(app->device, &transfer_buffer_info));
 }
 
 void re_upload_vertex_data(App *app, SDL_GPUCommandBuffer *command_buffer, RenderMesh *mesh) {
+    log_assert(mesh->vertices.count <= MAX_VERTEX_COUNT);
+    log_assert(mesh->indices.count <= MAX_INDEX_COUNT);
+
     u64 vertex_data_size = mesh->vertices.count * sizeof(mesh->vertices[0]);
     u64 index_data_size = mesh->indices.count * sizeof(mesh->indices[0]);
-    log_assert(vertex_data_size <= VERTEX_BUFFER_SIZE);
-    log_assert(index_data_size <= INDEX_BUFFER_SIZE);
 
     void *transfer_data = (PosTexVertex *)SDL_MapGPUTransferBuffer(
         app->device,
@@ -1580,6 +1582,8 @@ void re_render(App *app) {
 
     Box *box = prerender(frame_arena, app, window_size);
     RenderMesh mesh = {};
+    vec_prealloc(frame_arena, &mesh.vertices, MAX_VERTEX_COUNT);
+    vec_prealloc(frame_arena, &mesh.indices, MAX_INDEX_COUNT);
     re_build_boxes_mesh(frame_arena, window_size, box, { .x = 0, .y = 0 }, app->atlas, &mesh);
     re_upload_vertex_data(app, command_buffer, &mesh);
 

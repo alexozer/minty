@@ -312,6 +312,11 @@ Arr<T> vec_extend_zero(Arena *arena, Vec<T> *vec, u64 count) {
 }
 
 template <typename T>
+void vec_prealloc(Arena *arena, Vec<T> *vec, u64 max_elems) {
+    vec__grow(arena, vec, max_elems);
+}
+
+template <typename T>
 Arr<T> vec_arr(Vec<T> *vec) {
     return { .ptr = vec->ptr, .count = vec->count };
 }
