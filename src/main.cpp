@@ -512,9 +512,96 @@ constexpr i32 DEFAULT_WINDOW_HEIGHT = 600;
 constexpr i32 MIN_WINDOW_WIDTH = 200;
 constexpr i32 MIN_WINDOW_HEIGHT = 100;
 
+struct PxDim {
+    // explicit constexpr PxDim(u16 dim): raw_dim{dim} {}
+    // Avoid touching directly unless conversion is needed! If I'm not diligent
+    // enough, I could add some accessors I suppose
+    u16 raw_dim;
+};
+
+// You can't add/sub offsets to offsets.
+struct PxOffset {
+    // explicit constexpr PxOffset(u16 offset): raw_offset{offset} {}
+    // Avoid touching directly unless conversion is needed! If I'm not diligent
+    // enough, I could add some accessors I suppose
+    u16 raw_offset;
+};
+
+PxDim operator+(PxDim a, PxDim b) {
+    return PxDim(a.raw_dim + b.raw_dim);
+}
+
+void operator+=(PxDim& a, PxDim b) {
+    a.raw_dim += b.raw_dim;
+}
+
+PxDim operator-(PxDim a, PxDim b) {
+    return PxDim(a.raw_dim - b.raw_dim);
+}
+
+void operator-=(PxDim& a, PxDim b) {
+    a.raw_dim -= b.raw_dim;
+}
+
+PxOffset operator+(PxOffset offset, PxDim dim) {
+    return PxOffset(offset.raw_offset + dim.raw_dim);
+}
+
+PxOffset operator+(PxDim dim, PxOffset offset) {
+    return PxOffset(offset.raw_offset + dim.raw_dim);
+}
+
+void operator+=(PxOffset& offset, PxDim dim) {
+    offset.raw_offset += dim.raw_dim;
+}
+
+PxOffset operator-(PxOffset offset, PxDim dim) {
+    return PxOffset(offset.raw_offset - dim.raw_dim);
+}
+
+void operator-=(PxOffset& offset, PxDim dim) {
+    offset.raw_offset -= dim.raw_dim;
+}
+
+bool operator>(PxDim a, PxDim b) {
+    return a.raw_dim > b.raw_dim;
+}
+
+bool operator<(PxDim a, PxDim b) {
+    return a.raw_dim < b.raw_dim;
+}
+
+bool operator>=(PxDim a, PxDim b) {
+    return a.raw_dim >= b.raw_dim;
+}
+
+bool operator<=(PxDim a, PxDim b) {
+    return a.raw_dim <= b.raw_dim;
+}
+
+bool operator==(PxDim a, PxDim b) {
+    return a.raw_dim == b.raw_dim;
+}
+
+struct PxSize {
+    PxDim width, height;
+};
+
+struct PxPos {
+    PxOffset x, y;
+};
+
+// // Try using single type for now - in theory you could get more enforcement out
+// // of e.g. offset vs. size types
+// struct Vec2u {
+//     union {
+//         struct { u16 x; u16 y; };
+//         struct { u16 width; u16 height; };
+//     };
+// };
+
 struct Atlas {
-    u64 width;
-    u64 height;
+    PxSize dims;
     SDL_GPUTexture *texture;
     SDL_GPUSampler *sampler;
     Arr<SDL_Rect> placements;
@@ -759,97 +846,91 @@ struct Box {
 
     SDL_FColor color;
 
-    f32 width;
-    f32 height;
     // Hm, padding determined by just making more boxes for now?
-
     Vec<Box*> children;
 
     // AABB of self and children - lazily computed
-    Opt<SDL_FPoint> bbox;
+    Opt<PxSize> bbox;
 };
 
 Box *make_text_box(Arena *arena, TTF_TextEngine *engine, TTF_Font *font, Str content, SDL_FColor color) {
     Box *box = arena_push<Box>(arena);
 
     box->type = BoxType::Text;
-    const char *content_cstr = str_is_empty(content) ? "" : (const char *)content.ptr;
+    // const char *content_cstr = str_is_empty(content) ? "" : (const char *)content.ptr;
     // Zero length actually means "treat string as null terminated"
-    box->text_obj = TTF_CreateText(engine, font, content_cstr, content.count);
-    TTF_SetTextColorFloat(box->text_obj, color.r, color.g, color.b, color.a);
+    // box->text_obj = TTF_CreateText(engine, font, content_cstr, content.count);
+    // TTF_SetTextColorFloat(box->text_obj, color.r, color.g, color.b, color.a);
 
     return box;
 }
 
-Box *make_empty_box(Arena *arena, f32 width, f32 height) {
+Box *make_empty_box(Arena *arena, PxSize size) {
     Box *box = arena_push<Box>(arena);
     box->type = BoxType::Empty;
-    box->width = max(width, 0.0f);
-    box->height = max(height, 0.0f);
+    box->bbox = some(size);
     return box;
 }
 
-Box *make_texture_box(Arena *arena, u64 texture_idx, f32 width, f32 height) {
+Box *make_texture_box(Arena *arena, u64 texture_idx, PxSize size) {
     Box *box = arena_push<Box>(arena);
     box->type = BoxType::Texture;
-    box->width = max(width, 0.0f);
-    box->height = max(height, 0.0f);
+    box->bbox = some(size);
     box->texture_idx = texture_idx;
     return box;
 }
 
-Box *make_solid_color_box(Arena *arena, SDL_FColor color, f32 width, f32 height) {
+Box *make_solid_color_box(Arena *arena, SDL_FColor color, PxSize size) {
     Box *box = arena_push<Box>(arena);
     box->type = BoxType::SolidColor;
-    box->width = max(width, 0.0f);
-    box->height = max(height, 0.0f);
+    box->bbox = some(size);
     box->color = color;
     return box;
 }
 
-SDL_FPoint compute_box_bbox(Box *box);
+PxSize compute_box_bbox(Box *box);
 
-SDL_FPoint compute_box_bbox_uncached(Box *box) {
+PxSize compute_box_bbox_uncached(Box *box) {
     switch (box->type) {
     case BoxType::Empty:
     case BoxType::SolidColor: {
-        return { .x = box->width, .y = box->height };
+        return box->bbox.opt;
     }
     case BoxType::LeftToRightStack: {
-        SDL_FPoint total = {};
+        PxSize total = {};
         for (u64 i = 0; i < box->children.count; i++) {
-            SDL_FPoint child_bbox = compute_box_bbox(box->children[i]);
+            PxSize child_bbox = compute_box_bbox(box->children[i]);
             if (i == 0) {
                 total = child_bbox;
             } else {
-                total.x += child_bbox.x;
-                total.y = max(total.y, child_bbox.y);
+                total.width += child_bbox.width;
+                total.height = max(total.height, child_bbox.height);
             }
         }
         return total;
     }
     case BoxType::TopToBottomStack: {
-        SDL_FPoint total = {};
+        PxSize total = {};
         for (u64 i = 0; i < box->children.count; i++) {
-            SDL_FPoint child_bbox = compute_box_bbox(box->children[i]);
+            PxSize child_bbox = compute_box_bbox(box->children[i]);
             if (i == 0) {
                 total = child_bbox;
             } else {
-                total.x = max(total.x, child_bbox.x);
-                total.y += child_bbox.y;
+                total.width = max(total.width, child_bbox.width);
+                total.height += child_bbox.height;
             }
         }
         return total;
     }
     case BoxType::BackToFrontStack: {
-        SDL_FPoint total = {};
+        PxSize total = {};
         for (u64 i = 0; i < box->children.count; i++) {
-            SDL_FPoint child_bbox = compute_box_bbox(box->children[i]);
+            PxSize child_bbox = compute_box_bbox(box->children[i]);
             if (i == 0) {
                 total = child_bbox;
             } else {
-                total.x = max(total.x, child_bbox.x);
-                total.y = max(total.y, child_bbox.y);
+                total.width = max(total.width, child_bbox.width);
+                total.width = max(total.width, child_bbox.width);
             }
         }
         return total;
@@ -858,28 +939,26 @@ SDL_FPoint compute_box_bbox_uncached(Box *box) {
         i32 width = 0;
         i32 height = 0;
         TTF_GetTextSize(box->text_obj, &width, &height);
-        return { .x = (f32)width, .y = (f32)height };
+        return { .width = {(u16)width}, .height = {(u16)height} };
     }
     case BoxType::Texture: {
-        return { .x = box->width, .y = box->height };
+        return box->bbox.opt;
     }
     }
 }
 
-SDL_FPoint compute_box_bbox(Box *box) {
+PxSize compute_box_bbox(Box *box) {
     if (box->bbox.present) {
         return box->bbox.opt;
     }
-    SDL_FPoint bbox = compute_box_bbox_uncached(box);
+    PxSize bbox = compute_box_bbox_uncached(box);
     box->bbox = some(bbox);
     return bbox;
 }
 
-Box *pad_box_left(Arena *arena, Box *box, f32 pad) {
-    if (pad < 0) return box;
-
-    SDL_FPoint bbox = compute_box_bbox(box);
-    Box *pad_box = make_empty_box(arena, pad, bbox.y);
+Box *pad_box_left(Arena *arena, Box *box, PxDim pad) {
+    PxSize bbox = compute_box_bbox(box);
+    Box *pad_box = make_empty_box(arena, { .width = pad, .height = bbox.height });
 
     Box *parent_box = arena_push<Box>(arena);
     parent_box->type = BoxType::LeftToRightStack;
@@ -889,11 +968,9 @@ Box *pad_box_left(Arena *arena, Box *box, f32 pad) {
     return parent_box;
 }
 
-Box *pad_box_right(Arena *arena, Box *box, f32 pad) {
-    if (pad < 0) return box;
-
-    SDL_FPoint bbox = compute_box_bbox(box);
-    Box *pad_box = make_empty_box(arena, pad, bbox.y);
+Box *pad_box_right(Arena *arena, Box *box, PxDim pad) {
+    PxSize bbox = compute_box_bbox(box);
+    Box *pad_box = make_empty_box(arena, { .width = pad, .height = bbox.height });
 
     Box *parent_box = arena_push<Box>(arena);
     parent_box->type = BoxType::LeftToRightStack;
@@ -903,11 +980,9 @@ Box *pad_box_right(Arena *arena, Box *box, f32 pad) {
     return parent_box;
 }
 
-Box *pad_box_top(Arena *arena, Box *box, f32 pad) {
-    if (pad < 0) return box;
-
-    SDL_FPoint bbox = compute_box_bbox(box);
-    Box *pad_box = make_empty_box(arena, bbox.x, pad);
+Box *pad_box_top(Arena *arena, Box *box, PxDim pad) {
+    PxSize bbox = compute_box_bbox(box);
+    Box *pad_box = make_empty_box(arena, { .width = bbox.width, .height = pad });
 
     Box *parent_box = arena_push<Box>(arena);
     parent_box->type = BoxType::TopToBottomStack;
@@ -917,11 +992,9 @@ Box *pad_box_top(Arena *arena, Box *box, f32 pad) {
     return parent_box;
 }
 
-Box *pad_box_bottom(Arena *arena, Box *box, f32 pad) {
-    if (pad < 0) return box;
-
-    SDL_FPoint bbox = compute_box_bbox(box);
-    Box *pad_box = make_empty_box(arena, bbox.x, pad);
+Box *pad_box_bottom(Arena *arena, Box *box, PxDim pad) {
+    PxSize bbox = compute_box_bbox(box);
+    Box *pad_box = make_empty_box(arena, { .width = bbox.width, .height = pad });
 
     Box *parent_box = arena_push<Box>(arena);
     parent_box->type = BoxType::TopToBottomStack;
@@ -931,41 +1004,49 @@ Box *pad_box_bottom(Arena *arena, Box *box, f32 pad) {
     return parent_box;
 }
 
-Box *align_box_center_horiz(Arena *arena, Box *box, f32 width) {
-    SDL_FPoint bbox = compute_box_bbox(box);
-    f32 pad = (width - bbox.x) / 2;
-    Box *pad_box = make_empty_box(arena, pad, bbox.y);
+Box *align_box_center_horiz(Arena *arena, Box *box, PxDim width) {
+    PxSize bbox = compute_box_bbox(box);
+    width = max(width, bbox.width);
+    PxDim left_pad = {.raw_dim = (u16)((width.raw_dim - bbox.width.raw_dim) / 2)};
+    PxDim right_pad = width - bbox.width - left_pad;
+
+    Box *left_pad_box = make_empty_box(arena, {left_pad, bbox.height});
+    Box *right_pad_box = make_empty_box(arena, {right_pad, bbox.height});
 
     Box *parent = arena_push<Box>(arena);
     parent->type = BoxType::LeftToRightStack;
-    vec_push(arena, &parent->children, pad_box);
+    vec_push(arena, &parent->children, left_pad_box);
     vec_push(arena, &parent->children, box);
-    vec_push(arena, &parent->children, pad_box);
+    vec_push(arena, &parent->children, right_pad_box);
 
     return parent;
 }
 
-Box *align_box_center_vert(Arena *arena, Box *box, f32 height) {
-    SDL_FPoint bbox = compute_box_bbox(box);
-    f32 pad = (height - bbox.y) / 2;
-    Box *pad_box = make_empty_box(arena, bbox.x, pad);
+Box *align_box_center_vert(Arena *arena, Box *box, PxDim height) {
+    PxSize bbox = compute_box_bbox(box);
+    height = max(height, bbox.height);
+    PxDim top_pad = {.raw_dim = (u16)((height.raw_dim - bbox.height.raw_dim) / 2)};
+    PxDim bottom_pad = height - bbox.height - top_pad;
+
+    Box *top_pad_box = make_empty_box(arena, {bbox.width, top_pad});
+    Box *bottom_pad_box = make_empty_box(arena, {bbox.width, bottom_pad});
 
     Box *parent = arena_push<Box>(arena);
     parent->type = BoxType::TopToBottomStack;
-    vec_push(arena, &parent->children, pad_box);
+    vec_push(arena, &parent->children, top_pad_box);
     vec_push(arena, &parent->children, box);
-    vec_push(arena, &parent->children, pad_box);
+    vec_push(arena, &parent->children, bottom_pad_box);
 
     return parent;
 }
 
-Box *prerender_segment(Arena *arena, App *app, f32 width, u64 idx) {
-    constexpr f32 ICON_INNER = 36.f;
-    constexpr f32 ICON_OUTER = 44.f;
+Box *prerender_segment(Arena *arena, App *app, PxDim width, u64 idx) {
+    constexpr PxDim ICON_INNER = {36};
+    constexpr PxDim ICON_OUTER = {44};
     Box *icon = nullptr;
 
     // TODO handle empty icons
-    icon = make_texture_box(arena, idx, ICON_INNER, ICON_INNER);
+    icon = make_texture_box(arena, idx, {.width = ICON_INNER, .height = ICON_INNER});
     // } else {
     //     icon = make_empty_box(arena, ICON_INNER, ICON_INNER);
     // }
@@ -973,7 +1054,7 @@ Box *prerender_segment(Arena *arena, App *app, f32 width, u64 idx) {
     icon = align_box_center_vert(arena, icon, ICON_OUTER);
 
     SDL_FColor text_color = { .r = 1.f, .g = 1.f, .b = 1.f, .a = 1.f };
-    Box *pad = make_empty_box(arena, 10, 0);
+    Box *pad = make_empty_box(arena, { .width = {10}, .height = {0} });
     Box *title = make_text_box(arena, app->text_engine, app->font_medium, app->session->file->segments[idx].name, text_color);
     Box *title_centered = align_box_center_vert(arena, title, ICON_OUTER);
 
@@ -984,9 +1065,10 @@ Box *prerender_segment(Arena *arena, App *app, f32 width, u64 idx) {
     vec_push(arena, &row_front->children, title_centered);
 
     if (app->session->timer->mode == TimerMode::Running && idx == app->session->timer->live_splits.count) {
-        SDL_FPoint row_front_bbox = compute_box_bbox(row_front);
+        PxSize row_front_bbox = compute_box_bbox(row_front);
         SDL_FColor bg_color = { .r = 0.f, .g = 0.3f, .b = 0.90f, .a = 1.f };
-        Box *row_back = make_solid_color_box(arena, bg_color, width, row_front_bbox.y);
+        PxSize row_back_size = { .width = width, .height = row_front_bbox.height };
+        Box *row_back = make_solid_color_box(arena, bg_color, row_back_size);
 
         Box *row = arena_push<Box>(arena);
         row->type = BoxType::BackToFrontStack;
@@ -999,7 +1081,7 @@ Box *prerender_segment(Arena *arena, App *app, f32 width, u64 idx) {
     return row_front;
 }
 
-Box *prerender_contents(Arena *arena, App *app, f32 width, f32 height) {
+Box *prerender_contents(Arena *arena, App *app, PxSize size) {
     SDL_FColor color = { .r = 1.f, .g = 1.f, .b = 1.f, .a = 1.f };
 
     Box *game_name = make_text_box(arena, app->text_engine, app->font_medium,
@@ -1007,8 +1089,8 @@ Box *prerender_contents(Arena *arena, App *app, f32 width, f32 height) {
     Box *cat_name = make_text_box(arena, app->text_engine, app->font_medium,
             app->session->file->category_name, color);
 
-    Box *game_name_centered = align_box_center_horiz(arena, game_name, (f32)width);
-    Box *cat_name_centered = align_box_center_horiz(arena, cat_name, (f32)width);
+    Box *game_name_centered = align_box_center_horiz(arena, game_name, size.width);
+    Box *cat_name_centered = align_box_center_horiz(arena, cat_name, size.width);
 
     Box *top = arena_push<Box>(arena);
     top->type = BoxType::TopToBottomStack;
@@ -1017,7 +1099,7 @@ Box *prerender_contents(Arena *arena, App *app, f32 width, f32 height) {
 
     for (u64 i = 0; i < app->session->file->segments.count; i++) {
         if (!str_starts_with(app->session->file->segments[i].name, S("-"))) {
-            Box *segment = prerender_segment(arena, app, width, i);
+            Box *segment = prerender_segment(arena, app, size.width, i);
             vec_push(arena, &top->children, segment);
         }
     }
@@ -1028,15 +1110,16 @@ Box *prerender_contents(Arena *arena, App *app, f32 width, f32 height) {
     Duration t = timer_get_elapsed(app->session->timer, get_current_monotonic_time());
     Str t_str = format_duration(arena, t, 2, false);
     Box *curr_time = make_text_box(arena, app->text_engine, app->font_large, t_str, color);
-    SDL_FPoint curr_time_bbox = compute_box_bbox(curr_time);
-    Box *curr_time_aligned = pad_box_left(arena, curr_time, width - curr_time_bbox.x);
+    PxSize curr_time_bbox = compute_box_bbox(curr_time);
+    Box *curr_time_aligned = pad_box_left(arena, curr_time, size.width - curr_time_bbox.width);
 
     vec_push(arena, &bottom->children, curr_time_aligned);
 
     // Put timer at bottom
-    SDL_FPoint top_bbox = compute_box_bbox(top);
-    SDL_FPoint bottom_bbox = compute_box_bbox(bottom);
-    Box *vsep = make_empty_box(arena, 0, height - top_bbox.y - bottom_bbox.y);
+    PxSize top_bbox = compute_box_bbox(top);
+    PxSize bottom_bbox = compute_box_bbox(bottom);
+    PxSize vsep_size = { .width = {0}, .height = size.height - top_bbox.height - bottom_bbox.height };
+    Box *vsep = make_empty_box(arena, vsep_size);
 
     Box *root = arena_push<Box>(arena);
     root->type = BoxType::TopToBottomStack;
@@ -1047,7 +1130,7 @@ Box *prerender_contents(Arena *arena, App *app, f32 width, f32 height) {
     return root;
 }
 
-Box *prerender(Arena *arena, App *app, u64 width, u64 height) {
+Box *prerender(Arena *arena, App *app, PxSize window_size) {
     constexpr f32 PADDING = 10;
     Box *timer = prerender_contents(arena, app, (f32)width - (PADDING * 2.f), (f32)height - (PADDING * 2.f));
     timer = pad_box_left(arena, timer, PADDING);
@@ -1239,13 +1322,8 @@ void shape_test() {
 }
 
 //
-// MARK:Atlas packing
+// MARK:Renderer
 //
-
-struct RE_TransferBufEntry {
-    u64 offset;
-    u64 size;
-};
 
 u64 sdl_surface_size(SDL_Surface *surface) {
     return (u64)surface->h * (u64)surface->pitch;
@@ -1376,10 +1454,6 @@ Atlas *re_pack_and_upload_textures(Arena *arena, SDL_GPUDevice *device, SDL_GPUC
 
     return atlas;
 }
-
-//
-// MARK:Renderer
-//
 
 // TODO toggle through build system or something
 constexpr bool RENDERER_DEBUG_MODE = true;

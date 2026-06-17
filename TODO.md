@@ -22,10 +22,12 @@ Either handle SDL errors or assert their absence
 
 <!-- File Pilot render system interview -->
 Split icon atlasing
-Blog posts on text rendering / SDFs
-kb_text_shape shaping/segmentation
-GPU font rendering (slug)
-Modern rendering APIs (webgpu, sdl gpu)
+<!-- Blog posts on text rendering / SDFs -->
+<!-- kb_text_shape shaping/segmentation -->
+<!-- GPU font rendering (slug) -->
+<!-- Modern rendering APIs (webgpu, sdl gpu) -->
+Pixel-perfect rendering
+    Idea: preserve pixel coordinates until shader execution?
 Settings UI
 Layout
 Smooth resize
@@ -81,6 +83,8 @@ Make basic UI engine use atlas
 
 BUGS:
 
-- Atlas bleeding issues
-- Weird incorrect positioning
-- Memory leak?
+<!-- - Atlas bleeding issues -->
+<!-- - Weird incorrect positioning -->
+<!-- - Memory leak? -->
+- Pixelated textures, compared to SDL renderer
+- Corrupted textures?
