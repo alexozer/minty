@@ -11,7 +11,6 @@
 #include <SDL3/SDL_keycode.h>
 #include <SDL3/SDL_gpu.h>
 #include <SDL3/SDL_pixels.h>
-#include <SDL3_ttf/SDL_ttf.h>
 
 extern "C" {
 #include <xao.h>
@@ -533,15 +532,12 @@ struct PosTexVertex {
 
 struct App {
     Arena *app_arena; // Lives for duration of application
-    SDL_Window* window;
-    TTF_Font *font_small;
-    TTF_Font *font_medium;
-    TTF_Font *font_large;
-    TTF_TextEngine *text_engine;
+    SDL_Window *window;
 
     SDL_Keycode prev_keys;
     // TODO: float-based scrolling on NDC could mess with pixel-perfect alignment
     f32 scroll;
+    f32 scale; // `scale + 1.0f` is actual scale
 
     Arena *session_arena;
     Session *session; // Nullable
@@ -553,28 +549,6 @@ struct App {
     SDL_GPUBuffer *index_buffer;
     Atlas *atlas;
 };
-
-void init_text(ErrorContext *err, App *app) {
-    try_sdl(err, TTF_Init());
-
-    const char *font_path = "data/Roboto-Medium.ttf";
-    size_t font_file_size = 0;
-    void *font_buf = nullptr;
-    {
-        err_scope(err, "Load font '%s", font_path);
-        // TODO arena allocate
-        font_buf = try_sdl(err, SDL_LoadFile(font_path, &font_file_size));
-    }
-    Arr<u8> ttf = { .ptr = (u8 *)font_buf, .count = (u64)font_file_size };
-
-    /* Open the font */
-    app->font_small = try_sdl(err, TTF_OpenFontIO(SDL_IOFromConstMem(ttf.ptr, ttf.count), true, 15.0f));
-    app->font_medium = try_sdl(err, TTF_OpenFontIO(SDL_IOFromConstMem(ttf.ptr, ttf.count), true, 18.0f));
-    app->font_large = try_sdl(err, TTF_OpenFontIO(SDL_IOFromConstMem(ttf.ptr, ttf.count), true, 64.0f));
-
-    /* Create the text engine */
-    // app->text_engine = try_sdl(err, TTF_CreateRendererTextEngine(app->renderer));
-}
 
 SDL_HitTestResult hittest_callback(SDL_Window* window, const SDL_Point *point, void *data) {
     // Would expand the resize radius if I could, but doesn't appear to work on macOS
@@ -759,24 +733,13 @@ enum class BoxType {
 // Try some fat struct stuff?
 struct Box {
     BoxType type;
-
-    // Text stuff
-    TTF_Text *text_obj;
-    f32 scale;
-
-    // Texture stuff
-    u64 texture_idx;
-
-    SDL_FColor color;
-
-    // Hm, padding determined by just making more boxes for now?
-    Vec<Box*> children;
-
-    // AABB of self and children - lazily computed
     Opt<PxSize> bbox;
+    u64 texture_idx;
+    SDL_FColor color;
+    Vec<Box*> children;
 };
 
-Box *make_text_box(Arena *arena, TTF_TextEngine *engine, TTF_Font *font, Str content, SDL_FColor color) {
+Box *make_text_box(Arena *arena, Str content, SDL_FColor color) {
     Box *box = arena_push<Box>(arena);
 
     box->type = BoxType::Text;
@@ -859,10 +822,7 @@ PxSize compute_box_bbox_uncached(Box *box) {
         return total;
     }
     case BoxType::Text: {
-        i32 width = 0;
-        i32 height = 0;
-        TTF_GetTextSize(box->text_obj, &width, &height);
-        return { .w = (u16)width, .h = (u16)height };
+        return { .w = 0, .h = 0 };
     }
     case BoxType::Texture: {
         return box->bbox.opt;
@@ -964,22 +924,22 @@ Box *align_box_center_vert(Arena *arena, Box *box, u16 height) {
 }
 
 Box *prerender_segment(Arena *arena, App *app, u16 width, u64 idx) {
-    constexpr u16 ICON_INNER = 36;
-    constexpr u16 ICON_OUTER = 44;
+    u16 icon_inner = (u16)SDL_lroundf((app->scale + 1.f) * 36.f);
+    u16 icon_outer = (u16)SDL_lroundf((app->scale + 1.f) * 44.f);
     Box *icon = nullptr;
 
     // TODO handle empty icons
-    icon = make_texture_box(arena, idx, {.w = ICON_INNER, .h = ICON_INNER});
+    icon = make_texture_box(arena, idx, {.w = icon_inner, .h = icon_inner});
     // } else {
     //     icon = make_empty_box(arena, ICON_INNER, ICON_INNER);
     // }
-    icon = align_box_center_horiz(arena, icon, ICON_OUTER);
-    icon = align_box_center_vert(arena, icon, ICON_OUTER);
+    icon = align_box_center_horiz(arena, icon, icon_outer);
+    icon = align_box_center_vert(arena, icon, icon_outer);
 
     SDL_FColor text_color = { .r = 1.f, .g = 1.f, .b = 1.f, .a = 1.f };
     Box *pad = make_empty_box(arena, { .w = 10, .h = 0 });
-    Box *title = make_text_box(arena, app->text_engine, app->font_medium, app->session->file.segments[idx].name, text_color);
-    Box *title_centered = align_box_center_vert(arena, title, ICON_OUTER);
+    Box *title = make_text_box(arena, app->session->file.segments[idx].name, text_color);
+    Box *title_centered = align_box_center_vert(arena, title, icon_outer);
 
     Box *row_front = arena_push<Box>(arena);
     row_front->type = BoxType::LeftToRightStack;
@@ -1007,10 +967,8 @@ Box *prerender_segment(Arena *arena, App *app, u16 width, u64 idx) {
 Box *prerender_contents(Arena *arena, App *app, PxSize size) {
     SDL_FColor color = { .r = 1.f, .g = 1.f, .b = 1.f, .a = 1.f };
 
-    Box *game_name = make_text_box(arena, app->text_engine, app->font_medium,
-            app->session->file.game_name, color);
-    Box *cat_name = make_text_box(arena, app->text_engine, app->font_medium,
-            app->session->file.category_name, color);
+    Box *game_name = make_text_box(arena, app->session->file.game_name, color);
+    Box *cat_name = make_text_box(arena, app->session->file.category_name, color);
 
     Box *game_name_centered = align_box_center_horiz(arena, game_name, size.w);
     Box *cat_name_centered = align_box_center_horiz(arena, cat_name, size.w);
@@ -1032,7 +990,7 @@ Box *prerender_contents(Arena *arena, App *app, PxSize size) {
 
     Duration t = timer_get_elapsed(&app->session->timer, get_current_monotonic_time());
     Str t_str = format_duration(arena, t, 2, false);
-    Box *curr_time = make_text_box(arena, app->text_engine, app->font_large, t_str, color);
+    Box *curr_time = make_text_box(arena, t_str, color);
     PxSize curr_time_bbox = compute_box_bbox(curr_time);
     Box *curr_time_aligned = pad_box_left(arena, curr_time, size.w - curr_time_bbox.w);
 

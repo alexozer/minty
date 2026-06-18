@@ -15,8 +15,8 @@
 <!-- Put splits/timer/texture state etc. on dedicated arena -->
 <!-- Load/unload session -->
 <!--     Right-click menu? -->
+<!-- Either handle SDL errors or assert their absence -->
 Draw split/segment times
-Either handle SDL errors or assert their absence
 
 ## Research
 
@@ -92,3 +92,12 @@ BUGS:
 <!-- - Pixelated textures, compared to SDL renderer -->
 <!-- - Corrupted textures? -->
     <!-- - These both look like I just need to alpha blend properly -->
+
+# Freetype rendering
+
+Eventual goal is to make line editor, but that's kind of overwhelming to begin with.
+Baby steps.
+
+- Rip out SDL_ttf
+- Draw a single character bitmap rendered with freetype
+- Draw alphabet (not necessarily shaped)
