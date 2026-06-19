@@ -1597,19 +1597,21 @@ void re_init_text(ErrorContext *err, App *app) {
 
     Arr<u8> font_contents = fs_load_file(err, scratch, S("data/Roboto-Medium.ttf"));
 
-    assert_ft(FT_New_Memory_Face(app->freetype,
+    try_ft(err, FT_New_Memory_Face(app->freetype,
                 font_contents.ptr,
                 (long)font_contents.count,
                 0, &app->font_face));
     defer(FT_Done_Face(app->font_face));
-    assert_ft(FT_Set_Pixel_Sizes(app->font_face, 0, 128));
 
-    u32 glyph_idx = 0;
-    assert_ft(FT_Load_Glyph(app->font_face, glyph_idx, 0));
-    if (app->font_face->glyph->format == FT_GLYPH_FORMAT_BITMAP) {
-        log_fatal("TODO: handle bitmap glyph");
+    try_ft(err, FT_Set_Pixel_Sizes(app->font_face, 0, 128));
+
+    for (u32 i = 0; i < 1000; i++) {
+        try_ft(err, FT_Load_Glyph(app->font_face, i, 0));
+        if (app->font_face->glyph->format == FT_GLYPH_FORMAT_BITMAP) {
+            bail(err, "TODO: handle bitmap glyph");
+        }
+        try_ft(err, FT_Render_Glyph(app->font_face->glyph, FT_RENDER_MODE_NORMAL));
     }
-    assert_ft(FT_Render_Glyph(app->font_face->glyph, FT_RENDER_MODE_NORMAL));
 
     // FT_Vector advance = app->font_face->glyph->advance;
     // u32 width = app->font_face->glyph->bitmap.width;

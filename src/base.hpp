@@ -403,6 +403,49 @@ bool err_occurred(ErrorContext *ctx);
     } \
     return ret;
 
+#define try_sdl_ret_void(err, func_call) ({ \
+    decltype(func_call) _child_ret = (func_call); \
+    if (!_child_ret) { \
+        bail((err), "%s", SDL_GetError()); \
+    } \
+    _child_ret; \
+})
+
+#define try_sdl_ret_value(err, parent_ret, func_call) ({ \
+    decltype(func_call) _child_ret = (func_call); \
+    if (!_child_ret) { \
+        bail_v((err), parent_ret, "%s", SDL_GetError()); \
+    } \
+    _child_ret; \
+})
+
+#define EXPAND(x)                           x
+#define GET_MACRO(_1, _2, _3, name, ...)    name
+#define try_sdl(...)    EXPAND( GET_MACRO(__VA_ARGS__, try_sdl_ret_value, try_sdl_ret_void)(__VA_ARGS__) )
+
+#define assert_ft(func_call) ({ \
+    FT_Error _err = (func_call); \
+    if (_err != FT_Err_Ok) { \
+        log_fatal("FreeType error: %s", FT_Error_String(_err)); \
+    } \
+})
+
+#define try_ft_ret_void(err, func_call) ({ \
+    FT_Error _err = (func_call); \
+    if (_err != FT_Err_Ok) { \
+        bail((err), "%s", FT_Error_String(_err)); \
+    } \
+})
+
+#define try_ft_ret_value(err, parent_ret, func_call) ({ \
+    FT_Error _err = (func_call); \
+    if (_err != FT_Err_Ok) { \
+        bail_v((err), parent_ret, "%s", FT_Error_String(_err)); \
+    } \
+})
+
+#define try_ft(...)    EXPAND( GET_MACRO(__VA_ARGS__, try_ft_ret_value, try_ft_ret_void)(__VA_ARGS__) )
+
 //
 // Paths
 //
@@ -552,39 +595,6 @@ Str base64_encode(Arena *arena, Arr<u8> a);
 //
 
 void thread_init(int argc, char **argv);
-
-//
-// SDL helpers
-//
-
-// TODO: consider arena-based resource management instead of defer() everywhere
-
-#define try_sdl_ret_void(err, func_call) ({ \
-    decltype(func_call) _child_ret = (func_call); \
-    if (!_child_ret) { \
-        bail((err), "%s", SDL_GetError()); \
-    } \
-    _child_ret; \
-})
-
-#define try_sdl_ret_value(err, parent_ret, func_call) ({ \
-    decltype(func_call) _child_ret = (func_call); \
-    if (!_child_ret) { \
-        bail_v((err), parent_ret, "%s", SDL_GetError()); \
-    } \
-    _child_ret; \
-})
-
-#define EXPAND(x)                           x
-#define GET_MACRO(_1, _2, _3, name, ...)    name
-#define try_sdl(...)    EXPAND( GET_MACRO(__VA_ARGS__, try_sdl_ret_value, try_sdl_ret_void)(__VA_ARGS__) )
-
-#define assert_ft(func_call) ({ \
-    FT_Error _err = (func_call); \
-    if (_err != FT_Err_Ok) { \
-        log_fatal("FreeType assertion failed: %s", FT_Error_String(_err)); \
-    } \
-})
 
 //
 // FS

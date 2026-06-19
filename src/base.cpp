@@ -392,13 +392,12 @@ Arr<u8> fs_load_file(ErrorContext *err, Arena *arena, Str path) {
 
     Arr<u8> contents = arena_push_arr<u8>(arena, (u64)size);
     u64 offset = 0;
-    while (SDL_GetIOStatus(stream) == SDL_IO_STATUS_READY) {
+    while (offset < size && SDL_GetIOStatus(stream) == SDL_IO_STATUS_READY) {
         offset += SDL_ReadIO(stream, (u8 *)contents.ptr + offset, (u64)size - offset);
     }
-    if (SDL_GetIOStatus(stream) != SDL_IO_STATUS_EOF) {
+    if (offset != size) {
         bail_v(err, {}, "%s", SDL_GetError());
     }
-    log_assert(offset == size);
 
     return contents;
 }
