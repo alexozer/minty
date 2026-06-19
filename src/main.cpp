@@ -1596,6 +1596,7 @@ void re_init_text(ErrorContext *err, App *app) {
     assert_ft(FT_Init_FreeType(&app->freetype));
 
     Arr<u8> font_contents = fs_load_file(err, scratch, S("data/Roboto-Medium.ttf"));
+    if (err_occurred(err)) return;
 
     try_ft(err, FT_New_Memory_Face(app->freetype,
                 font_contents.ptr,
