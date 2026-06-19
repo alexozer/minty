@@ -203,6 +203,13 @@ bool arr_is_empty(Arr<T> arr) {
     return arr.count == 0;
 }
 
+template <typename T>
+Arr<T> arr_clone(Arena *arena, Arr<T> arr) {
+    Arr<T> clone = arena_push_arr<T>(arena, arr.count);
+    arr_copy(clone, arr);
+    return clone;
+}
+
 // May come to regret this...
 template <typename L, typename R>
 struct Pair {
