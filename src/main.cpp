@@ -413,7 +413,7 @@ Arr<SegmentDef> parse_livesplit_segments(Arena *arena, ErrorContext *err, xao_Re
 }
 
 // TODO avoid leaking stuff on error
-void load_timer_textures(Arena *arena, ErrorContext *err, FileDef *file) {
+void load_timer_textures(ErrorContext *err, Arena *arena, FileDef *file) {
     err_scope(err, "Load segment icon textures");
 
     Arr<SDL_Surface *> icons = arena_push_arr<SDL_Surface *>(arena, file->segments.count);
@@ -433,7 +433,7 @@ void load_timer_textures(Arena *arena, ErrorContext *err, FileDef *file) {
     file->icons = icons;
 }
 
-void parse_livesplit_lss(Arena *arena, ErrorContext *err, FileDef *file, Str xml) {
+void parse_livesplit_lss(ErrorContext *err, Arena *arena, FileDef *file, Arr<u8> xml) {
     err_scope(err, "Parse LiveSplit LSS");
 
     if (!str_is_valid_utf8(xml)) {
@@ -486,16 +486,11 @@ void load_livesplit_lss(Arena *arena, ErrorContext *err, Str lss_path, FileDef *
     Arena *scratch = arena_acquire();
     defer(arena_release(scratch));
 
-    // TODO arena allocate
-    size_t size = 0;
-    char *lss_path_cstr = str_to_c(scratch, lss_path);
-    void *lss_buf = try_sdl(err, SDL_LoadFile(lss_path_cstr, &size));
-    defer(SDL_free(lss_buf));
+    Arr<u8> xml = fs_load_file(err, scratch, lss_path);
+    if (err_occurred(err)) return;
 
-    Str xml = {.ptr = (u8 *)lss_buf, .count = (u64)size};
-
-    parse_livesplit_lss(arena, err, file, xml);
-    load_timer_textures(arena, err, file);
+    parse_livesplit_lss(err, arena, file, xml);
+    load_timer_textures(err, arena, file);
 }
 
 //
@@ -543,7 +538,11 @@ struct App {
     Session *session;  // Nullable
 
     SDL_GPUDevice *device;
-    SDL_GPUGraphicsPipeline *pipeline;
+    SDL_GPUShader *vert_shader;
+    SDL_GPUShader *rgba_frag_shader;
+    SDL_GPUShader *alpha_frag_shader;
+    SDL_GPUGraphicsPipeline *icon_pipeline;
+    SDL_GPUGraphicsPipeline *glyph_pipeline;
     SDL_GPUTransferBuffer *vertex_transfer_buffer;
     SDL_GPUBuffer *vertex_buffer;
     SDL_GPUBuffer *index_buffer;
@@ -1365,46 +1364,61 @@ constexpr u64 MAX_QUAD_COUNT = 1024;
 constexpr u64 MAX_VERTEX_COUNT = MAX_QUAD_COUNT * 4;
 constexpr u64 MAX_INDEX_COUNT = MAX_QUAD_COUNT * 6;
 
-void re_init_pipeline(ErrorContext *err, App *app) {
+enum class ShaderType {
+    Vertex,
+    Fragment,
+};
+
+SDL_GPUShader *load_shader(ErrorContext *err, SDL_GPUDevice *device, Str path, ShaderType type) {
+    err_scope(err, "Load shader '%.*s'", SF(path));
+
+    Arena *scratch = arena_acquire();
+    defer(arena_release(scratch));
+
+    Arr<u8> source = fs_load_file(err, scratch, path);
+    if (err_occurred(err)) return nullptr;
+
+    SDL_GPUShaderCreateInfo info = {};
+    switch (type) {
+    case ShaderType::Vertex: {
+        info = {
+            .code_size = source.count,
+            .code = (u8 *)source.ptr,
+            .format = SDL_GPU_SHADERFORMAT_MSL,
+            .stage = SDL_GPU_SHADERSTAGE_VERTEX,
+            .num_samplers = 0,
+            .num_storage_textures = 0,
+            .num_storage_buffers = 0,
+            .num_uniform_buffers = 0,
+            .props = 0,
+        };
+        break;
+    }
+    case ShaderType::Fragment: {
+        info = {
+            .code_size = source.count,
+            .code = (u8 *)source.ptr,
+            .format = SDL_GPU_SHADERFORMAT_MSL,
+            .stage = SDL_GPU_SHADERSTAGE_FRAGMENT,
+            .num_samplers = 1,
+            .num_storage_textures = 0,
+            .num_storage_buffers = 0,
+            .num_uniform_buffers = 0,
+            .props = 0,
+        };
+        break;
+    }
+    }
+    return try_sdl(err, nullptr, SDL_CreateGPUShader(device, &info));
+}
+
+SDL_GPUGraphicsPipeline *re_init_pipeline(ErrorContext *err, SDL_GPUDevice *device,
+                                          SDL_Window *window, SDL_GPUShader *vert_shader,
+                                          SDL_GPUShader *frag_shader) {
     err_scope(err, "Init pipeline");
 
-    size_t vert_shader_size = 0;
-    size_t frag_shader_size = 0;
-    // TODO arena allocate
-    void *vert_shader_text = try_sdl(err, SDL_LoadFile("src/shaders/vert.msl", &vert_shader_size));
-    void *frag_shader_text = try_sdl(err, SDL_LoadFile("src/shaders/frag.msl", &frag_shader_size));
-
-    SDL_GPUShaderCreateInfo vert_info = {
-        .code_size = vert_shader_size,
-        .code = (u8 *)vert_shader_text,
-        .format = SDL_GPU_SHADERFORMAT_MSL,
-        .stage = SDL_GPU_SHADERSTAGE_VERTEX,
-        .num_samplers = 0,
-        .num_storage_textures = 0,
-        .num_storage_buffers = 0,
-        .num_uniform_buffers = 0,
-        .props = 0,
-    };
-
-    SDL_GPUShaderCreateInfo frag_info = {
-        .code_size = frag_shader_size,
-        .code = (u8 *)frag_shader_text,
-        .format = SDL_GPU_SHADERFORMAT_MSL,
-        .stage = SDL_GPU_SHADERSTAGE_FRAGMENT,
-        .num_samplers = 1,
-        .num_storage_textures = 0,
-        .num_storage_buffers = 0,
-        .num_uniform_buffers = 0,
-        .props = 0,
-    };
-
-    SDL_GPUShader *vert_shader = try_sdl(err, SDL_CreateGPUShader(app->device, &vert_info));
-    defer(SDL_ReleaseGPUShader(app->device, vert_shader));
-    SDL_GPUShader *frag_shader = try_sdl(err, SDL_CreateGPUShader(app->device, &frag_info));
-    defer(SDL_ReleaseGPUShader(app->device, frag_shader));
-
     SDL_GPUColorTargetDescription color_target_descs[] = {{
-        .format = SDL_GetGPUSwapchainTextureFormat(app->device, app->window),
+        .format = SDL_GetGPUSwapchainTextureFormat(device, window),
         .blend_state =
             {
                 .src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA,
@@ -1456,7 +1470,7 @@ void re_init_pipeline(ErrorContext *err, App *app) {
                 .num_color_targets = c_arr_count(color_target_descs),
             },
     };
-    app->pipeline = try_sdl(err, SDL_CreateGPUGraphicsPipeline(app->device, &pipeline_create_info));
+    return try_sdl(err, nullptr, SDL_CreateGPUGraphicsPipeline(device, &pipeline_create_info));
 }
 
 void re_init_vertex_buffers(ErrorContext *err, App *app) {
@@ -1549,8 +1563,22 @@ void re_init(ErrorContext *err, App *app) {
     app->device =
         try_sdl(err, SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_MSL, RENDERER_DEBUG_MODE, nullptr));
     try_sdl(err, SDL_ClaimWindowForGPUDevice(app->device, app->window));
-    re_init_pipeline(err, app);
+
+    app->vert_shader = load_shader(err, app->device, S("src/shaders/vert.msl"), ShaderType::Vertex);
+    app->rgba_frag_shader =
+        load_shader(err, app->device, S("src/shaders/frag_rgba.msl"), ShaderType::Fragment);
+    app->alpha_frag_shader =
+        load_shader(err, app->device, S("src/shaders/frag_alpha.msl"), ShaderType::Fragment);
+    if (err_occurred(err)) return;
+
+    app->icon_pipeline =
+        re_init_pipeline(err, app->device, app->window, app->vert_shader, app->rgba_frag_shader);
+    app->glyph_pipeline =
+        re_init_pipeline(err, app->device, app->window, app->vert_shader, app->alpha_frag_shader);
+    if (err_occurred(err)) return;
+
     re_init_vertex_buffers(err, app);
+    if (err_occurred(err)) return;
 
     SDL_GPUCommandBuffer *command_buffer = try_sdl(err, SDL_AcquireGPUCommandBuffer(app->device));
 
@@ -1580,7 +1608,7 @@ void re_render(App *app) {
     RenderMesh mesh = {};
     vec_prealloc(frame_arena, &mesh.vertices, MAX_VERTEX_COUNT);
     vec_prealloc(frame_arena, &mesh.indices, MAX_INDEX_COUNT);
-    re_build_boxes_mesh(frame_arena, window_size, box, {.x = 0, .y = 0}, app->glyph_atlas, &mesh);
+    re_build_boxes_mesh(frame_arena, window_size, box, {.x = 0, .y = 0}, app->icon_atlas, &mesh);
     for (u64 i = 0; i < mesh.vertices.count; i++) {
         mesh.vertices[i].y -= app->scroll * 0.1f;
     }
@@ -1597,11 +1625,11 @@ void re_render(App *app) {
     SDL_GPUBufferBinding vertex_buffer_bindings[] = {{.buffer = app->vertex_buffer, .offset = 0}};
     SDL_GPUBufferBinding index_buffer_binding = {.buffer = app->index_buffer, .offset = 0};
     SDL_GPUTextureSamplerBinding tex_sampler_bindings[] = {{
-        .texture = app->glyph_atlas->texture,
-        .sampler = app->glyph_atlas->sampler,
+        .texture = app->icon_atlas->texture,
+        .sampler = app->icon_atlas->sampler,
     }};
 
-    SDL_BindGPUGraphicsPipeline(pass, app->pipeline);
+    SDL_BindGPUGraphicsPipeline(pass, app->icon_pipeline);
 
     // SDL_SetGPUViewport(pass);
     SDL_BindGPUVertexBuffers(pass, 0, vertex_buffer_bindings, c_arr_count(vertex_buffer_bindings));
@@ -1627,6 +1655,8 @@ void re_init_text(ErrorContext *err, App *app, SDL_GPUCopyPass *pass) {
     try_ft(err, FT_Init_FreeType(&app->freetype));
 
     Arr<u8> font_contents = fs_load_file(err, scratch, S("data/Roboto-Medium.ttf"));
+    // Arr<u8> font_contents = fs_load_file(err, scratch,
+    // S("data/NotoSansJP-VariableFont_wght.ttf"));
     if (err_occurred(err)) return;
 
     FT_Face face = {};
