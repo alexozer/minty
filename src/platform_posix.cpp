@@ -13,6 +13,4 @@ void *os_alloc(u64 size) {
     return buf;
 }
 
-void os_free(void *buf, u64 size) {
-    munmap(buf, (size_t)size);
-}
+void os_free(void *buf, u64 size) { munmap(buf, (size_t)size); }

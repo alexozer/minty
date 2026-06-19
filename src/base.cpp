@@ -1,10 +1,10 @@
 #include "base.hpp"
 
-#include <simdutf_c.h>
+#include <SDL3/SDL_error.h>
+#include <SDL3/SDL_iostream.h>
 #include <SDL3/SDL_timer.h>
+#include <simdutf_c.h>
 
-#include "SDL3/SDL_error.h"
-#include "SDL3/SDL_iostream.h"
 #include "platform.hpp"
 
 // TODO sane arena sizing/lifetime scheme
@@ -47,18 +47,17 @@ char *str_to_c(Arena *arena, Str s) {
 Str str_from_c(const char *cstr) {
     u64 count = 0;
     while (cstr[count] != '\0') count++;
-    return (Str){ .ptr = (u8 *)cstr, .count = count };
+    return (Str){.ptr = (u8 *)cstr, .count = count};
 }
 
-Str str_from_c_len(const char *cstr, u64 len) {
-    return { . ptr = (u8 *)cstr, .count = len };
-}
+Str str_from_c_len(const char *cstr, u64 len) { return {.ptr = (u8 *)cstr, .count = len}; }
 
 // Returns a string from a utf8 byte buffer. Doesn't validate if it's actually utf8.
 Str str_from_bytes(Arr<u8> bytes) {
     // Skip utf8 BOM
     u64 start = 0;
-    if (bytes.count >= 3 && bytes[0] == C('\xef') && bytes[1] == C('\xbb') && bytes[2] == C('\xbf')) {
+    if (bytes.count >= 3 && bytes[0] == C('\xef') && bytes[1] == C('\xbb') &&
+        bytes[2] == C('\xbf')) {
         start = 3;
     }
 
@@ -90,9 +89,7 @@ Str str_clone(Arena *arena, Str s) {
     return clone;
 }
 
-bool str_eq(Str s1, Str s2) {
-    return arr_eq(s1, s2);
-}
+bool str_eq(Str s1, Str s2) { return arr_eq(s1, s2); }
 
 bool str_starts_with(Str s, Str prefix) {
     if (prefix.count > s.count) {
@@ -102,11 +99,9 @@ bool str_starts_with(Str s, Str prefix) {
     return arr_eq(prefix, s_prefix);
 }
 
-StrLineIter str_lines(Str s) {
-     return (StrLineIter){ .base = s, .pos = 0 };
-}
+StrLineIter str_lines(Str s) { return (StrLineIter){.base = s, .pos = 0}; }
 
-bool str_lines_next(StrLineIter* iter, Str *line) {
+bool str_lines_next(StrLineIter *iter, Str *line) {
     if (iter->pos >= iter->base.count) {
         return false;
     }
@@ -169,13 +164,12 @@ Str str_format_v(Arena *arena, const char *format, va_list args) {
         return S("<formatting error>");
     }
 
-    Str s = { .ptr = (u8 *)buf, .count = (u64)n };
+    Str s = {.ptr = (u8 *)buf, .count = (u64)n};
     // TODO try to allocate directly on tip of arena?
     return str_clone(arena, s);
 }
 
-__attribute__((format(printf, 2, 3)))
-Str str_format(Arena *arena, const char *format, ...) {
+__attribute__((format(printf, 2, 3))) Str str_format(Arena *arena, const char *format, ...) {
     va_list args;
     va_start(args, format);
     Str s = str_format_v(arena, format, args);
@@ -183,9 +177,7 @@ Str str_format(Arena *arena, const char *format, ...) {
     return s;
 }
 
-bool str_is_valid_utf8(Str s) {
-    return simdutf_validate_utf8((const char *)s.ptr, s.count);
-}
+bool str_is_valid_utf8(Str s) { return simdutf_validate_utf8((const char *)s.ptr, s.count); }
 
 Opt<u64> str_find(Str haystack, Str needle) {
     if (str_is_empty(needle)) {
@@ -289,12 +281,9 @@ Arr<u8> base64_decode(Arena *arena, ErrorContext *err, Str s) {
 
     u64 max_out_size = simdutf_maximal_binary_length_from_base64((const char *)s.ptr, s.count);
     Arr<u8> out = arena_push_arr<u8>(arena, max_out_size);
-    simdutf_result result = simdutf_base64_to_binary(
-            (const char *)s.ptr,
-            s.count,
-            (char *)out.ptr,
-            SIMDUTF_BASE64_DEFAULT,
-            SIMDUTF_LAST_CHUNK_STRICT);
+    simdutf_result result =
+        simdutf_base64_to_binary((const char *)s.ptr, s.count, (char *)out.ptr,
+                                 SIMDUTF_BASE64_DEFAULT, SIMDUTF_LAST_CHUNK_STRICT);
     if (result.error != SIMDUTF_ERROR_SUCCESS) {
         bail_v(err, {}, "Invalid base64. Error Code = %d", result.error);
     }
@@ -304,11 +293,8 @@ Arr<u8> base64_decode(Arena *arena, ErrorContext *err, Str s) {
 Str base64_encode(Arena *arena, Arr<u8> a) {
     u64 out_size = simdutf_base64_length_from_binary(a.count, SIMDUTF_BASE64_DEFAULT);
     Arr<u8> out = arena_push_arr<u8>(arena, out_size);
-    u64 written = simdutf_binary_to_base64(
-            (const char *)a.ptr,
-            a.count,
-            (char *)out.ptr,
-            SIMDUTF_BASE64_DEFAULT);
+    u64 written = simdutf_binary_to_base64((const char *)a.ptr, a.count, (char *)out.ptr,
+                                           SIMDUTF_BASE64_DEFAULT);
     log_assert(written == out_size);
     return out;
 }
@@ -326,16 +312,14 @@ Instant instant_from_sdl_nanos(u64 nanos) {
     };
 }
 
-Instant get_current_monotonic_time() {
-    return instant_from_sdl_nanos(SDL_GetTicksNS());
-}
+Instant get_current_monotonic_time() { return instant_from_sdl_nanos(SDL_GetTicksNS()); }
 
 //
 // Idk
 //
 
 void thread_init(int argc, char **argv) {
-    g_argv = { .ptr = argv, .count = (u64)argc };
+    g_argv = {.ptr = argv, .count = (u64)argc};
     arena_pool_init();
 }
 
@@ -343,8 +327,8 @@ void thread_init(int argc, char **argv) {
 // Errors
 //
 
-__attribute__((format(printf, 2, 3)))
-void err_push_ctx(ErrorContext *ctx, const char *format, ...) {
+__attribute__((format(printf, 2, 3))) void err_push_ctx(ErrorContext *ctx, const char *format,
+                                                        ...) {
     va_list args;
     va_start(args, format);
     Str msg = str_format_v(ctx->arena, format, args);
@@ -367,9 +351,7 @@ void err_log(ErrorContext *ctx) {
     }
 }
 
-bool err_occurred(ErrorContext *ctx) {
-    return !vec_is_empty(&ctx->ctx_stack);
-}
+bool err_occurred(ErrorContext *ctx) { return !vec_is_empty(&ctx->ctx_stack); }
 
 //
 // FS

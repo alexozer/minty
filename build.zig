@@ -26,7 +26,8 @@ const cxx_flags: []const []const u8 = &.{
     "-Wshadow",
     "-Wconversion",
     "-Wimplicit-fallthrough",
-    "-isystem", "3rdparty",
+    "-isystem",
+    "3rdparty",
     "-DYYJSON_DISABLE_INCR_READER=1",
     "-DYYJSON_DISABLE_UTILS=1",
     "-DYYJSON_DISABLE_FAST_FP_CONV=1",
@@ -54,12 +55,12 @@ pub fn build(b: *std.Build) !void {
     var cdb_targets: std.ArrayList(*std.Build.Step.Compile) = .empty;
 
     const blitter_sources_plat = switch (target.result.os.tag) {
-        .macos => blitter_sources ++ .{ "src/platform_posix.cpp" },
-        .linux => blitter_sources ++ .{ "src/platform_posix.cpp" },
-        .windows => blitter_sources ++ .{ "src/platform_windows.cpp" },
+        .macos => blitter_sources ++ .{"src/platform_posix.cpp"},
+        .linux => blitter_sources ++ .{"src/platform_posix.cpp"},
+        .windows => blitter_sources ++ .{"src/platform_windows.cpp"},
         else => @panic("Unsupported OS"),
     };
-    const blitter_flags = cpp_flags ++ .{ "-Werror" };
+    const blitter_flags = cpp_flags ++ .{"-Werror"};
 
     const sdl = b.dependency("sdl", .{ .optimize = optimize, .target = target });
     try cdb_targets.append(b.allocator, sdl.artifact("SDL3"));

@@ -1,8 +1,8 @@
 #pragma once
 
+#include <inttypes.h>
 #include <stdarg.h>
 #include <stdint.h>
-#include <inttypes.h>
 #include <stdlib.h>
 
 #include <SDL3/SDL_log.h>
@@ -14,11 +14,13 @@
 template <typename T>
 struct Opt {
     bool present;
-    T opt; // Makes it more obvious we're accessing an `Opt` at a glance
+    T opt;  // Makes it more obvious we're accessing an `Opt` at a glance
 };
 
 template <typename T>
-constexpr Opt<T> some(T v) { return { .present = true, .opt = v }; }
+constexpr Opt<T> some(T v) {
+    return {.present = true, .opt = v};
+}
 
 //
 // Math
@@ -40,22 +42,26 @@ constexpr u64 megabytes(u64 n) { return kilobytes(n) * 1024LL; }
 constexpr u64 align_to(u64 n, u64 a) { return ((n) + (a - 1)) & ~(a - 1); }
 
 template <typename T>
-constexpr T min(T a, T b) { return a < b ? a : b; }
+constexpr T min(T a, T b) {
+    return a < b ? a : b;
+}
 
 template <typename T>
-constexpr T max(T a, T b) { return a > b ? a : b; }
+constexpr T max(T a, T b) {
+    return a > b ? a : b;
+}
 
 constexpr u64 DEFAULT_ALIGNMENT = 8;
 
 // https://jameshfisher.com/2018/03/30/round-up-power-2/
 constexpr u64 next_pow2(u64 x) {
     x--;
-    x |= x>>1;
-    x |= x>>2;
-    x |= x>>4;
-    x |= x>>8;
-    x |= x>>16;
-    x |= x>>32;
+    x |= x >> 1;
+    x |= x >> 2;
+    x |= x >> 4;
+    x |= x >> 8;
+    x |= x >> 16;
+    x |= x >> 32;
     x++;
     return x;
 }
@@ -69,10 +75,13 @@ constexpr u64 next_pow2(u64 x) {
 #define log_info(...) SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, __VA_ARGS__)
 #define log_warn(...) SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, __VA_ARGS__)
 #define log_error(...) SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, __VA_ARGS__)
-#define log_fatal(...) SDL_LogCritical(SDL_LOG_CATEGORY_APPLICATION, __VA_ARGS__); abort()
+#define log_fatal(...)                                          \
+    SDL_LogCritical(SDL_LOG_CATEGORY_APPLICATION, __VA_ARGS__); \
+    abort()
 
 [[noreturn]] void log__assert(const char *cond, const char *file, int line);
-#define log_assert(cond) if ((cond) == false) log__assert(#cond, __FILE_NAME__, __LINE__)
+#define log_assert(cond) \
+    if ((cond) == false) log__assert(#cond, __FILE_NAME__, __LINE__)
 #define unreachable() log__assert("unreachable", __FILE_NAME__, __LINE__)
 
 //
@@ -84,7 +93,7 @@ struct Arr {
     T *ptr;
     u64 count;
 
-    T& operator[](u64 i) {
+    T &operator[](u64 i) {
         log_assert(i < count);
         return ptr[i];
     }
@@ -102,7 +111,8 @@ void *arena__push_bytes(Arena *arena, u64 size) {
     void *pos = (void *)((u64)arena->data + arena->offset);
     arena->offset += align_to(size, ALIGNMENT);
     if (arena->offset > arena->reserved) {
-         log_fatal("Arena over! offset = %" PRIu64 ", reserved = %" PRIu64, arena->offset, arena->reserved);
+        log_fatal("Arena over! offset = %" PRIu64 ", reserved = %" PRIu64, arena->offset,
+                  arena->reserved);
     }
     return pos;
 }
@@ -135,23 +145,23 @@ struct remove_reference {
     using type = T;
 };
 template <typename T>
-struct remove_reference<T&> {
+struct remove_reference<T &> {
     using type = T;
 };
 template <typename T>
-struct remove_reference<T&&> {
+struct remove_reference<T &&> {
     using type = T;
 };
 
 #define c_arr_count(a) (sizeof((a)) / sizeof((a)[0]))
 #define c_arr_elem_type(a) remove_reference<decltype(*(a))>::type
-#define arr_from_c(a) ( (Arr<c_arr_elem_type(a)>) { .ptr = (a), .count = c_arr_count(a) } )
+#define arr_from_c(a) ((Arr<c_arr_elem_type(a)>){.ptr = (a), .count = c_arr_count(a)})
 
 template <typename T>
 Arr<T> arr_from_null_terminated(T *v) {
     u64 count = 0;
     while (v[count] != nullptr) count++;
-    return { .ptr = v, .count = count };
+    return {.ptr = v, .count = count};
 }
 
 template <typename T>
@@ -174,12 +184,14 @@ bool arr_eq(Arr<T> a, Arr<T> b) {
     return SDL_memcmp(a.ptr, b.ptr, a.count * sizeof(T)) == 0;
 }
 
+// For non-overlapping arrays
 template <typename T>
 void arr_copy(Arr<T> dest, Arr<T> source) {
     log_assert(dest.count == source.count);
     SDL_memcpy(dest.ptr, source.ptr, dest.count * sizeof(T));
 }
 
+// For potentially overlapping arrays
 template <typename T>
 void arr_move(Arr<T> dest, Arr<T> source) {
     log_assert(dest.count == source.count);
@@ -204,10 +216,10 @@ struct Pair {
 
 using Str = Arr<u8>;
 
-#define S(s) ((Str){ .ptr = (u8 *)(s), .count = (sizeof(s)) - 1 })
+#define S(s) ((Str){.ptr = (u8 *)(s), .count = (sizeof(s)) - 1})
 #define SF(s) (int)(s).count, (char *)(s).ptr
 #define C(c) ((u8)(c))
-#define A(a) ((Arr<u8>){ .ptr = (a), .count = sizeof((a)) / sizeof((a)[0]) })
+#define A(a) ((Arr<u8>){.ptr = (a), .count = sizeof((a)) / sizeof((a)[0])})
 
 char *str_to_c(Arena *arena, Str s);
 Str str_from_c(const char *cstr);
@@ -218,8 +230,7 @@ Str str_trim(Str s);
 Str str_clone(Arena *arena, Str s);
 bool str_eq(Str s1, Str s2);
 bool str_starts_with(Str s, Str prefix);
-__attribute__((format(printf, 2, 3)))
-Str str_format(Arena *arena, const char *format, ...);
+__attribute__((format(printf, 2, 3))) Str str_format(Arena *arena, const char *format, ...);
 Str str_format_v(Arena *arena, const char *format, va_list args);
 bool str_is_valid_utf8(Str s);
 Opt<u64> str_find(Str haystack, Str needle);
@@ -231,7 +242,7 @@ struct StrLineIter {
 };
 
 StrLineIter str_lines(Str s);
-bool str_lines_next(StrLineIter* iter, Str *line);
+bool str_lines_next(StrLineIter *iter, Str *line);
 u64 str_count_lines(Str s);
 Pair<Str, Str> str_split2(Str base, u8 delim);
 constexpr bool str_is_empty(Str s) { return s.count == 0; }
@@ -243,10 +254,10 @@ constexpr bool str_is_empty(Str s) { return s.count == 0; }
 template <typename T>
 struct Vec {
     T *ptr;
-    u64 count; // Element count (not size in bytes)
-    u64 cap; // Element capacity (not size capacity in bytes)
+    u64 count;  // Element count (not size in bytes)
+    u64 cap;    // Element capacity (not size capacity in bytes)
 
-    T& operator[](u64 i) {
+    T &operator[](u64 i) {
         log_assert(i < count);
         return ptr[i];
     }
@@ -318,7 +329,7 @@ void vec_prealloc(Arena *arena, Vec<T> *vec, u64 max_elems) {
 
 template <typename T>
 Arr<T> vec_arr(Vec<T> *vec) {
-    return { .ptr = vec->ptr, .count = vec->count };
+    return {.ptr = vec->ptr, .count = vec->count};
 }
 
 template <typename T>
@@ -335,25 +346,25 @@ bool vec_is_empty(Vec<T> *vec) {
 // Defer
 //
 
-template<typename F>
+template <typename F>
 struct Defer {
     F fn;
     explicit Defer(F f) : fn(f) {}
     ~Defer() { fn(); }
 
-    Defer(const Defer&) = delete;
-    Defer& operator=(const Defer&) = delete;
+    Defer(const Defer &) = delete;
+    Defer &operator=(const Defer &) = delete;
 };
 
 // Deduction guide (C++17) — lets you write Defer d([&]{...}) without specifying F
-template<typename F>
+template <typename F>
 Defer(F) -> Defer<F>;
 
 #define CONCAT_IMPL(a, b) a##b
 #define CONCAT(a, b) CONCAT_IMPL(a, b)
-#define defer(code) Defer CONCAT(_defer_, __LINE__)([&]{ code; })
+#define defer(code) Defer CONCAT(_defer_, __LINE__)([&] { code; })
 
-template<typename F>
+template <typename F>
 struct DeferCtx {
     F fn;
     u64 ctx;
@@ -361,14 +372,14 @@ struct DeferCtx {
     DeferCtx(F f, uint64_t c) : fn(f), ctx(c) {}
     ~DeferCtx() { fn(ctx); }
 
-    DeferCtx(const DeferCtx&) = delete;
-    DeferCtx& operator=(const DeferCtx&) = delete;
+    DeferCtx(const DeferCtx &) = delete;
+    DeferCtx &operator=(const DeferCtx &) = delete;
 };
 
-template<typename F>
+template <typename F>
 DeferCtx(F, uint64_t) -> DeferCtx<F>;
 
-#define defer_ctx(code, value) Defer CONCAT(_defer_ctx_, __LINE__)([&]{ code; }, value)
+#define defer_ctx(code, value) Defer CONCAT(_defer_ctx_, __LINE__)([&] { code; }, value)
 
 //
 // Errors
@@ -379,72 +390,79 @@ struct ErrorContext {
     Vec<Str> ctx_stack;
 };
 
-__attribute__((format(printf, 2, 3)))
-void err_push_ctx(ErrorContext *ctx, const char *format, ...);
+__attribute__((format(printf, 2, 3))) void err_push_ctx(ErrorContext *ctx, const char *format, ...);
 void err_log(ErrorContext *ctx);
 bool err_occurred(ErrorContext *ctx);
 
-#define err_scope(err, format, ...) \
-    DeferCtx CONCAT(_err_scope_, __LINE__)([&] (u64 _err_scope_count_) { \
-        if ((err)->ctx_stack.count > 0 && _err_scope_count_ == 0) { \
-            err_push_ctx((err), (format) __VA_OPT__(,) __VA_ARGS__); \
-        } \
-    }, (err)->ctx_stack.count)
+#define err_scope(err, format, ...)                                      \
+    DeferCtx CONCAT(_err_scope_, __LINE__)(                              \
+        [&](u64 _err_scope_count_) {                                     \
+            if ((err)->ctx_stack.count > 0 && _err_scope_count_ == 0) {  \
+                err_push_ctx((err), (format)__VA_OPT__(, ) __VA_ARGS__); \
+            }                                                            \
+        },                                                               \
+        (err) -> ctx_stack.count)
 
-#define bail(ctx, format, ...) \
-    if (vec_is_empty(&((ctx)->ctx_stack))) { \
-        err_push_ctx((ctx), (format) __VA_OPT__(,) __VA_ARGS__); \
-    } \
+#define bail(ctx, format, ...)                                   \
+    if (vec_is_empty(&((ctx)->ctx_stack))) {                     \
+        err_push_ctx((ctx), (format)__VA_OPT__(, ) __VA_ARGS__); \
+    }                                                            \
     return;
 
-#define bail_v(ctx, ret, format, ...) \
-    if (vec_is_empty(&((ctx)->ctx_stack))) { \
-        err_push_ctx((ctx), (format) __VA_OPT__(,) __VA_ARGS__); \
-    } \
+#define bail_v(ctx, ret, format, ...)                            \
+    if (vec_is_empty(&((ctx)->ctx_stack))) {                     \
+        err_push_ctx((ctx), (format)__VA_OPT__(, ) __VA_ARGS__); \
+    }                                                            \
     return ret;
 
-#define try_sdl_ret_void(err, func_call) ({ \
-    decltype(func_call) _child_ret = (func_call); \
-    if (!_child_ret) { \
-        bail((err), "%s", SDL_GetError()); \
-    } \
-    _child_ret; \
-})
+#define try_sdl_ret_void(err, func_call)              \
+    ({                                                \
+        decltype(func_call) _child_ret = (func_call); \
+        if (!_child_ret) {                            \
+            bail((err), "%s", SDL_GetError());        \
+        }                                             \
+        _child_ret;                                   \
+    })
 
-#define try_sdl_ret_value(err, parent_ret, func_call) ({ \
-    decltype(func_call) _child_ret = (func_call); \
-    if (!_child_ret) { \
-        bail_v((err), parent_ret, "%s", SDL_GetError()); \
-    } \
-    _child_ret; \
-})
+#define try_sdl_ret_value(err, parent_ret, func_call)        \
+    ({                                                       \
+        decltype(func_call) _child_ret = (func_call);        \
+        if (!_child_ret) {                                   \
+            bail_v((err), parent_ret, "%s", SDL_GetError()); \
+        }                                                    \
+        _child_ret;                                          \
+    })
 
-#define EXPAND(x)                           x
-#define GET_MACRO(_1, _2, _3, name, ...)    name
-#define try_sdl(...)    EXPAND( GET_MACRO(__VA_ARGS__, try_sdl_ret_value, try_sdl_ret_void)(__VA_ARGS__) )
+#define EXPAND(x) x
+#define GET_MACRO(_1, _2, _3, name, ...) name
+#define try_sdl(...) \
+    EXPAND(GET_MACRO(__VA_ARGS__, try_sdl_ret_value, try_sdl_ret_void)(__VA_ARGS__))
 
-#define assert_ft(func_call) ({ \
-    FT_Error _err = (func_call); \
-    if (_err != FT_Err_Ok) { \
-        log_fatal("FreeType error: %s", FT_Error_String(_err)); \
-    } \
-})
+#define assert_ft(func_call)                                        \
+    ({                                                              \
+        FT_Error _err = (func_call);                                \
+        if (_err != FT_Err_Ok) {                                    \
+            log_fatal("FreeType error: %s", FT_Error_String(_err)); \
+        }                                                           \
+    })
 
-#define try_ft_ret_void(err, func_call) ({ \
-    FT_Error _err = (func_call); \
-    if (_err != FT_Err_Ok) { \
-        bail((err), "%s", FT_Error_String(_err)); \
-    } \
-})
+#define try_ft_ret_void(err, func_call)               \
+    ({                                                \
+        FT_Error _err = (func_call);                  \
+        if (_err != FT_Err_Ok) {                      \
+            bail((err), "%s", FT_Error_String(_err)); \
+        }                                             \
+    })
 
-#define try_ft_ret_value(err, parent_ret, func_call) ({ \
-    FT_Error _err = (func_call); \
-    if (_err != FT_Err_Ok) { \
-        bail_v((err), parent_ret, "%s", FT_Error_String(_err)); \
-    } \
-})
+#define try_ft_ret_value(err, parent_ret, func_call)                \
+    ({                                                              \
+        FT_Error _err = (func_call);                                \
+        if (_err != FT_Err_Ok) {                                    \
+            bail_v((err), parent_ret, "%s", FT_Error_String(_err)); \
+        }                                                           \
+    })
 
-#define try_ft(...)    EXPAND( GET_MACRO(__VA_ARGS__, try_ft_ret_value, try_ft_ret_void)(__VA_ARGS__) )
+#define try_ft(...) EXPAND(GET_MACRO(__VA_ARGS__, try_ft_ret_value, try_ft_ret_void)(__VA_ARGS__))
 
 //
 // Paths
@@ -458,28 +476,6 @@ Str path_join(Arena *arena, Str left_path, Str right_path);
 
 extern Arr<char *> g_argv;
 extern Arr<char *> g_envp;
-
-Str env_get(Str key);
-
-struct Cmd {
-    Str name;
-    Arr<Str> args;
-    Arr<Pair<Str, Str>> env;
-    Arr<u8> input;
-    Str cwd;
-};
-
-enum class [[nodiscard]] OSResult {
-    Ok,
-    PermissionDenied,
-    AllocationFailed,
-    InvalidPath,
-    InvalidFileDescriptor,
-    SubprocessExitError,
-    SubprocessNonZeroExitCode,
-    InvalidUtf8, // Not an OS error! TODO fix
-    OtherError,
-};
 
 //
 // Time
@@ -496,10 +492,10 @@ struct Instant {
 };
 
 // Nanosconds. Signed so that we can use the same type for diffs.
-constexpr Duration DURATION_NANOSECOND = { .nanoseconds = 1 };
-constexpr Duration DURATION_MICROSECOND = { .nanoseconds = 1'000 };
-constexpr Duration DURATION_MILLISECOND = { .nanoseconds = 1'000'000 };
-constexpr Duration DURATION_SECOND = { .seconds = 1 };
+constexpr Duration DURATION_NANOSECOND = {.nanoseconds = 1};
+constexpr Duration DURATION_MICROSECOND = {.nanoseconds = 1'000};
+constexpr Duration DURATION_MILLISECOND = {.nanoseconds = 1'000'000};
+constexpr Duration DURATION_SECOND = {.seconds = 1};
 constexpr Duration DURATION_ZERO = {};
 
 Instant get_current_monotonic_time();
@@ -508,7 +504,7 @@ Instant instant_from_sdl_nanos(u64 nanos);
 constexpr Duration operator+(const Duration &t1, const Duration &t2) {
     i64 ns_sum = t1.nanoseconds + t2.nanoseconds;
     i64 sec_sum = t1.seconds + t2.seconds + (ns_sum / 1'000'000'000);
-    return { .seconds = sec_sum, .nanoseconds = (u32)(ns_sum % 1'000'000'000) };
+    return {.seconds = sec_sum, .nanoseconds = (u32)(ns_sum % 1'000'000'000)};
 }
 
 constexpr Duration operator-(const Duration &t1, const Duration &t2) {
@@ -519,20 +515,14 @@ constexpr Duration operator-(const Duration &t1, const Duration &t2) {
         sec_diff--;
         ns_diff += 1'000'000'000;
     }
-    return { .seconds = sec_diff, .nanoseconds = (u32)(ns_diff) };
+    return {.seconds = sec_diff, .nanoseconds = (u32)(ns_diff)};
 }
 
-constexpr Duration operator-(const Duration &t) {
-    return DURATION_ZERO - t;
-}
+constexpr Duration operator-(const Duration &t) { return DURATION_ZERO - t; }
 
-constexpr void operator+=(Duration& t1, const Duration &t2) {
-    t1 = t1 + t2;
-}
+constexpr void operator+=(Duration &t1, const Duration &t2) { t1 = t1 + t2; }
 
-constexpr void operator-=(Duration& t1, const Duration &t2) {
-    t1 = t1 - t2;
-}
+constexpr void operator-=(Duration &t1, const Duration &t2) { t1 = t1 - t2; }
 
 constexpr bool operator==(const Duration &t1, const Duration &t2) {
     return t1.seconds == t2.seconds && t1.nanoseconds == t2.nanoseconds;
@@ -548,17 +538,11 @@ constexpr bool operator<(const Duration &t1, const Duration &t2) {
     return (t1.seconds < 0) ^ (t1.nanoseconds < t2.nanoseconds);
 }
 
-constexpr bool operator<=(const Duration &t1, const Duration &t2) {
-    return (t1 < t2) || t1 == t2;
-}
+constexpr bool operator<=(const Duration &t1, const Duration &t2) { return (t1 < t2) || t1 == t2; }
 
-constexpr bool operator>(const Duration &t1, const Duration &t2) {
-    return !(t1 <= t2);
-}
+constexpr bool operator>(const Duration &t1, const Duration &t2) { return !(t1 <= t2); }
 
-constexpr bool operator>=(const Duration &t1, const Duration &t2) {
-    return !(t1 < t2);
-}
+constexpr bool operator>=(const Duration &t1, const Duration &t2) { return !(t1 < t2); }
 
 constexpr u64 duration_seconds(Duration duration) {
     if (duration.seconds < 0) {
@@ -577,8 +561,8 @@ constexpr u32 duration_subsec_nanos(Duration duration) {
 }
 
 constexpr Duration operator-(const Instant &t1, const Instant &t2) {
-    Duration d1 = { .seconds = t1.seconds, .nanoseconds = t1.nanoseconds };
-    Duration d2 = { .seconds = t2.seconds, .nanoseconds = t2.nanoseconds };
+    Duration d1 = {.seconds = t1.seconds, .nanoseconds = t1.nanoseconds};
+    Duration d2 = {.seconds = t2.seconds, .nanoseconds = t2.nanoseconds};
     return d1 - d2;
 }
 

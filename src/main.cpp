@@ -4,13 +4,13 @@
 
 #include <SDL3/SDL.h>
 #define SDL_MAIN_USE_CALLBACKS
-#include <SDL3/SDL_main.h>
+#include <SDL3/SDL_gpu.h>
 #include <SDL3/SDL_init.h>
+#include <SDL3/SDL_keycode.h>
+#include <SDL3/SDL_main.h>
+#include <SDL3/SDL_pixels.h>
 #include <SDL3/SDL_stdinc.h>
 #include <SDL3/SDL_video.h>
-#include <SDL3/SDL_keycode.h>
-#include <SDL3/SDL_gpu.h>
-#include <SDL3/SDL_pixels.h>
 
 #include <ft2build.h>
 #include FT_FREETYPE_H
@@ -18,22 +18,22 @@
 extern "C" {
 #include <xao.h>
 }
-#include <yyjson.h>
 #include <kb_text_shape.h>
 #include <stb_rect_pack.h>
+#include <yyjson.h>
 
 //
 // MARK:Timer
 //
 
-Opt<Duration> operator+(const Opt<Duration>& d1, const Opt<Duration>& d2) {
+Opt<Duration> operator+(const Opt<Duration> &d1, const Opt<Duration> &d2) {
     return {
         .present = d1.present && d2.present,
         .opt = d1.opt + d2.opt,
     };
 }
 
-Opt<Duration> operator-(const Opt<Duration>& d1, const Opt<Duration>& d2) {
+Opt<Duration> operator-(const Opt<Duration> &d1, const Opt<Duration> &d2) {
     return {
         .present = d1.present && d2.present,
         .opt = d1.opt - d2.opt,
@@ -47,7 +47,7 @@ struct SplitRecord {
 
 struct SegmentDef {
     Str name;
-    Arr<u8> icon; // Icon in PNG format
+    Arr<u8> icon;  // Icon in PNG format
 };
 
 struct FileDef {
@@ -144,8 +144,8 @@ Arr<SegSummary> calc_seg_summary(Arena *arena, Session *session) {
     for (u64 i = 0; i < summary.count; i++) {
         Opt<Duration> prev_gold = file->golds[i];
         Opt<Duration> live_seg = summary[i].live_seg;
-        summary[i].is_new_gold = prev_gold.present && live_seg.present && \
-                                 live_seg.opt < prev_gold.opt;
+        summary[i].is_new_gold =
+            prev_gold.present && live_seg.present && live_seg.opt < prev_gold.opt;
     }
 
     return summary;
@@ -175,17 +175,18 @@ Str format_duration(Arena *arena, Duration duration, u32 ms_digits, bool show_pl
 
     Str result = {};
     if (days == 0 && hours == 0 && minutes == 0) {
-        result = str_format(arena, "%.*s%" PRIu64 ".%03" PRIu64,
-                SF(sign_str), seconds, milliseconds);
+        result =
+            str_format(arena, "%.*s%" PRIu64 ".%03" PRIu64, SF(sign_str), seconds, milliseconds);
     } else if (days == 0 && hours == 0) {
-        result = str_format(arena, "%.*s%" PRIu64 ":%02" PRIu64 ".%03" PRIu64,
-                SF(sign_str), minutes, seconds, milliseconds);
+        result = str_format(arena, "%.*s%" PRIu64 ":%02" PRIu64 ".%03" PRIu64, SF(sign_str),
+                            minutes, seconds, milliseconds);
     } else if (days == 0) {
         result = str_format(arena, "%.*s%" PRIu64 ":%02" PRIu64 ":%02" PRIu64 ".%03" PRIu64,
-                SF(sign_str), hours, minutes, seconds, milliseconds);
+                            SF(sign_str), hours, minutes, seconds, milliseconds);
     } else {
-        result = str_format(arena, "%.*s%" PRIu64 ":%02" PRIu64 ":%02" PRIu64 ":%02" PRIu64 ".%03" PRIu64,
-                SF(sign_str), days, hours, minutes, seconds, milliseconds);
+        result = str_format(arena,
+                            "%.*s%" PRIu64 ":%02" PRIu64 ":%02" PRIu64 ":%02" PRIu64 ".%03" PRIu64,
+                            SF(sign_str), days, hours, minutes, seconds, milliseconds);
     }
 
     return arr_slice(result, 0, result.count - (3 - ms_digits));
@@ -229,7 +230,8 @@ void timer_apply_action_init(Arena *arena, Session *session, TimerAction action,
         session->timer.start_time = t;
         break;
     }
-    default: {}
+    default: {
+    }
     }
 }
 
@@ -301,7 +303,8 @@ void timer_apply_action_paused(Arena *arena, Session *session, TimerAction actio
         timer_reset(timer);
         break;
     }
-    default: {}
+    default: {
+    }
     }
 }
 
@@ -327,7 +330,8 @@ void timer_apply_action_finished(Arena *arena, Session *session, TimerAction act
         timer_reset(timer);
         break;
     }
-    default: {}
+    default: {
+    }
     }
 }
 
@@ -357,9 +361,7 @@ bool eq(xao_Value v, const char *s) {
     return size == SDL_strlen(s) && SDL_memcmp(v.start, s, size) == 0;
 }
 
-Str xml_str(xao_Value v) {
-    return { .ptr = (u8 *)v.start, .count = (u64)v.end - (u64)v.start };
-}
+Str xml_str(xao_Value v) { return {.ptr = (u8 *)v.start, .count = (u64)v.end - (u64)v.start}; }
 
 Str xml_inner(xao_Reader *r, xao_Value outer) {
     xao_Value inner = {};
@@ -369,7 +371,7 @@ Str xml_inner(xao_Reader *r, xao_Value outer) {
 
 // TODO I've been neglectful of `const`ness in my APIs, but obviously this
 // should be const
-u8 PNG_HEADER[] = { 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a };
+u8 PNG_HEADER[] = {0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a};
 
 Arr<u8> decode_icon_base64_to_png(Arena *arena, ErrorContext *err, Str icon_base64) {
     err_scope(err, "Decode icon base64 to PNG");
@@ -383,7 +385,8 @@ Arr<u8> decode_icon_base64_to_png(Arena *arena, ErrorContext *err, Str icon_base
     return arr_slice(icon_bin, png_idx.opt, icon_bin.count);
 }
 
-Arr<SegmentDef> parse_livesplit_segments(Arena *arena, ErrorContext *err, xao_Reader *r, xao_Value segments_tag) {
+Arr<SegmentDef> parse_livesplit_segments(Arena *arena, ErrorContext *err, xao_Reader *r,
+                                         xao_Value segments_tag) {
     err_scope(err, "Parse LiveSplit LSS segments");
 
     Vec<SegmentDef> segments = {};
@@ -421,7 +424,8 @@ void load_timer_textures(Arena *arena, ErrorContext *err, FileDef *file) {
 
         err_scope(err, "Load icon texture for segment '%.*s'", SF(file->segments[i].name));
 
-        SDL_IOStream *png_stream = try_sdl(err, SDL_IOFromMem(file->segments[i].icon.ptr, file->segments[i].icon.count));
+        SDL_IOStream *png_stream =
+            try_sdl(err, SDL_IOFromMem(file->segments[i].icon.ptr, file->segments[i].icon.count));
         defer(SDL_CloseIO(png_stream));
 
         icons[i] = try_sdl(err, SDL_LoadPNG_IO(png_stream, false));
@@ -488,7 +492,7 @@ void load_livesplit_lss(Arena *arena, ErrorContext *err, Str lss_path, FileDef *
     void *lss_buf = try_sdl(err, SDL_LoadFile(lss_path_cstr, &size));
     defer(SDL_free(lss_buf));
 
-    Str xml = { .ptr = (u8 *)lss_buf, .count = (u64)size };
+    Str xml = {.ptr = (u8 *)lss_buf, .count = (u64)size};
 
     parse_livesplit_lss(arena, err, file, xml);
     load_timer_textures(arena, err, file);
@@ -511,8 +515,8 @@ struct PxRect {
     u16 w, h;
 };
 
-constexpr PxSize DEFAULT_WINDOW_SIZE = { .w = 360, .h = 600 };
-constexpr PxSize MIN_WINDOW_SIZE = { .w = 200, .h = 100 };
+constexpr PxSize DEFAULT_WINDOW_SIZE = {.w = 360, .h = 600};
+constexpr PxSize MIN_WINDOW_SIZE = {.w = 200, .h = 100};
 
 struct Atlas {
     PxSize size;
@@ -527,16 +531,16 @@ struct PosTexVertex {
 };
 
 struct App {
-    Arena *app_arena; // Lives for duration of application
+    Arena *app_arena;  // Lives for duration of application
     SDL_Window *window;
 
     SDL_Keycode prev_keys;
     // TODO: float-based scrolling on NDC could mess with pixel-perfect alignment
     f32 scroll;
-    f32 scale; // `scale + 1.0f` is actual scale
+    f32 scale;  // `scale + 1.0f` is actual scale
 
     Arena *session_arena;
-    Session *session; // Nullable
+    Session *session;  // Nullable
 
     SDL_GPUDevice *device;
     SDL_GPUGraphicsPipeline *pipeline;
@@ -547,10 +551,9 @@ struct App {
 
     // Text stuff
     FT_Library freetype;
-    FT_Face font_face;
 };
 
-SDL_HitTestResult hittest_callback(SDL_Window* window, const SDL_Point *point, void *data) {
+SDL_HitTestResult hittest_callback(SDL_Window *window, const SDL_Point *point, void *data) {
     // Would expand the resize radius if I could, but doesn't appear to work on macOS
     return SDL_HITTEST_DRAGGABLE;
 }
@@ -566,8 +569,10 @@ void init_window(ErrorContext *err, App *app) {
     try_sdl(err, SDL_SetStringProperty(props, SDL_PROP_WINDOW_CREATE_TITLE_STRING, "Blitter"));
     try_sdl(err, SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN, true));
     try_sdl(err, SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_BORDERLESS_BOOLEAN, true));
-    try_sdl(err, SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, DEFAULT_WINDOW_SIZE.w));
-    try_sdl(err, SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, DEFAULT_WINDOW_SIZE.h));
+    try_sdl(err, SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER,
+                                       DEFAULT_WINDOW_SIZE.w));
+    try_sdl(err, SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER,
+                                       DEFAULT_WINDOW_SIZE.h));
 
     app->window = try_sdl(err, SDL_CreateWindowWithProperties(props));
     try_sdl(err, SDL_SetWindowMinimumSize(app->window, MIN_WINDOW_SIZE.w, MIN_WINDOW_SIZE.h));
@@ -609,10 +614,10 @@ App *init_app(ErrorContext *err) {
 
 void shape_test();
 
-SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
+SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     thread_init(argc, argv);
 
-    ErrorContext err_base = { .arena = arena_acquire() };
+    ErrorContext err_base = {.arena = arena_acquire()};
     ErrorContext *err = &err_base;
     defer(arena_release(err_base.arena));
 
@@ -630,7 +635,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
 }
 
 void try_load_new_session(App *app, Str lss_path) {
-    ErrorContext err_base = { .arena = arena_acquire() };
+    ErrorContext err_base = {.arena = arena_acquire()};
     ErrorContext *err = &err_base;
     defer(arena_release(err_base.arena));
 
@@ -649,7 +654,7 @@ void try_load_new_session(App *app, Str lss_path) {
     app->session = session;
 }
 
-SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
+SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
     App *app = (App *)appstate;
 
     // TODO: this is potentially not the OS timestamp of the keypress, sadly, so
@@ -694,12 +699,13 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
         app->prev_keys &= ~event->key.key;
     }
 
-    if (event->common.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event->button.button == SDL_BUTTON_RIGHT) {
+    if (event->common.type == SDL_EVENT_MOUSE_BUTTON_DOWN &&
+        event->button.button == SDL_BUTTON_RIGHT) {
         if (SDL_HasClipboardText()) {
             char *clipboard_cstr = SDL_GetClipboardText();
             defer(SDL_free(clipboard_cstr));
             Str clipboard = str_trim(str_from_c(clipboard_cstr));
-            if (!str_is_empty(clipboard)) { // Empty iff SDL failed to allocate it
+            if (!str_is_empty(clipboard)) {  // Empty iff SDL failed to allocate it
                 try_load_new_session(app, clipboard);
             }
         }
@@ -712,7 +718,7 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
     return SDL_APP_CONTINUE;
 }
 
-void SDL_AppQuit(void* appstate, SDL_AppResult result) {
+void SDL_AppQuit(void *appstate, SDL_AppResult result) {
     // Just let OS clean up everything
 }
 
@@ -736,7 +742,7 @@ struct Box {
     Opt<PxSize> bbox;
     u64 texture_idx;
     SDL_FColor color;
-    Vec<Box*> children;
+    Vec<Box *> children;
 };
 
 Box *make_text_box(Arena *arena, Str content, SDL_FColor color) {
@@ -822,7 +828,7 @@ PxSize compute_box_bbox_uncached(Box *box) {
         return total;
     }
     case BoxType::Text: {
-        return { .w = 0, .h = 0 };
+        return {.w = 0, .h = 0};
     }
     case BoxType::Texture: {
         return box->bbox.opt;
@@ -841,7 +847,7 @@ PxSize compute_box_bbox(Box *box) {
 
 Box *pad_box_left(Arena *arena, Box *box, u16 pad) {
     PxSize bbox = compute_box_bbox(box);
-    Box *pad_box = make_empty_box(arena, { .w = pad, .h = bbox.h });
+    Box *pad_box = make_empty_box(arena, {.w = pad, .h = bbox.h});
 
     Box *parent_box = arena_push<Box>(arena);
     parent_box->type = BoxType::LeftToRightStack;
@@ -853,7 +859,7 @@ Box *pad_box_left(Arena *arena, Box *box, u16 pad) {
 
 Box *pad_box_right(Arena *arena, Box *box, u16 pad) {
     PxSize bbox = compute_box_bbox(box);
-    Box *pad_box = make_empty_box(arena, { .w = pad, .h = bbox.h });
+    Box *pad_box = make_empty_box(arena, {.w = pad, .h = bbox.h});
 
     Box *parent_box = arena_push<Box>(arena);
     parent_box->type = BoxType::LeftToRightStack;
@@ -865,7 +871,7 @@ Box *pad_box_right(Arena *arena, Box *box, u16 pad) {
 
 Box *pad_box_top(Arena *arena, Box *box, u16 pad) {
     PxSize bbox = compute_box_bbox(box);
-    Box *pad_box = make_empty_box(arena, { .w = bbox.w, .h = pad });
+    Box *pad_box = make_empty_box(arena, {.w = bbox.w, .h = pad});
 
     Box *parent_box = arena_push<Box>(arena);
     parent_box->type = BoxType::TopToBottomStack;
@@ -877,7 +883,7 @@ Box *pad_box_top(Arena *arena, Box *box, u16 pad) {
 
 Box *pad_box_bottom(Arena *arena, Box *box, u16 pad) {
     PxSize bbox = compute_box_bbox(box);
-    Box *pad_box = make_empty_box(arena, { .w = bbox.w, .h = pad });
+    Box *pad_box = make_empty_box(arena, {.w = bbox.w, .h = pad});
 
     Box *parent_box = arena_push<Box>(arena);
     parent_box->type = BoxType::TopToBottomStack;
@@ -936,8 +942,8 @@ Box *prerender_segment(Arena *arena, App *app, u16 width, u64 idx) {
     icon = align_box_center_horiz(arena, icon, icon_outer);
     icon = align_box_center_vert(arena, icon, icon_outer);
 
-    SDL_FColor text_color = { .r = 1.f, .g = 1.f, .b = 1.f, .a = 1.f };
-    Box *pad = make_empty_box(arena, { .w = 10, .h = 0 });
+    SDL_FColor text_color = {.r = 1.f, .g = 1.f, .b = 1.f, .a = 1.f};
+    Box *pad = make_empty_box(arena, {.w = 10, .h = 0});
     Box *title = make_text_box(arena, app->session->file.segments[idx].name, text_color);
     Box *title_centered = align_box_center_vert(arena, title, icon_outer);
 
@@ -947,10 +953,11 @@ Box *prerender_segment(Arena *arena, App *app, u16 width, u64 idx) {
     vec_push(arena, &row_front->children, pad);
     vec_push(arena, &row_front->children, title_centered);
 
-    if (app->session->timer.mode == TimerMode::Running && idx == app->session->timer.live_splits.count) {
+    if (app->session->timer.mode == TimerMode::Running &&
+        idx == app->session->timer.live_splits.count) {
         PxSize row_front_bbox = compute_box_bbox(row_front);
-        SDL_FColor bg_color = { .r = 0.f, .g = 0.3f, .b = 0.90f, .a = 1.f };
-        PxSize row_back_size = { .w = width, .h = row_front_bbox.h };
+        SDL_FColor bg_color = {.r = 0.f, .g = 0.3f, .b = 0.90f, .a = 1.f};
+        PxSize row_back_size = {.w = width, .h = row_front_bbox.h};
         Box *row_back = make_solid_color_box(arena, bg_color, row_back_size);
 
         Box *row = arena_push<Box>(arena);
@@ -965,7 +972,7 @@ Box *prerender_segment(Arena *arena, App *app, u16 width, u64 idx) {
 }
 
 Box *prerender_contents(Arena *arena, App *app, PxSize size) {
-    SDL_FColor color = { .r = 1.f, .g = 1.f, .b = 1.f, .a = 1.f };
+    SDL_FColor color = {.r = 1.f, .g = 1.f, .b = 1.f, .a = 1.f};
 
     Box *game_name = make_text_box(arena, app->session->file.game_name, color);
     Box *cat_name = make_text_box(arena, app->session->file.category_name, color);
@@ -999,7 +1006,7 @@ Box *prerender_contents(Arena *arena, App *app, PxSize size) {
     // Put timer at bottom
     PxSize top_bbox = compute_box_bbox(top);
     PxSize bottom_bbox = compute_box_bbox(bottom);
-    PxSize vsep_size = { .w = 0, .h = (u16)(size.h - top_bbox.h - bottom_bbox.h) };
+    PxSize vsep_size = {.w = 0, .h = (u16)(size.h - top_bbox.h - bottom_bbox.h)};
     Box *vsep = make_empty_box(arena, vsep_size);
 
     Box *root = arena_push<Box>(arena);
@@ -1037,7 +1044,8 @@ void window_to_ndc(PosTexVertex *vertex, PxSize window_size) {
     vertex->y = -((vertex->y / (f32)window_size.h) * 2.f - 1.f);
 }
 
-void push_atlas_quad(Arena *arena, PxSize window_size, Atlas *atlas, RenderMesh *mesh, PxRect src, PxRect dst) {
+void push_atlas_quad(Arena *arena, PxSize window_size, Atlas *atlas, RenderMesh *mesh, PxRect src,
+                     PxRect dst) {
     Arr<u16> indices = vec_extend_zero(arena, &mesh->indices, 6);
     indices[0] = (u16)(mesh->vertices.count + 0);
     indices[1] = (u16)(mesh->vertices.count + 1);
@@ -1087,7 +1095,8 @@ void push_atlas_quad(Arena *arena, PxSize window_size, Atlas *atlas, RenderMesh 
     window_to_ndc(&vertices[3], window_size);
 }
 
-void re_build_boxes_mesh(Arena *arena, PxSize window_size, Box *box, PxPos where, Atlas *atlas, RenderMesh *mesh) {
+void re_build_boxes_mesh(Arena *arena, PxSize window_size, Box *box, PxPos where, Atlas *atlas,
+                         RenderMesh *mesh) {
     switch (box->type) {
     case BoxType::Empty: {
         break;
@@ -1143,9 +1152,9 @@ void re_build_boxes_mesh(Arena *arena, PxSize window_size, Box *box, PxPos where
         break;
     }
     case BoxType::SolidColor: {
-        // SDL_SetRenderDrawColorFloat(app->renderer, box->color.r, box->color.g, box->color.b, box->color.a);
-        // SDL_FRect r = { .x = where.x, .y = where.y, .w = box->width, .h = box->height };
-        // SDL_RenderFillRect(app->renderer, &r);
+        // SDL_SetRenderDrawColorFloat(app->renderer, box->color.r, box->color.g, box->color.b,
+        // box->color.a); SDL_FRect r = { .x = where.x, .y = where.y, .w = box->width, .h =
+        // box->height }; SDL_RenderFillRect(app->renderer, &r);
         break;
     }
     }
@@ -1155,10 +1164,9 @@ void render(App *app) {
     // Frame arena
     Arena *frame_arena = arena_acquire();
     defer(arena_release(frame_arena));
-
 }
 
-SDL_AppResult SDL_AppIterate(void* appstate) {
+SDL_AppResult SDL_AppIterate(void *appstate) {
     App *app = (App *)appstate;
     re_render(app);
     return SDL_APP_CONTINUE;
@@ -1176,27 +1184,25 @@ void shape_test() {
     Str shape_text = S("Let's shape something!");
 
     kbts_ShapeBegin(context, KBTS_DIRECTION_DONT_KNOW, KBTS_LANGUAGE_DONT_KNOW);
-    kbts_ShapeUtf8(context,
-            (char *)shape_text.ptr, (i32)shape_text.count,
-            KBTS_USER_ID_GENERATION_MODE_CODEPOINT_INDEX);
+    kbts_ShapeUtf8(context, (char *)shape_text.ptr, (i32)shape_text.count,
+                   KBTS_USER_ID_GENERATION_MODE_CODEPOINT_INDEX);
     kbts_ShapeEnd(context);
 
     // Layout runs naively left to right.
     kbts_run Run = {};
     int CursorX = 0, CursorY = 0;
     u64 run_idx = 0;
-    while (kbts_ShapeRun(context, &Run))
-    {
+    while (kbts_ShapeRun(context, &Run)) {
         log_info("Run idx = %" PRIu64, run_idx);
         u64 glyph_idx = 0;
         kbts_glyph *Glyph = nullptr;
-        while (kbts_GlyphIteratorNext(&Run.Glyphs, &Glyph))
-        {
+        while (kbts_GlyphIteratorNext(&Run.Glyphs, &Glyph)) {
             int GlyphX = CursorX + Glyph->OffsetX;
             int GlyphY = CursorY + Glyph->OffsetY;
 
             // DisplayGlyph(Glyph->Id, GlyphX, GlyphY);
-            log_info("Display glyph: idx = %" PRIu64 ", id = %d, x = %d, y = %d\n", glyph_idx, Glyph->Id, GlyphX, GlyphY);
+            log_info("Display glyph: idx = %" PRIu64 ", id = %d, x = %d, y = %d\n", glyph_idx,
+                     Glyph->Id, GlyphX, GlyphY);
 
             CursorX += Glyph->AdvanceX;
             CursorY += Glyph->AdvanceY;
@@ -1210,11 +1216,10 @@ void shape_test() {
 // MARK:Renderer
 //
 
-u64 sdl_surface_size(SDL_Surface *surface) {
-    return (u64)surface->h * (u64)surface->pitch;
-}
+u64 sdl_surface_size(SDL_Surface *surface) { return (u64)surface->h * (u64)surface->pitch; }
 
-Atlas *re_pack_and_upload_textures(Arena *arena, SDL_GPUDevice *device, SDL_GPUCopyPass *pass, Arr<SDL_Surface *> textures, PxSize atlas_size) {
+Atlas *re_pack_and_upload_textures(Arena *arena, SDL_GPUDevice *device, SDL_GPUCopyPass *pass,
+                                   Arr<SDL_Surface *> textures, PxSize atlas_size) {
     log_assert(textures.count > 0);
     SDL_PixelFormat sdl_pixel_format = textures[0]->format;
     for (u64 i = 1; i < textures.count; i++) {
@@ -1230,7 +1235,8 @@ Atlas *re_pack_and_upload_textures(Arena *arena, SDL_GPUDevice *device, SDL_GPUC
 
     stbrp_context packer_ctx = {};
     Arr<stbrp_node> packer_nodes = arena_push_arr<stbrp_node>(scratch, textures.count * 2 /* ?? */);
-    stbrp_init_target(&packer_ctx, (i32)atlas_size.w, (i32)atlas_size.h, packer_nodes.ptr, (i32)packer_nodes.count);
+    stbrp_init_target(&packer_ctx, (i32)atlas_size.w, (i32)atlas_size.h, packer_nodes.ptr,
+                      (i32)packer_nodes.count);
     stbrp_setup_allow_out_of_mem(&packer_ctx, true);
 
     Arr<stbrp_rect> rects = arena_push_arr<stbrp_rect>(scratch, textures.count);
@@ -1251,7 +1257,8 @@ Atlas *re_pack_and_upload_textures(Arena *arena, SDL_GPUDevice *device, SDL_GPUC
         .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
         .size = (u32)(atlas_size.w * atlas_size.h * 4),
     };
-    SDL_GPUTransferBuffer *transfer_buffer = SDL_CreateGPUTransferBuffer(device, &transfer_buffer_info);
+    SDL_GPUTransferBuffer *transfer_buffer =
+        SDL_CreateGPUTransferBuffer(device, &transfer_buffer_info);
 
     void *buf = SDL_MapGPUTransferBuffer(device, transfer_buffer, false);
     u64 offset = 0;
@@ -1387,15 +1394,16 @@ void re_init_pipeline(ErrorContext *err, App *app) {
 
     SDL_GPUColorTargetDescription color_target_descs[] = {{
         .format = SDL_GetGPUSwapchainTextureFormat(app->device, app->window),
-        .blend_state = {
-            .src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA,
-            .dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
-            .color_blend_op = SDL_GPU_BLENDOP_ADD,
-            .src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA,
-            .dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
-            .alpha_blend_op = SDL_GPU_BLENDOP_ADD,
-            .enable_blend = true,
-        },
+        .blend_state =
+            {
+                .src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA,
+                .dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+                .color_blend_op = SDL_GPU_BLENDOP_ADD,
+                .src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA,
+                .dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+                .alpha_blend_op = SDL_GPU_BLENDOP_ADD,
+                .enable_blend = true,
+            },
     }};
 
     SDL_GPUVertexBufferDescription vertex_buffer_descs[] = {{
@@ -1411,28 +1419,31 @@ void re_init_pipeline(ErrorContext *err, App *app) {
             .buffer_slot = 0,
             .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
             .offset = 0,
-        }, {
+        },
+        {
             .location = 1,
             .buffer_slot = 0,
             .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2,
             .offset = sizeof(float) * 3,
-        }
+        },
     };
 
     SDL_GPUGraphicsPipelineCreateInfo pipeline_create_info = {
         .vertex_shader = vert_shader,
         .fragment_shader = frag_shader,
-        .vertex_input_state = {
-            .vertex_buffer_descriptions = vertex_buffer_descs,
-            .num_vertex_buffers = c_arr_count(vertex_buffer_descs),
-            .vertex_attributes = vertex_attrs,
-            .num_vertex_attributes = c_arr_count(vertex_attrs),
-        },
+        .vertex_input_state =
+            {
+                .vertex_buffer_descriptions = vertex_buffer_descs,
+                .num_vertex_buffers = c_arr_count(vertex_buffer_descs),
+                .vertex_attributes = vertex_attrs,
+                .num_vertex_attributes = c_arr_count(vertex_attrs),
+            },
         .primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
-        .target_info = {
-            .color_target_descriptions = color_target_descs,
-            .num_color_targets = c_arr_count(color_target_descs),
-        },
+        .target_info =
+            {
+                .color_target_descriptions = color_target_descs,
+                .num_color_targets = c_arr_count(color_target_descs),
+            },
     };
     app->pipeline = try_sdl(err, SDL_CreateGPUGraphicsPipeline(app->device, &pipeline_create_info));
 }
@@ -1456,9 +1467,9 @@ void re_init_vertex_buffers(ErrorContext *err, App *app) {
 
     SDL_GPUTransferBufferCreateInfo transfer_buffer_info = {
         .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-        .size = (sizeof(PosTexVertex) * MAX_VERTEX_COUNT) + (sizeof(u16) * MAX_INDEX_COUNT)
-    };
-    app->vertex_transfer_buffer = try_sdl(err, SDL_CreateGPUTransferBuffer(app->device, &transfer_buffer_info));
+        .size = (sizeof(PosTexVertex) * MAX_VERTEX_COUNT) + (sizeof(u16) * MAX_INDEX_COUNT)};
+    app->vertex_transfer_buffer =
+        try_sdl(err, SDL_CreateGPUTransferBuffer(app->device, &transfer_buffer_info));
 }
 
 void re_upload_vertex_data(App *app, SDL_GPUCommandBuffer *command_buffer, RenderMesh *mesh) {
@@ -1468,11 +1479,8 @@ void re_upload_vertex_data(App *app, SDL_GPUCommandBuffer *command_buffer, Rende
     u64 vertex_data_size = mesh->vertices.count * sizeof(mesh->vertices[0]);
     u64 index_data_size = mesh->indices.count * sizeof(mesh->indices[0]);
 
-    void *transfer_data = (PosTexVertex *)SDL_MapGPUTransferBuffer(
-        app->device,
-        app->vertex_transfer_buffer,
-        false
-    );
+    void *transfer_data =
+        (PosTexVertex *)SDL_MapGPUTransferBuffer(app->device, app->vertex_transfer_buffer, false);
 
     SDL_memcpy(transfer_data, mesh->vertices.ptr, vertex_data_size);
     SDL_memcpy((u8 *)transfer_data + vertex_data_size, mesh->indices.ptr, index_data_size);
@@ -1482,10 +1490,8 @@ void re_upload_vertex_data(App *app, SDL_GPUCommandBuffer *command_buffer, Rende
     SDL_GPUCopyPass *pass = SDL_BeginGPUCopyPass(command_buffer);
 
     // Upload vertex data
-    SDL_GPUTransferBufferLocation vert_src = {
-        .transfer_buffer = app->vertex_transfer_buffer,
-        .offset = 0
-    };
+    SDL_GPUTransferBufferLocation vert_src = {.transfer_buffer = app->vertex_transfer_buffer,
+                                              .offset = 0};
     SDL_GPUBufferRegion vert_dest = {
         .buffer = app->vertex_buffer,
         .offset = 0,
@@ -1513,15 +1519,16 @@ void re_init_text(ErrorContext *err, App *app);
 void re_init(ErrorContext *err, App *app) {
     err_scope(err, "Initialize renderer");
 
-    app->device = try_sdl(err, SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_MSL, RENDERER_DEBUG_MODE, nullptr));
+    app->device =
+        try_sdl(err, SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_MSL, RENDERER_DEBUG_MODE, nullptr));
     try_sdl(err, SDL_ClaimWindowForGPUDevice(app->device, app->window));
     re_init_pipeline(err, app);
     re_init_vertex_buffers(err, app);
 
     SDL_GPUCommandBuffer *command_buffer = try_sdl(err, SDL_AcquireGPUCommandBuffer(app->device));
     SDL_GPUCopyPass *pass = try_sdl(err, SDL_BeginGPUCopyPass(command_buffer));
-    app->atlas = re_pack_and_upload_textures(
-            app->session_arena, app->device, pass, app->session->file.icons, { .w = 1024, .h = 1024 });
+    app->atlas = re_pack_and_upload_textures(app->session_arena, app->device, pass,
+                                             app->session->file.icons, {.w = 1024, .h = 1024});
     SDL_EndGPUCopyPass(pass);
     try_sdl(err, SDL_SubmitGPUCommandBuffer(command_buffer));
 
@@ -1540,13 +1547,13 @@ void re_render(App *app) {
     u32 width = 0;
     u32 height = 0;
     SDL_WaitAndAcquireGPUSwapchainTexture(command_buffer, app->window, &swapchain, &width, &height);
-    PxSize window_size = { .w = (u16)width, .h = (u16)height };
+    PxSize window_size = {.w = (u16)width, .h = (u16)height};
 
     Box *box = prerender(frame_arena, app, window_size);
     RenderMesh mesh = {};
     vec_prealloc(frame_arena, &mesh.vertices, MAX_VERTEX_COUNT);
     vec_prealloc(frame_arena, &mesh.indices, MAX_INDEX_COUNT);
-    re_build_boxes_mesh(frame_arena, window_size, box, { .x = 0, .y = 0 }, app->atlas, &mesh);
+    re_build_boxes_mesh(frame_arena, window_size, box, {.x = 0, .y = 0}, app->atlas, &mesh);
     for (u64 i = 0; i < mesh.vertices.count; i++) {
         mesh.vertices[i].y -= app->scroll * 0.1f;
     }
@@ -1554,17 +1561,14 @@ void re_render(App *app) {
 
     SDL_GPUColorTargetInfo color_target_infos[] = {{
         .texture = swapchain,
-        .clear_color = { 0.f, 0.f, 0.f, 1.f },
+        .clear_color = {0.f, 0.f, 0.f, 1.f},
         .load_op = SDL_GPU_LOADOP_CLEAR,
         .store_op = SDL_GPU_STOREOP_STORE,
     }};
-    SDL_GPURenderPass *pass = SDL_BeginGPURenderPass(
-            command_buffer,
-            color_target_infos,
-            c_arr_count(color_target_infos),
-            nullptr);
-    SDL_GPUBufferBinding vertex_buffer_bindings[] = {{ .buffer = app->vertex_buffer, .offset = 0 }};
-    SDL_GPUBufferBinding index_buffer_binding = { .buffer = app->index_buffer, .offset = 0 };
+    SDL_GPURenderPass *pass = SDL_BeginGPURenderPass(command_buffer, color_target_infos,
+                                                     c_arr_count(color_target_infos), nullptr);
+    SDL_GPUBufferBinding vertex_buffer_bindings[] = {{.buffer = app->vertex_buffer, .offset = 0}};
+    SDL_GPUBufferBinding index_buffer_binding = {.buffer = app->index_buffer, .offset = 0};
     SDL_GPUTextureSamplerBinding tex_sampler_bindings[] = {{
         .texture = app->atlas->texture,
         .sampler = app->atlas->sampler,
@@ -1593,26 +1597,32 @@ void re_init_text(ErrorContext *err, App *app) {
     Arena *scratch = arena_acquire();
     defer(arena_release(scratch));
 
-    assert_ft(FT_Init_FreeType(&app->freetype));
+    try_ft(err, FT_Init_FreeType(&app->freetype));
 
     Arr<u8> font_contents = fs_load_file(err, scratch, S("data/Roboto-Medium.ttf"));
     if (err_occurred(err)) return;
 
-    try_ft(err, FT_New_Memory_Face(app->freetype,
-                font_contents.ptr,
-                (long)font_contents.count,
-                0, &app->font_face));
-    defer(FT_Done_Face(app->font_face));
+    FT_Face face = {};
+    try_ft(err, FT_New_Memory_Face(app->freetype, font_contents.ptr, (long)font_contents.count, 0,
+                                   &face));
+    defer(FT_Done_Face(face));
 
-    try_ft(err, FT_Set_Pixel_Sizes(app->font_face, 0, 128));
+    try_ft(err, FT_Set_Pixel_Sizes(face, 0, 128));
 
-    for (u32 i = 0; i < 1000; i++) {
-        try_ft(err, FT_Load_Glyph(app->font_face, i, 0));
-        if (app->font_face->glyph->format == FT_GLYPH_FORMAT_BITMAP) {
+    Arr<SDL_Surface> surfaces = {};
+
+    for (u32 glyph_idx = 0; glyph_idx < min(face->num_glyphs, 100); glyph_idx++) {
+        try_ft(err, FT_Load_Glyph(face, glyph_idx, 0));
+        if (face->glyph->format == FT_GLYPH_FORMAT_BITMAP) {
             bail(err, "TODO: handle bitmap glyph");
         }
-        try_ft(err, FT_Render_Glyph(app->font_face->glyph, FT_RENDER_MODE_NORMAL));
+        try_ft(err, FT_Render_Glyph(face->glyph, FT_RENDER_MODE_NORMAL));
+
+        SDL_Surface *surface = vec_push_zero(scratch, surfaces);
+        surface->flags = SDL_SURFACE_PREALLOCATED;
     }
+
+    face->glyph.bitmap.buffer
 
     // FT_Vector advance = app->font_face->glyph->advance;
     // u32 width = app->font_face->glyph->bitmap.width;
