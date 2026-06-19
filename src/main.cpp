@@ -1222,21 +1222,22 @@ struct TextureBuffer {
     SDL_GPUTextureFormat format;
     Arr<u8> buffer;
     PxSize dims;
-    u16 stride;  // Could probably compute from the texture format as well
 };
 
 u64 sdl_surface_size(SDL_Surface *surface) { return (u64)surface->h * (u64)surface->pitch; }
 
 Atlas *re_pack_and_upload_textures(Arena *arena, SDL_GPUDevice *device, SDL_GPUCopyPass *pass,
                                    Arr<TextureBuffer> textures, PxSize atlas_size) {
-    log_assert(textures.count > 0);
-    SDL_GPUTextureFormat format = textures[0].format;
-    for (u64 i = 1; i < textures.count; i++) {
-        log_assert(format == textures[i].format);
-    }
-
     Arena *scratch = arena_acquire();
     defer(arena_release(scratch));
+
+    // Texture formats must be equal
+    log_assert(textures.count > 0);
+    for (u64 i = 0; i < textures.count; i++) {
+        log_assert(textures[i].format == textures[0].format);
+        log_assert(textures[i].dims.w > 0);
+        log_assert(textures[i].dims.h > 0);
+    }
 
     //
     // Compute atlas packing
@@ -1262,9 +1263,10 @@ Atlas *re_pack_and_upload_textures(Arena *arena, SDL_GPUDevice *device, SDL_GPUC
     //
 
     // TODO reuse transfer buffer and/or destroy?
+    u32 texel_size = SDL_GPUTextureFormatTexelBlockSize(textures[0].format);
     SDL_GPUTransferBufferCreateInfo transfer_buffer_info = {
         .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-        .size = (u32)(atlas_size.w * atlas_size.h * 4),
+        .size = atlas_size.w * atlas_size.h * texel_size,
     };
     SDL_GPUTransferBuffer *transfer_buffer =
         SDL_CreateGPUTransferBuffer(device, &transfer_buffer_info);
@@ -1287,7 +1289,7 @@ Atlas *re_pack_and_upload_textures(Arena *arena, SDL_GPUDevice *device, SDL_GPUC
 
     SDL_GPUTextureCreateInfo gpu_texture_info = {
         .type = SDL_GPU_TEXTURETYPE_2D,
-        .format = format,
+        .format = textures[0].format,
         .usage = SDL_GPU_TEXTUREUSAGE_SAMPLER,
         .width = (u32)atlas_size.w,
         .height = (u32)atlas_size.h,
@@ -1536,7 +1538,6 @@ void re_init_icons(ErrorContext *err, App *app, SDL_GPUCopyPass *pass) {
         icon_textures[i].buffer = Arr<u8>{.ptr = (u8 *)icon_surfaces[i]->pixels,
                                           .count = sdl_surface_size(icon_surfaces[i])};
         icon_textures[i].dims = {.w = (u16)icon_surfaces[i]->w, .h = (u16)icon_surfaces[i]->h};
-        icon_textures[i].stride = (u16)icon_surfaces[i]->pitch;
     }
     app->icon_atlas = re_pack_and_upload_textures(app->session_arena, app->device, pass,
                                                   icon_textures, {.w = 1024, .h = 1024});
@@ -1579,7 +1580,7 @@ void re_render(App *app) {
     RenderMesh mesh = {};
     vec_prealloc(frame_arena, &mesh.vertices, MAX_VERTEX_COUNT);
     vec_prealloc(frame_arena, &mesh.indices, MAX_INDEX_COUNT);
-    re_build_boxes_mesh(frame_arena, window_size, box, {.x = 0, .y = 0}, app->icon_atlas, &mesh);
+    re_build_boxes_mesh(frame_arena, window_size, box, {.x = 0, .y = 0}, app->glyph_atlas, &mesh);
     for (u64 i = 0; i < mesh.vertices.count; i++) {
         mesh.vertices[i].y -= app->scroll * 0.1f;
     }
@@ -1596,8 +1597,8 @@ void re_render(App *app) {
     SDL_GPUBufferBinding vertex_buffer_bindings[] = {{.buffer = app->vertex_buffer, .offset = 0}};
     SDL_GPUBufferBinding index_buffer_binding = {.buffer = app->index_buffer, .offset = 0};
     SDL_GPUTextureSamplerBinding tex_sampler_bindings[] = {{
-        .texture = app->icon_atlas->texture,
-        .sampler = app->icon_atlas->sampler,
+        .texture = app->glyph_atlas->texture,
+        .sampler = app->glyph_atlas->sampler,
     }};
 
     SDL_BindGPUGraphicsPipeline(pass, app->pipeline);
@@ -1635,23 +1636,24 @@ void re_init_text(ErrorContext *err, App *app, SDL_GPUCopyPass *pass) {
 
     try_ft(err, FT_Set_Pixel_Sizes(face, 0, 128));
 
-    u64 glyph_count = min((u64)face->num_glyphs, (u64)100);
-    Arr<TextureBuffer> textures = arena_push_arr<TextureBuffer>(scratch, glyph_count);
+    u64 glyph_start = 5;
+    u64 glyph_end = 300;
+    Arr<TextureBuffer> textures = arena_push_arr<TextureBuffer>(scratch, glyph_end - glyph_start);
 
-    for (u32 glyph_idx = 0; glyph_idx < glyph_count; glyph_idx++) {
-        try_ft(err, FT_Load_Glyph(face, glyph_idx, 0));
+    for (u64 glyph_idx = glyph_start; glyph_idx < glyph_end; glyph_idx++) {
+        u64 texture_idx = glyph_idx - glyph_start;
+        try_ft(err, FT_Load_Glyph(face, (u32)glyph_idx, 0));
         // if (face->glyph->format == FT_GLYPH_FORMAT_BITMAP) {
         //     bail(err, "TODO: handle bitmap glyph");
         // }
         try_ft(err, FT_Render_Glyph(face->glyph, FT_RENDER_MODE_NORMAL));
 
         FT_Bitmap bitmap = face->glyph->bitmap;
-        TextureBuffer *texture = &textures[glyph_idx];
+        TextureBuffer *texture = &textures[texture_idx];
         Arr<u8> tmp_buffer = {.ptr = bitmap.buffer, .count = bitmap.width * bitmap.rows};
         texture->format = SDL_GPU_TEXTUREFORMAT_R8_UNORM;
         texture->buffer = arr_clone(scratch, tmp_buffer);
         texture->dims = {.w = (u16)bitmap.width, .h = (u16)bitmap.rows};
-        texture->stride = (u16)bitmap.pitch;
     }
 
     PxSize font_atlas_size = {.w = 2048, .h = 2048};
