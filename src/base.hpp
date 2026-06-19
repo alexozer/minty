@@ -391,7 +391,17 @@ bool err_occurred(ErrorContext *ctx);
         } \
     }, (err)->ctx_stack.count)
 
-#define err_report(ctx, format, ...) if (vec_is_empty(&((ctx)->ctx_stack))) err_push_ctx((ctx), (format) __VA_OPT__(,) __VA_ARGS__)
+#define bail(ctx, format, ...) \
+    if (vec_is_empty(&((ctx)->ctx_stack))) { \
+        err_push_ctx((ctx), (format) __VA_OPT__(,) __VA_ARGS__); \
+    } \
+    return;
+
+#define bail_v(ctx, ret, format, ...) \
+    if (vec_is_empty(&((ctx)->ctx_stack))) { \
+        err_push_ctx((ctx), (format) __VA_OPT__(,) __VA_ARGS__); \
+    } \
+    return ret;
 
 //
 // Paths
@@ -550,23 +560,34 @@ void thread_init(int argc, char **argv);
 // TODO: consider arena-based resource management instead of defer() everywhere
 
 #define try_sdl_ret_void(err, func_call) ({ \
-    decltype(func_call) _ret = (func_call); \
-    if (!_ret) { \
-        err_report((err), "%s", SDL_GetError()); \
-        return; \
+    decltype(func_call) _child_ret = (func_call); \
+    if (!_child_ret) { \
+        bail((err), "%s", SDL_GetError()); \
     } \
-    _ret; \
+    _child_ret; \
 })
 
-#define try_sdl_ret_value(err, ret, func_call) ({ \
-    decltype(func_call) _ret = (func_call); \
-    if (!_ret) { \
-        err_report((err), "%s", SDL_GetError()); \
-        return (ret); \
+#define try_sdl_ret_value(err, parent_ret, func_call) ({ \
+    decltype(func_call) _child_ret = (func_call); \
+    if (!_child_ret) { \
+        bail_v((err), parent_ret, "%s", SDL_GetError()); \
     } \
-    _ret; \
+    _child_ret; \
 })
 
 #define EXPAND(x)                           x
 #define GET_MACRO(_1, _2, _3, name, ...)    name
 #define try_sdl(...)    EXPAND( GET_MACRO(__VA_ARGS__, try_sdl_ret_value, try_sdl_ret_void)(__VA_ARGS__) )
+
+#define assert_ft(func_call) ({ \
+    FT_Error _err = (func_call); \
+    if (_err != FT_Err_Ok) { \
+        log_fatal("FreeType assertion failed: %s", FT_Error_String(_err)); \
+    } \
+})
+
+//
+// FS
+//
+
+Arr<u8> fs_load_file(ErrorContext *err, Arena *arena, Str path);

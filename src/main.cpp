@@ -12,6 +12,9 @@
 #include <SDL3/SDL_gpu.h>
 #include <SDL3/SDL_pixels.h>
 
+#include <ft2build.h>
+#include FT_FREETYPE_H
+
 extern "C" {
 #include <xao.h>
 }
@@ -374,8 +377,7 @@ Arr<u8> decode_icon_base64_to_png(Arena *arena, ErrorContext *err, Str icon_base
     Arr<u8> icon_bin = base64_decode(arena, err, icon_base64);
     Opt<u64> png_idx = str_find(icon_bin, A(PNG_HEADER));
     if (!png_idx.present) {
-        err_report(err, "PNG image not detected");
-        return {};
+        bail_v(err, {}, "PNG image not detected");
     }
 
     return arr_slice(icon_bin, png_idx.opt, icon_bin.count);
@@ -393,8 +395,7 @@ Arr<SegmentDef> parse_livesplit_segments(Arena *arena, ErrorContext *err, xao_Re
             if (eq(attr_tag, "Name")) {
                 seg->name = str_clone(arena, xml_inner(r, attr_tag));
                 if (str_is_empty(seg->name)) {
-                    err_report(err, "Segment %" PRIu64 " has empty name", segments.count + 1);
-                    return {};
+                    bail_v(err, {}, "Segment %" PRIu64 " has empty name", segments.count + 1);
                 }
             } else if (eq(attr_tag, "Icon")) {
                 err_scope(err, "Decode icon for segment '%.*s'", SF(seg->name));
@@ -432,8 +433,7 @@ void parse_livesplit_lss(Arena *arena, ErrorContext *err, FileDef *file, Str xml
     err_scope(err, "Parse LiveSplit LSS");
 
     if (!str_is_valid_utf8(xml)) {
-        err_report(err, "Invalid UTF-8");
-        return;
+        bail(err, "Invalid UTF-8");
     }
 
     xao_Reader r = xao_reader((char *)xml.ptr, xml.count);
@@ -459,24 +459,20 @@ void parse_livesplit_lss(Arena *arena, ErrorContext *err, FileDef *file, Str xml
     }
 
     if (r.error != nullptr) {
-        err_report(err, "Failed to parse LSS XML: %s", r.error);
-        return;
+        bail(err, "Failed to parse LSS XML: %s", r.error);
     }
 
     // Basic validation
     if (arr_is_empty(file->segments)) {
-        err_report(err, "No segments found");
-        return;
+        bail(err, "No segments found");
     }
     for (u64 i = 0; i < file->segments.count; i++) {
         if (str_is_empty(file->segments[i].name)) {
-            err_report(err, "Segment %" PRIu64 " has no name", i + 1);
-            return;
+            bail(err, "Segment %" PRIu64 " has no name", i + 1);
         }
     }
     if (str_is_empty(file->game_name)) {
-        err_report(err, "Empty game name");
-        return;
+        bail(err, "Empty game name");
     }
 }
 
@@ -548,6 +544,10 @@ struct App {
     SDL_GPUBuffer *vertex_buffer;
     SDL_GPUBuffer *index_buffer;
     Atlas *atlas;
+
+    // Text stuff
+    FT_Library freetype;
+    FT_Face font_face;
 };
 
 SDL_HitTestResult hittest_callback(SDL_Window* window, const SDL_Point *point, void *data) {
@@ -1508,6 +1508,8 @@ void re_upload_vertex_data(App *app, SDL_GPUCommandBuffer *command_buffer, Rende
     SDL_EndGPUCopyPass(pass);
 }
 
+void re_init_text(ErrorContext *err, App *app);
+
 void re_init(ErrorContext *err, App *app) {
     err_scope(err, "Initialize renderer");
 
@@ -1522,6 +1524,8 @@ void re_init(ErrorContext *err, App *app) {
             app->session_arena, app->device, pass, app->session->file.icons, { .w = 1024, .h = 1024 });
     SDL_EndGPUCopyPass(pass);
     try_sdl(err, SDL_SubmitGPUCommandBuffer(command_buffer));
+
+    re_init_text(err, app);
 }
 
 void re_render(App *app) {
@@ -1577,4 +1581,41 @@ void re_render(App *app) {
     SDL_EndGPURenderPass(pass);
 
     SDL_SubmitGPUCommandBuffer(command_buffer);
+}
+
+//
+// MARK:Text rendering
+//
+
+void re_init_text(ErrorContext *err, App *app) {
+    err_scope(err, "Initialize text rendering");
+
+    Arena *scratch = arena_acquire();
+    defer(arena_release(scratch));
+
+    assert_ft(FT_Init_FreeType(&app->freetype));
+
+    Arr<u8> font_contents = fs_load_file(err, scratch, S("data/Roboto-Medium.ttf"));
+
+    assert_ft(FT_New_Memory_Face(app->freetype,
+                font_contents.ptr,
+                (long)font_contents.count,
+                0, &app->font_face));
+    defer(FT_Done_Face(app->font_face));
+    assert_ft(FT_Set_Pixel_Sizes(app->font_face, 0, 128));
+
+    u32 glyph_idx = 0;
+    assert_ft(FT_Load_Glyph(app->font_face, glyph_idx, 0));
+    if (app->font_face->glyph->format == FT_GLYPH_FORMAT_BITMAP) {
+        log_fatal("TODO: handle bitmap glyph");
+    }
+    assert_ft(FT_Render_Glyph(app->font_face->glyph, FT_RENDER_MODE_NORMAL));
+
+    // FT_Vector advance = app->font_face->glyph->advance;
+    // u32 width = app->font_face->glyph->bitmap.width;
+    // u32 height = app->font_face->glyph->bitmap.rows;
+
+    // Pull glyphs into `SDL_Surface`s
+
+    // SDL_Surface *surface
 }

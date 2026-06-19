@@ -3,6 +3,8 @@
 #include <simdutf_c.h>
 #include <SDL3/SDL_timer.h>
 
+#include "SDL3/SDL_error.h"
+#include "SDL3/SDL_iostream.h"
 #include "platform.hpp"
 
 // TODO sane arena sizing/lifetime scheme
@@ -264,20 +266,17 @@ u64 parse_u64(ErrorContext *err, Str s) {
     err_scope(err, "Parse '%.*s' as u64", SF(s));
 
     if (str_is_empty(s)) {
-        err_report(err, "Empty string");
-        return {};
+        bail_v(err, 0, "Empty string");
     }
 
     u64 result = 0;
     for (u64 i = 0; i < s.count; i++) {
         if (s[i] < C('0') || s[i] > C('9')) {
-            err_report(err, "Non-numeric char: '%c'", s[i]);
-            return {};
+            bail_v(err, 0, "Non-numeric char: '%c'", s[i]);
         }
         u64 new_result = result * 10 + (s[i] - C('0'));
         if (new_result < result) {
-            err_report(err, "u64 overflow");
-            return {};
+            bail_v(err, 0, "u64 overflow");
         }
         result = new_result;
     }
@@ -297,8 +296,7 @@ Arr<u8> base64_decode(Arena *arena, ErrorContext *err, Str s) {
             SIMDUTF_BASE64_DEFAULT,
             SIMDUTF_LAST_CHUNK_STRICT);
     if (result.error != SIMDUTF_ERROR_SUCCESS) {
-        err_report(err, "Invalid base64. Error Code = %d", result.error);
-        return {};
+        bail_v(err, {}, "Invalid base64. Error Code = %d", result.error);
     }
     return arr_slice(out, 0, result.count);
 }
@@ -371,4 +369,36 @@ void err_log(ErrorContext *ctx) {
 
 bool err_occurred(ErrorContext *ctx) {
     return !vec_is_empty(&ctx->ctx_stack);
+}
+
+//
+// FS
+//
+
+Arr<u8> fs_load_file(ErrorContext *err, Arena *arena, Str path) {
+    err_scope(err, "Load file '%.*s'", SF(path));
+
+    Arena *scratch = arena_acquire();
+    defer(arena_release(scratch));
+
+    char *path_cstr = str_to_c(scratch, path);
+    SDL_IOStream *stream = try_sdl(err, {}, SDL_IOFromFile(path_cstr, "rb"));
+    defer(SDL_CloseIO(stream));
+
+    i64 size = SDL_GetIOSize(stream);
+    if (size < 0) {
+        bail_v(err, {}, "%s", SDL_GetError());
+    }
+
+    Arr<u8> contents = arena_push_arr<u8>(arena, (u64)size);
+    u64 offset = 0;
+    while (SDL_GetIOStatus(stream) == SDL_IO_STATUS_READY) {
+        offset += SDL_ReadIO(stream, (u8 *)contents.ptr + offset, (u64)size - offset);
+    }
+    if (SDL_GetIOStatus(stream) != SDL_IO_STATUS_EOF) {
+        bail_v(err, {}, "%s", SDL_GetError());
+    }
+    log_assert(offset == size);
+
+    return contents;
 }
