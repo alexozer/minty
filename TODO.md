@@ -39,6 +39,11 @@ Clearer error handling strategy
     I can't think of good invariants for "just let garbage data propagate through the system and
     only check for problems at key points where the outcome could matter"
     Maybe the issue is: trading control flow combinatorics for state combinatorics
+Font gradients
+    Simplest solution for now within my exp. level is:
+    Vertex colors picked out by fragment shader, interpolated in good colorspace on CPU
+Font outlines
+    SDFs would probably be helpful here...
 
 ## Low Prio
 
@@ -102,6 +107,9 @@ BUGS:
 Eventual goal is to make line editor, but that's kind of overwhelming to begin with.
 Baby steps.
 
-- Rip out SDL_ttf
-- Draw a single character bitmap rendered with freetype
-- Draw alphabet (not necessarily shaped)
+<!-- - Rip out SDL_ttf -->
+<!-- - Draw a single character bitmap rendered with freetype -->
+<!-- - Make it possible to create more than one atlas/rendering pipeline -->
+- Colored text
+- 1px atlas gap?
+- Alphabet (simple shaping, aligned to pixel boundaries)

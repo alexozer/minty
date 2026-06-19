@@ -522,9 +522,16 @@ struct Atlas {
     SDL_GPUTransferBuffer *transfer_buffer;
 };
 
-struct PosTexVertex {
+// TODO optimize vertex format?
+// Icons don't need color, but it's simpler to just have one format for now.
+struct Vertex {
     float x, y, z;
     float u, v;
+    u8 r, g, b, a;
+};
+
+struct Color {
+    u8 r, g, b, a;
 };
 
 struct App {
@@ -541,8 +548,8 @@ struct App {
 
     SDL_GPUDevice *device;
     SDL_GPUShader *vert_shader;
-    SDL_GPUShader *rgba_frag_shader;
-    SDL_GPUShader *alpha_frag_shader;
+    SDL_GPUShader *icon_frag_shader;
+    SDL_GPUShader *glyph_frag_shader;
     SDL_GPUGraphicsPipeline *icon_pipeline;
     SDL_GPUGraphicsPipeline *glyph_pipeline;
     SDL_GPUTransferBuffer *vertex_transfer_buffer;
@@ -581,7 +588,7 @@ void init_window(ErrorContext *err, App *app) {
     try_sdl(err, SDL_SetWindowHitTest(app->window, hittest_callback, nullptr));
 }
 
-Session *create_session(ErrorContext *err, Arena *arena, App *app, Str path) {
+Session *make_session(ErrorContext *err, Arena *arena, App *app, Str path) {
     Session *session = arena_push<Session>(arena);
     load_livesplit_lss(arena, err, path, &session->file);
     return session;
@@ -604,7 +611,7 @@ App *init_app(ErrorContext *err) {
     // init_text(err, app);
 
     app->session_arena = arena_acquire();
-    app->session = create_session(err, app->session_arena, app, path);
+    app->session = make_session(err, app->session_arena, app, path);
     if (err_occurred(err)) {
         return app;
     }
@@ -642,7 +649,7 @@ void try_load_new_session(App *app, Str lss_path) {
     defer(arena_release(err_base.arena));
 
     Arena *session_arena = arena_acquire();
-    Session *session = create_session(err, session_arena, app, lss_path);
+    Session *session = make_session(err, session_arena, app, lss_path);
     if (err_occurred(err)) {
         err_log(err);
         arena_release(session_arena);
@@ -1034,20 +1041,20 @@ Box *prerender(Arena *arena, App *app, PxSize window_size) {
     return timer;
 }
 
-struct RenderMesh {
-    Vec<PosTexVertex> vertices;
+struct Mesh {
+    Vec<Vertex> vertices;
     Vec<u16> indices;
 };
 
 // TODO for pixel-perfect rendering, need to understand rounding/UV mapping
 // w.r.t. pixel center better
-void window_to_ndc(PosTexVertex *vertex, PxSize window_size) {
+void window_to_ndc(Vertex *vertex, PxSize window_size) {
     vertex->x = (vertex->x / (f32)window_size.w) * 2.f - 1.f;
     vertex->y = -((vertex->y / (f32)window_size.h) * 2.f - 1.f);
 }
 
-void push_atlas_quad(Arena *arena, PxSize window_size, Atlas *atlas, RenderMesh *mesh, PxRect src,
-                     PxRect dst) {
+void push_atlas_quad(Arena *arena, PxSize window_size, Atlas *atlas, Mesh *mesh, PxRect src,
+                     PxRect dst, Color color) {
     Arr<u16> indices = vec_extend_zero(arena, &mesh->indices, 6);
     indices[0] = (u16)(mesh->vertices.count + 0);
     indices[1] = (u16)(mesh->vertices.count + 1);
@@ -1056,7 +1063,7 @@ void push_atlas_quad(Arena *arena, PxSize window_size, Atlas *atlas, RenderMesh 
     indices[4] = (u16)(mesh->vertices.count + 1);
     indices[5] = (u16)(mesh->vertices.count + 3);
 
-    Arr<PosTexVertex> vertices = vec_extend_zero(arena, &mesh->vertices, 4);
+    Arr<Vertex> vertices = vec_extend_zero(arena, &mesh->vertices, 4);
     // Top left
     vertices[0] = {
         .x = (f32)dst.x,
@@ -1064,6 +1071,10 @@ void push_atlas_quad(Arena *arena, PxSize window_size, Atlas *atlas, RenderMesh 
         .z = 0,
         .u = (f32)src.x / (f32)atlas->size.w,
         .v = (f32)src.y / (f32)atlas->size.h,
+        .r = color.r,
+        .g = color.g,
+        .b = color.b,
+        .a = color.a,
     };
     // Top right
     vertices[1] = {
@@ -1072,6 +1083,10 @@ void push_atlas_quad(Arena *arena, PxSize window_size, Atlas *atlas, RenderMesh 
         .z = 0,
         .u = (f32)(src.x + src.w) / (f32)atlas->size.w,
         .v = (f32)src.y / (f32)atlas->size.h,
+        .r = color.r,
+        .g = color.g,
+        .b = color.b,
+        .a = color.a,
     };
     // Bottom left
     vertices[2] = {
@@ -1080,6 +1095,10 @@ void push_atlas_quad(Arena *arena, PxSize window_size, Atlas *atlas, RenderMesh 
         .z = 0,
         .u = (f32)src.x / (f32)atlas->size.w,
         .v = (f32)(src.y + src.h) / (f32)atlas->size.h,
+        .r = color.r,
+        .g = color.g,
+        .b = color.b,
+        .a = color.a,
     };
     // Bottom right
     vertices[3] = {
@@ -1088,6 +1107,10 @@ void push_atlas_quad(Arena *arena, PxSize window_size, Atlas *atlas, RenderMesh 
         .z = 0,
         .u = (f32)(src.x + src.w) / (f32)atlas->size.w,
         .v = (f32)(src.y + src.h) / (f32)atlas->size.h,
+        .r = color.r,
+        .g = color.g,
+        .b = color.b,
+        .a = color.a,
     };
 
     // TODO less awkward way to do this?
@@ -1098,7 +1121,7 @@ void push_atlas_quad(Arena *arena, PxSize window_size, Atlas *atlas, RenderMesh 
 }
 
 void re_build_boxes_mesh(Arena *arena, PxSize window_size, Box *box, PxPos where, Atlas *atlas,
-                         RenderMesh *mesh) {
+                         Mesh *mesh) {
     switch (box->type) {
     case BoxType::Empty: {
         break;
@@ -1150,7 +1173,8 @@ void re_build_boxes_mesh(Arena *arena, PxSize window_size, Box *box, PxPos where
             dest.x = where.x + (u16)SDL_lroundf((f32)(box->bbox.opt.w - dest.w) / 2.f);
             dest.y = where.y;
         }
-        push_atlas_quad(arena, window_size, atlas, mesh, src, dest);
+        Color color = {.r = 255, .g = 255, .b = 255, .a = 255};
+        push_atlas_quad(arena, window_size, atlas, mesh, src, dest, color);
         break;
     }
     case BoxType::SolidColor: {
@@ -1227,8 +1251,8 @@ struct TextureBuffer {
 
 u64 sdl_surface_size(SDL_Surface *surface) { return (u64)surface->h * (u64)surface->pitch; }
 
-Atlas *create_and_upload_atlas(Arena *arena, SDL_GPUDevice *device, SDL_GPUCopyPass *pass, Str name,
-                               Arr<TextureBuffer> textures, PxSize atlas_size) {
+Atlas *make_and_upload_atlas(Arena *arena, SDL_GPUDevice *device, SDL_GPUCopyPass *pass, Str name,
+                             Arr<TextureBuffer> textures, PxSize atlas_size) {
     Arena *scratch = arena_acquire();
     defer(arena_release(scratch));
 
@@ -1416,10 +1440,10 @@ SDL_GPUShader *load_shader(ErrorContext *err, SDL_GPUDevice *device, Str path, S
     return try_sdl(err, nullptr, SDL_CreateGPUShader(device, &info));
 }
 
-SDL_GPUGraphicsPipeline *re_init_pipeline(ErrorContext *err, SDL_GPUDevice *device,
-                                          SDL_Window *window, SDL_GPUShader *vert_shader,
-                                          SDL_GPUShader *frag_shader) {
-    err_scope(err, "Init pipeline");
+SDL_GPUGraphicsPipeline *make_render_pipeline(ErrorContext *err, SDL_GPUDevice *device,
+                                              SDL_Window *window, SDL_GPUShader *vert_shader,
+                                              SDL_GPUShader *frag_shader) {
+    err_scope(err, "Init render pipeline");
 
     SDL_GPUColorTargetDescription color_target_descs[] = {{
         .format = SDL_GetGPUSwapchainTextureFormat(device, window),
@@ -1437,7 +1461,7 @@ SDL_GPUGraphicsPipeline *re_init_pipeline(ErrorContext *err, SDL_GPUDevice *devi
 
     SDL_GPUVertexBufferDescription vertex_buffer_descs[] = {{
         .slot = 0,
-        .pitch = sizeof(PosTexVertex),
+        .pitch = sizeof(Vertex),
         .input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX,
         .instance_step_rate = 0,
     }};
@@ -1453,7 +1477,13 @@ SDL_GPUGraphicsPipeline *re_init_pipeline(ErrorContext *err, SDL_GPUDevice *devi
             .location = 1,
             .buffer_slot = 0,
             .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2,
-            .offset = sizeof(float) * 3,
+            .offset = sizeof(f32) * 3,
+        },
+        {
+            .location = 2,
+            .buffer_slot = 0,
+            .format = SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4,
+            .offset = sizeof(f32) * 5,
         },
     };
 
@@ -1482,7 +1512,7 @@ void re_init_vertex_buffers(ErrorContext *err, App *app) {
 
     SDL_GPUBufferCreateInfo vert_info = {
         .usage = SDL_GPU_BUFFERUSAGE_VERTEX,
-        .size = sizeof(PosTexVertex) * MAX_VERTEX_COUNT,
+        .size = sizeof(Vertex) * MAX_VERTEX_COUNT,
     };
     app->vertex_buffer = try_sdl(err, SDL_CreateGPUBuffer(app->device, &vert_info));
     SDL_SetGPUBufferName(app->device, app->vertex_buffer, "THE vertex buffer");
@@ -1496,12 +1526,12 @@ void re_init_vertex_buffers(ErrorContext *err, App *app) {
 
     SDL_GPUTransferBufferCreateInfo transfer_buffer_info = {
         .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-        .size = (sizeof(PosTexVertex) * MAX_VERTEX_COUNT) + (sizeof(u16) * MAX_INDEX_COUNT)};
+        .size = (sizeof(Vertex) * MAX_VERTEX_COUNT) + (sizeof(u16) * MAX_INDEX_COUNT)};
     app->vertex_transfer_buffer =
         try_sdl(err, SDL_CreateGPUTransferBuffer(app->device, &transfer_buffer_info));
 }
 
-void re_upload_vertex_data(App *app, SDL_GPUCommandBuffer *command_buffer, RenderMesh *mesh) {
+void re_upload_vertex_data(App *app, SDL_GPUCommandBuffer *command_buffer, Mesh *mesh) {
     log_assert(mesh->vertices.count <= MAX_VERTEX_COUNT);
     log_assert(mesh->indices.count <= MAX_INDEX_COUNT);
 
@@ -1509,7 +1539,7 @@ void re_upload_vertex_data(App *app, SDL_GPUCommandBuffer *command_buffer, Rende
     u64 index_data_size = mesh->indices.count * sizeof(mesh->indices[0]);
 
     void *transfer_data =
-        (PosTexVertex *)SDL_MapGPUTransferBuffer(app->device, app->vertex_transfer_buffer, false);
+        (Vertex *)SDL_MapGPUTransferBuffer(app->device, app->vertex_transfer_buffer, false);
 
     SDL_memcpy(transfer_data, mesh->vertices.ptr, vertex_data_size);
     SDL_memcpy((u8 *)transfer_data + vertex_data_size, mesh->indices.ptr, index_data_size);
@@ -1557,9 +1587,8 @@ void re_init_icons(ErrorContext *err, App *app, SDL_GPUCopyPass *pass) {
                                           .count = sdl_surface_size(icon_surfaces[i])};
         icon_textures[i].dims = {.w = (u16)icon_surfaces[i]->w, .h = (u16)icon_surfaces[i]->h};
     }
-    app->icon_atlas =
-        create_and_upload_atlas(app->session_arena, app->device, pass, S("Icon atlas"),
-                                icon_textures, {.w = 1024, .h = 1024});
+    app->icon_atlas = make_and_upload_atlas(app->session_arena, app->device, pass, S("Icon atlas"),
+                                            icon_textures, {.w = 1024, .h = 1024});
 }
 
 void re_init(ErrorContext *err, App *app) {
@@ -1570,16 +1599,16 @@ void re_init(ErrorContext *err, App *app) {
     try_sdl(err, SDL_ClaimWindowForGPUDevice(app->device, app->window));
 
     app->vert_shader = load_shader(err, app->device, S("src/shaders/vert.msl"), ShaderType::Vertex);
-    app->rgba_frag_shader =
-        load_shader(err, app->device, S("src/shaders/frag_rgba.msl"), ShaderType::Fragment);
-    app->alpha_frag_shader =
-        load_shader(err, app->device, S("src/shaders/frag_alpha.msl"), ShaderType::Fragment);
+    app->icon_frag_shader =
+        load_shader(err, app->device, S("src/shaders/frag_icon.msl"), ShaderType::Fragment);
+    app->glyph_frag_shader =
+        load_shader(err, app->device, S("src/shaders/frag_glyph.msl"), ShaderType::Fragment);
     if (err_occurred(err)) return;
 
-    app->icon_pipeline =
-        re_init_pipeline(err, app->device, app->window, app->vert_shader, app->rgba_frag_shader);
-    app->glyph_pipeline =
-        re_init_pipeline(err, app->device, app->window, app->vert_shader, app->alpha_frag_shader);
+    app->icon_pipeline = make_render_pipeline(err, app->device, app->window, app->vert_shader,
+                                              app->icon_frag_shader);
+    app->glyph_pipeline = make_render_pipeline(err, app->device, app->window, app->vert_shader,
+                                               app->glyph_frag_shader);
     if (err_occurred(err)) return;
 
     re_init_vertex_buffers(err, app);
@@ -1610,10 +1639,10 @@ void re_render(App *app) {
     PxSize window_size = {.w = (u16)width, .h = (u16)height};
 
     Box *box = prerender(frame_arena, app, window_size);
-    RenderMesh mesh = {};
+    Mesh mesh = {};
     vec_prealloc(frame_arena, &mesh.vertices, MAX_VERTEX_COUNT);
     vec_prealloc(frame_arena, &mesh.indices, MAX_INDEX_COUNT);
-    re_build_boxes_mesh(frame_arena, window_size, box, {.x = 0, .y = 0}, app->glyph_atlas, &mesh);
+    re_build_boxes_mesh(frame_arena, window_size, box, {.x = 0, .y = 0}, app->icon_atlas, &mesh);
     for (u64 i = 0; i < mesh.vertices.count; i++) {
         mesh.vertices[i].y -= app->scroll * 0.1f;
     }
@@ -1630,11 +1659,11 @@ void re_render(App *app) {
     SDL_GPUBufferBinding vertex_buffer_bindings[] = {{.buffer = app->vertex_buffer, .offset = 0}};
     SDL_GPUBufferBinding index_buffer_binding = {.buffer = app->index_buffer, .offset = 0};
     SDL_GPUTextureSamplerBinding tex_sampler_bindings[] = {{
-        .texture = app->glyph_atlas->texture,
-        .sampler = app->glyph_atlas->sampler,
+        .texture = app->icon_atlas->texture,
+        .sampler = app->icon_atlas->sampler,
     }};
 
-    SDL_BindGPUGraphicsPipeline(pass, app->glyph_pipeline);
+    SDL_BindGPUGraphicsPipeline(pass, app->icon_pipeline);
 
     // SDL_SetGPUViewport(pass);
     SDL_BindGPUVertexBuffers(pass, 0, vertex_buffer_bindings, c_arr_count(vertex_buffer_bindings));
@@ -1692,8 +1721,8 @@ void re_init_text(ErrorContext *err, App *app, SDL_GPUCopyPass *pass) {
     }
 
     PxSize font_atlas_size = {.w = 2048, .h = 2048};
-    app->glyph_atlas = create_and_upload_atlas(app->app_arena, app->device, pass, S("Glyph atlas"),
-                                               textures, font_atlas_size);
+    app->glyph_atlas = make_and_upload_atlas(app->app_arena, app->device, pass, S("Glyph atlas"),
+                                             textures, font_atlas_size);
 
     // FT_Vector advance = app->font_face->glyph->advance;
     // u32 width = app->font_face->glyph->bitmap.width;
