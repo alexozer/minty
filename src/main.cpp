@@ -518,6 +518,8 @@ struct Atlas {
     SDL_GPUTexture *texture;
     SDL_GPUSampler *sampler;
     Arr<PxRect> placements;
+    // Not sure if it's ever worth coalescing transfer buffers
+    SDL_GPUTransferBuffer *transfer_buffer;
 };
 
 struct PosTexVertex {
@@ -1225,8 +1227,8 @@ struct TextureBuffer {
 
 u64 sdl_surface_size(SDL_Surface *surface) { return (u64)surface->h * (u64)surface->pitch; }
 
-Atlas *re_pack_and_upload_textures(Arena *arena, SDL_GPUDevice *device, SDL_GPUCopyPass *pass,
-                                   Arr<TextureBuffer> textures, PxSize atlas_size) {
+Atlas *create_and_upload_atlas(Arena *arena, SDL_GPUDevice *device, SDL_GPUCopyPass *pass, Str name,
+                               Arr<TextureBuffer> textures, PxSize atlas_size) {
     Arena *scratch = arena_acquire();
     defer(arena_release(scratch));
 
@@ -1296,7 +1298,8 @@ Atlas *re_pack_and_upload_textures(Arena *arena, SDL_GPUDevice *device, SDL_GPUC
         .num_levels = 1,
     };
     SDL_GPUTexture *texture = SDL_CreateGPUTexture(device, &gpu_texture_info);
-    SDL_SetGPUTextureName(device, texture, "Segment icons");
+    char *name_cstr = str_to_c(scratch, name);
+    SDL_SetGPUTextureName(device, texture, name_cstr);
 
     offset = 0;
     for (u64 i = 0; i < textures.count; i++) {
@@ -1345,6 +1348,7 @@ Atlas *re_pack_and_upload_textures(Arena *arena, SDL_GPUDevice *device, SDL_GPUC
     atlas->size = atlas_size;
     atlas->texture = texture;
     atlas->sampler = sampler;
+    atlas->transfer_buffer = transfer_buffer;
     atlas->placements = arena_push_arr<PxRect>(arena, textures.count);
     for (u64 i = 0; i < textures.count; i++) {
         atlas->placements[i].x = (u16)rects[i].x;
@@ -1553,8 +1557,9 @@ void re_init_icons(ErrorContext *err, App *app, SDL_GPUCopyPass *pass) {
                                           .count = sdl_surface_size(icon_surfaces[i])};
         icon_textures[i].dims = {.w = (u16)icon_surfaces[i]->w, .h = (u16)icon_surfaces[i]->h};
     }
-    app->icon_atlas = re_pack_and_upload_textures(app->session_arena, app->device, pass,
-                                                  icon_textures, {.w = 1024, .h = 1024});
+    app->icon_atlas =
+        create_and_upload_atlas(app->session_arena, app->device, pass, S("Icon atlas"),
+                                icon_textures, {.w = 1024, .h = 1024});
 }
 
 void re_init(ErrorContext *err, App *app) {
@@ -1608,7 +1613,7 @@ void re_render(App *app) {
     RenderMesh mesh = {};
     vec_prealloc(frame_arena, &mesh.vertices, MAX_VERTEX_COUNT);
     vec_prealloc(frame_arena, &mesh.indices, MAX_INDEX_COUNT);
-    re_build_boxes_mesh(frame_arena, window_size, box, {.x = 0, .y = 0}, app->icon_atlas, &mesh);
+    re_build_boxes_mesh(frame_arena, window_size, box, {.x = 0, .y = 0}, app->glyph_atlas, &mesh);
     for (u64 i = 0; i < mesh.vertices.count; i++) {
         mesh.vertices[i].y -= app->scroll * 0.1f;
     }
@@ -1625,11 +1630,11 @@ void re_render(App *app) {
     SDL_GPUBufferBinding vertex_buffer_bindings[] = {{.buffer = app->vertex_buffer, .offset = 0}};
     SDL_GPUBufferBinding index_buffer_binding = {.buffer = app->index_buffer, .offset = 0};
     SDL_GPUTextureSamplerBinding tex_sampler_bindings[] = {{
-        .texture = app->icon_atlas->texture,
-        .sampler = app->icon_atlas->sampler,
+        .texture = app->glyph_atlas->texture,
+        .sampler = app->glyph_atlas->sampler,
     }};
 
-    SDL_BindGPUGraphicsPipeline(pass, app->icon_pipeline);
+    SDL_BindGPUGraphicsPipeline(pass, app->glyph_pipeline);
 
     // SDL_SetGPUViewport(pass);
     SDL_BindGPUVertexBuffers(pass, 0, vertex_buffer_bindings, c_arr_count(vertex_buffer_bindings));
@@ -1687,8 +1692,8 @@ void re_init_text(ErrorContext *err, App *app, SDL_GPUCopyPass *pass) {
     }
 
     PxSize font_atlas_size = {.w = 2048, .h = 2048};
-    app->glyph_atlas =
-        re_pack_and_upload_textures(app->app_arena, app->device, pass, textures, font_atlas_size);
+    app->glyph_atlas = create_and_upload_atlas(app->app_arena, app->device, pass, S("Glyph atlas"),
+                                               textures, font_atlas_size);
 
     // FT_Vector advance = app->font_face->glyph->advance;
     // u32 width = app->font_face->glyph->bitmap.width;
