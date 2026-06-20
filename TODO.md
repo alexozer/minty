@@ -114,3 +114,12 @@ Baby steps.
 - Colored text
 - 1px atlas gap?
 - Alphabet (simple shaping, aligned to pixel boundaries)
+
+BUGS:
+
+- Blurry fonts?
+    - It's almost like we're rendering at half resolution or something
+    - Or it could just be (lack of) gamma correction
+- Neovim LSP autosave failing on blank documents, lololol, just create autocmd on lspattach autocmd?
+- Wipe atlas textures in render pass before writing
+- Atlas 1px padding on both sides for glyphs

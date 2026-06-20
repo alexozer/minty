@@ -1,3 +1,4 @@
+#include "SDL3/SDL_properties.h"
 #include "base.hpp"
 
 #include <stdarg.h>
@@ -572,18 +573,10 @@ void init_window(ErrorContext *err, App *app) {
 
     try_sdl(err, SDL_SetAppMetadata("Blitter", "0.0.1", nullptr));
 
-    SDL_PropertiesID props = try_sdl(err, SDL_CreateProperties());
-    defer(SDL_DestroyProperties(props));
-
-    try_sdl(err, SDL_SetStringProperty(props, SDL_PROP_WINDOW_CREATE_TITLE_STRING, "Blitter"));
-    try_sdl(err, SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN, true));
-    try_sdl(err, SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_BORDERLESS_BOOLEAN, true));
-    try_sdl(err, SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER,
-                                       DEFAULT_WINDOW_SIZE.w));
-    try_sdl(err, SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER,
-                                       DEFAULT_WINDOW_SIZE.h));
-
-    app->window = try_sdl(err, SDL_CreateWindowWithProperties(props));
+    SDL_WindowFlags window_flags =
+        SDL_WINDOW_BORDERLESS | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
+    app->window = try_sdl(err, SDL_CreateWindow("Blitter", DEFAULT_WINDOW_SIZE.w,
+                                                DEFAULT_WINDOW_SIZE.h, window_flags));
     try_sdl(err, SDL_SetWindowMinimumSize(app->window, MIN_WINDOW_SIZE.w, MIN_WINDOW_SIZE.h));
     try_sdl(err, SDL_SetWindowHitTest(app->window, hittest_callback, nullptr));
 }
@@ -938,23 +931,23 @@ Box *align_box_center_vert(Arena *arena, Box *box, u16 height) {
     return parent;
 }
 
-Box *prerender_segment(Arena *arena, App *app, u16 width, u64 idx) {
-    u16 icon_inner = (u16)SDL_lroundf((app->scale + 1.f) * 36.f);
-    u16 icon_outer = (u16)SDL_lroundf((app->scale + 1.f) * 44.f);
+Box *prerender_segment(Arena *arena, Session *session, u16 width, u64 idx) {
+    constexpr u16 ICON_INNER_PX = 80;
+    constexpr u16 ICON_OUTER_PX = 100;
     Box *icon = nullptr;
 
     // TODO handle empty icons
-    icon = make_texture_box(arena, idx, {.w = icon_inner, .h = icon_inner});
+    icon = make_texture_box(arena, idx, {.w = ICON_INNER_PX, .h = ICON_INNER_PX});
     // } else {
     //     icon = make_empty_box(arena, ICON_INNER, ICON_INNER);
     // }
-    icon = align_box_center_horiz(arena, icon, icon_outer);
-    icon = align_box_center_vert(arena, icon, icon_outer);
+    icon = align_box_center_horiz(arena, icon, ICON_OUTER_PX);
+    icon = align_box_center_vert(arena, icon, ICON_OUTER_PX);
 
     SDL_FColor text_color = {.r = 1.f, .g = 1.f, .b = 1.f, .a = 1.f};
     Box *pad = make_empty_box(arena, {.w = 10, .h = 0});
-    Box *title = make_text_box(arena, app->session->file.segments[idx].name, text_color);
-    Box *title_centered = align_box_center_vert(arena, title, icon_outer);
+    Box *title = make_text_box(arena, session->file.segments[idx].name, text_color);
+    Box *title_centered = align_box_center_vert(arena, title, ICON_OUTER_PX);
 
     Box *row_front = arena_push<Box>(arena);
     row_front->type = BoxType::LeftToRightStack;
@@ -962,8 +955,7 @@ Box *prerender_segment(Arena *arena, App *app, u16 width, u64 idx) {
     vec_push(arena, &row_front->children, pad);
     vec_push(arena, &row_front->children, title_centered);
 
-    if (app->session->timer.mode == TimerMode::Running &&
-        idx == app->session->timer.live_splits.count) {
+    if (session->timer.mode == TimerMode::Running && idx == session->timer.live_splits.count) {
         PxSize row_front_bbox = compute_box_bbox(row_front);
         SDL_FColor bg_color = {.r = 0.f, .g = 0.3f, .b = 0.90f, .a = 1.f};
         PxSize row_back_size = {.w = width, .h = row_front_bbox.h};
@@ -980,11 +972,11 @@ Box *prerender_segment(Arena *arena, App *app, u16 width, u64 idx) {
     return row_front;
 }
 
-Box *prerender_contents(Arena *arena, App *app, PxSize size) {
+Box *prerender_contents(Arena *arena, Session *session, PxSize size) {
     SDL_FColor color = {.r = 1.f, .g = 1.f, .b = 1.f, .a = 1.f};
 
-    Box *game_name = make_text_box(arena, app->session->file.game_name, color);
-    Box *cat_name = make_text_box(arena, app->session->file.category_name, color);
+    Box *game_name = make_text_box(arena, session->file.game_name, color);
+    Box *cat_name = make_text_box(arena, session->file.category_name, color);
 
     Box *game_name_centered = align_box_center_horiz(arena, game_name, size.w);
     Box *cat_name_centered = align_box_center_horiz(arena, cat_name, size.w);
@@ -994,9 +986,9 @@ Box *prerender_contents(Arena *arena, App *app, PxSize size) {
     vec_push(arena, &top->children, game_name_centered);
     vec_push(arena, &top->children, cat_name_centered);
 
-    for (u64 i = 0; i < app->session->file.segments.count; i++) {
-        if (!str_starts_with(app->session->file.segments[i].name, S("-"))) {
-            Box *segment = prerender_segment(arena, app, size.w, i);
+    for (u64 i = 0; i < session->file.segments.count; i++) {
+        if (!str_starts_with(session->file.segments[i].name, S("-"))) {
+            Box *segment = prerender_segment(arena, session, size.w, i);
             vec_push(arena, &top->children, segment);
         }
     }
@@ -1004,7 +996,7 @@ Box *prerender_contents(Arena *arena, App *app, PxSize size) {
     Box *bottom = arena_push<Box>(arena);
     bottom->type = BoxType::TopToBottomStack;
 
-    Duration t = timer_get_elapsed(&app->session->timer, get_current_monotonic_time());
+    Duration t = timer_get_elapsed(&session->timer, get_current_monotonic_time());
     Str t_str = format_duration(arena, t, 2, false);
     Box *curr_time = make_text_box(arena, t_str, color);
     PxSize curr_time_bbox = compute_box_bbox(curr_time);
@@ -1027,13 +1019,13 @@ Box *prerender_contents(Arena *arena, App *app, PxSize size) {
     return root;
 }
 
-Box *prerender(Arena *arena, App *app, PxSize window_size) {
+Box *prerender(Arena *arena, Session *session, PxSize window_size) {
     constexpr u16 PADDING = 10;
     PxSize content_size = {
         .w = (u16)(window_size.w - PADDING * 2),
         .h = (u16)(window_size.h - PADDING * 2),
     };
-    Box *timer = prerender_contents(arena, app, content_size);
+    Box *timer = prerender_contents(arena, session, content_size);
     timer = pad_box_left(arena, timer, PADDING);
     timer = pad_box_right(arena, timer, PADDING);
     timer = pad_box_top(arena, timer, PADDING);
@@ -1186,9 +1178,10 @@ void make_icons_mesh_inner(Arena *arena, PxSize window_size, Box *box, PxPos whe
     }
 }
 
-u64 make_icons_mesh(Arena *arena, PxSize window_size, Box *box, PxPos where, Atlas *atlas,
-                    Mesh *mesh) {
+u64 make_icons_mesh(Arena *arena, PxSize window_size, Session *session, Atlas *atlas, Mesh *mesh) {
+    Box *box = prerender(arena, session, window_size);
     u64 start_vertex_count = mesh->vertices.count;
+    PxPos where = {.x = 0, .y = 0};
     make_icons_mesh_inner(arena, window_size, box, where, atlas, mesh);
     u64 end_vertex_count = mesh->vertices.count;
     return (end_vertex_count - start_vertex_count) / 4;
@@ -1277,10 +1270,9 @@ Atlas *make_and_upload_atlas(Arena *arena, SDL_GPUDevice *device, SDL_GPUCopyPas
     //
 
     stbrp_context packer_ctx = {};
-    Arr<stbrp_node> packer_nodes = arena_push_arr<stbrp_node>(scratch, textures.count * 2 /* ?? */);
+    Arr<stbrp_node> packer_nodes = arena_push_arr<stbrp_node>(scratch, atlas_size.w);
     stbrp_init_target(&packer_ctx, (i32)atlas_size.w, (i32)atlas_size.h, packer_nodes.ptr,
                       (i32)packer_nodes.count);
-    stbrp_setup_allow_out_of_mem(&packer_ctx, true);
 
     Arr<stbrp_rect> rects = arena_push_arr<stbrp_rect>(scratch, textures.count);
     for (u64 i = 0; i < textures.count; i++) {
@@ -1632,8 +1624,7 @@ void re_init(ErrorContext *err, App *app) {
     try_sdl(err, SDL_SubmitGPUCommandBuffer(command_buffer));
 }
 
-u64 make_glyphs_mesh(Arena *arena, PxSize window_size, Box *box, PxPos where, Atlas *atlas,
-                     Mesh *mesh);
+u64 make_glyphs_mesh(Arena *arena, PxSize window_size, Atlas *atlas, Mesh *mesh);
 
 void re_render(App *app) {
     Arena *frame_arena = arena_acquire();
@@ -1647,17 +1638,16 @@ void re_render(App *app) {
     u32 width = 0;
     u32 height = 0;
     SDL_WaitAndAcquireGPUSwapchainTexture(command_buffer, app->window, &swapchain, &width, &height);
+    if (swapchain == nullptr) return;  // Can happen if window is minimized?
     PxSize window_size = {.w = (u16)width, .h = (u16)height};
 
-    Box *box = prerender(frame_arena, app, window_size);
     Mesh mesh = {};
     vec_prealloc(frame_arena, &mesh.vertices, MAX_VERTEX_COUNT);
     vec_prealloc(frame_arena, &mesh.indices, MAX_INDEX_COUNT);
 
     u64 icon_quad_count =
-        make_icons_mesh(frame_arena, window_size, box, {.x = 0, .y = 0}, app->icon_atlas, &mesh);
-    u64 glyph_quad_count =
-        make_glyphs_mesh(frame_arena, window_size, box, {.x = 0, .y = 0}, app->glyph_atlas, &mesh);
+        make_icons_mesh(frame_arena, window_size, app->session, app->icon_atlas, &mesh);
+    u64 glyph_quad_count = make_glyphs_mesh(frame_arena, window_size, app->glyph_atlas, &mesh);
 
     for (u64 i = 0; i < mesh.vertices.count; i++) {
         mesh.vertices[i].y -= app->scroll * 0.1f;
@@ -1684,12 +1674,12 @@ void re_render(App *app) {
         .sampler = app->glyph_atlas->sampler,
     }};
 
-    SDL_BindGPUGraphicsPipeline(pass, app->icon_pipeline);
     SDL_BindGPUVertexBuffers(pass, 0, vertex_buffer_bindings, c_arr_count(vertex_buffer_bindings));
     SDL_BindGPUIndexBuffer(pass, &index_buffer_binding, SDL_GPU_INDEXELEMENTSIZE_16BIT);
 
     // Draw icons
     if (icon_quad_count > 0) {
+        SDL_BindGPUGraphicsPipeline(pass, app->icon_pipeline);
         SDL_BindGPUFragmentSamplers(pass, 0, icon_tex_sampler_bindings,
                                     c_arr_count(icon_tex_sampler_bindings));
         SDL_DrawGPUIndexedPrimitives(pass,
@@ -1703,13 +1693,14 @@ void re_render(App *app) {
 
     // Draw glyphs
     if (glyph_quad_count > 0) {
+        SDL_BindGPUGraphicsPipeline(pass, app->glyph_pipeline);
         SDL_BindGPUFragmentSamplers(pass, 0, glyph_tex_sampler_bindings,
                                     c_arr_count(glyph_tex_sampler_bindings));
         SDL_DrawGPUIndexedPrimitives(pass,
                                      (u32)(glyph_quad_count * 6),  // Index count
                                      1,                            // Instance count
                                      (u32)(icon_quad_count * 6),   // First index
-                                     (i32)(icon_quad_count * 4),   // Vertex offset
+                                     0,                            // Vertex offset
                                      0                             // First instance
         );
     }
@@ -1771,9 +1762,14 @@ void re_init_text(ErrorContext *err, App *app, SDL_GPUCopyPass *pass) {
     // u32 height = app->font_face->glyph->bitmap.rows;
 }
 
-u64 make_glyphs_mesh(Arena *arena, PxSize window_size, Box *box, PxPos where, Atlas *atlas,
-                     Mesh *mesh) {
+u64 make_glyphs_mesh(Arena *arena, PxSize window_size, Atlas *atlas, Mesh *mesh) {
     u64 start_vertex_count = mesh->vertices.count;
+
+    PxRect src = atlas->placements[42];
+    PxRect dst = {.x = 100, .y = 100, .w = src.w, .h = src.h};
+    Color color = {.r = 255, .g = 255, .b = 255, .a = 255};
+    push_atlas_quad(arena, window_size, atlas, mesh, src, dst, color);
+
     u64 end_vertex_count = mesh->vertices.count;
     return (end_vertex_count - start_vertex_count) / 4;
 }
