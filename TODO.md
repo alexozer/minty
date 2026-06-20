@@ -123,3 +123,9 @@ BUGS:
 - Neovim LSP autosave failing on blank documents, lololol, just create autocmd on lspattach autocmd?
 - Wipe atlas textures in render pass before writing
 - Atlas 1px padding on both sides for glyphs
+
+# Gamma correction
+
+<!-- - Understand gamma correction math better -->
+- Figure out how to do gamma encode/decode using GPU texture buffer formats, if it makes sense
+    - See what noclip is doing? Or ask Jasper if I can't figure it out?

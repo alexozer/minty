@@ -1,4 +1,3 @@
-#include "SDL3/SDL_properties.h"
 #include "base.hpp"
 
 #include <stdarg.h>
@@ -1178,7 +1177,7 @@ void make_icons_mesh_inner(Arena *arena, PxSize window_size, Box *box, PxPos whe
     }
 }
 
-u64 make_icons_mesh(Arena *arena, PxSize window_size, Session *session, Atlas *atlas, Mesh *mesh) {
+u64 make_icon_mesh(Arena *arena, PxSize window_size, Session *session, Atlas *atlas, Mesh *mesh) {
     Box *box = prerender(arena, session, window_size);
     u64 start_vertex_count = mesh->vertices.count;
     PxPos where = {.x = 0, .y = 0};
@@ -1624,7 +1623,7 @@ void re_init(ErrorContext *err, App *app) {
     try_sdl(err, SDL_SubmitGPUCommandBuffer(command_buffer));
 }
 
-u64 make_glyphs_mesh(Arena *arena, PxSize window_size, Atlas *atlas, Mesh *mesh);
+u64 make_glyph_mesh(Arena *arena, PxSize window_size, Atlas *atlas, Mesh *mesh);
 
 void re_render(App *app) {
     Arena *frame_arena = arena_acquire();
@@ -1646,8 +1645,8 @@ void re_render(App *app) {
     vec_prealloc(frame_arena, &mesh.indices, MAX_INDEX_COUNT);
 
     u64 icon_quad_count =
-        make_icons_mesh(frame_arena, window_size, app->session, app->icon_atlas, &mesh);
-    u64 glyph_quad_count = make_glyphs_mesh(frame_arena, window_size, app->glyph_atlas, &mesh);
+        make_icon_mesh(frame_arena, window_size, app->session, app->icon_atlas, &mesh);
+    u64 glyph_quad_count = make_glyph_mesh(frame_arena, window_size, app->glyph_atlas, &mesh);
 
     for (u64 i = 0; i < mesh.vertices.count; i++) {
         mesh.vertices[i].y -= app->scroll * 0.1f;
@@ -1762,7 +1761,7 @@ void re_init_text(ErrorContext *err, App *app, SDL_GPUCopyPass *pass) {
     // u32 height = app->font_face->glyph->bitmap.rows;
 }
 
-u64 make_glyphs_mesh(Arena *arena, PxSize window_size, Atlas *atlas, Mesh *mesh) {
+u64 make_glyph_mesh(Arena *arena, PxSize window_size, Atlas *atlas, Mesh *mesh) {
     u64 start_vertex_count = mesh->vertices.count;
 
     PxRect src = atlas->placements[42];
