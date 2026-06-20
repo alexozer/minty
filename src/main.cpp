@@ -1120,8 +1120,8 @@ void push_atlas_quad(Arena *arena, PxSize window_size, Atlas *atlas, Mesh *mesh,
     window_to_ndc(&vertices[3], window_size);
 }
 
-void re_build_boxes_mesh(Arena *arena, PxSize window_size, Box *box, PxPos where, Atlas *atlas,
-                         Mesh *mesh) {
+void make_icons_mesh_inner(Arena *arena, PxSize window_size, Box *box, PxPos where, Atlas *atlas,
+                           Mesh *mesh) {
     switch (box->type) {
     case BoxType::Empty: {
         break;
@@ -1129,7 +1129,7 @@ void re_build_boxes_mesh(Arena *arena, PxSize window_size, Box *box, PxPos where
     case BoxType::LeftToRightStack: {
         for (u64 i = 0; i < box->children.count; i++) {
             PxSize child_bbox = compute_box_bbox(box->children[i]);
-            re_build_boxes_mesh(arena, window_size, box->children[i], where, atlas, mesh);
+            make_icons_mesh_inner(arena, window_size, box->children[i], where, atlas, mesh);
             where.x += child_bbox.w;
         }
         break;
@@ -1137,14 +1137,14 @@ void re_build_boxes_mesh(Arena *arena, PxSize window_size, Box *box, PxPos where
     case BoxType::TopToBottomStack: {
         for (u64 i = 0; i < box->children.count; i++) {
             PxSize child_bbox = compute_box_bbox(box->children[i]);
-            re_build_boxes_mesh(arena, window_size, box->children[i], where, atlas, mesh);
+            make_icons_mesh_inner(arena, window_size, box->children[i], where, atlas, mesh);
             where.y += child_bbox.h;
         }
         break;
     }
     case BoxType::BackToFrontStack: {
         for (u64 i = 0; i < box->children.count; i++) {
-            re_build_boxes_mesh(arena, window_size, box->children[i], where, atlas, mesh);
+            make_icons_mesh_inner(arena, window_size, box->children[i], where, atlas, mesh);
         }
         break;
     }
@@ -1184,6 +1184,14 @@ void re_build_boxes_mesh(Arena *arena, PxSize window_size, Box *box, PxPos where
         break;
     }
     }
+}
+
+u64 make_icons_mesh(Arena *arena, PxSize window_size, Box *box, PxPos where, Atlas *atlas,
+                    Mesh *mesh) {
+    u64 start_vertex_count = mesh->vertices.count;
+    make_icons_mesh_inner(arena, window_size, box, where, atlas, mesh);
+    u64 end_vertex_count = mesh->vertices.count;
+    return (end_vertex_count - start_vertex_count) / 4;
 }
 
 void render(App *app) {
@@ -1388,7 +1396,7 @@ Atlas *make_and_upload_atlas(Arena *arena, SDL_GPUDevice *device, SDL_GPUCopyPas
 constexpr bool RENDERER_DEBUG_MODE = true;
 
 // TODO define these in a more principled way
-constexpr u64 MAX_QUAD_COUNT = 1024;
+constexpr u64 MAX_QUAD_COUNT = 512;
 constexpr u64 MAX_VERTEX_COUNT = MAX_QUAD_COUNT * 4;
 constexpr u64 MAX_INDEX_COUNT = MAX_QUAD_COUNT * 6;
 
@@ -1624,6 +1632,9 @@ void re_init(ErrorContext *err, App *app) {
     try_sdl(err, SDL_SubmitGPUCommandBuffer(command_buffer));
 }
 
+u64 make_glyphs_mesh(Arena *arena, PxSize window_size, Box *box, PxPos where, Atlas *atlas,
+                     Mesh *mesh);
+
 void re_render(App *app) {
     Arena *frame_arena = arena_acquire();
     defer(arena_release(frame_arena));
@@ -1642,10 +1653,16 @@ void re_render(App *app) {
     Mesh mesh = {};
     vec_prealloc(frame_arena, &mesh.vertices, MAX_VERTEX_COUNT);
     vec_prealloc(frame_arena, &mesh.indices, MAX_INDEX_COUNT);
-    re_build_boxes_mesh(frame_arena, window_size, box, {.x = 0, .y = 0}, app->icon_atlas, &mesh);
+
+    u64 icon_quad_count =
+        make_icons_mesh(frame_arena, window_size, box, {.x = 0, .y = 0}, app->icon_atlas, &mesh);
+    u64 glyph_quad_count =
+        make_glyphs_mesh(frame_arena, window_size, box, {.x = 0, .y = 0}, app->glyph_atlas, &mesh);
+
     for (u64 i = 0; i < mesh.vertices.count; i++) {
         mesh.vertices[i].y -= app->scroll * 0.1f;
     }
+
     re_upload_vertex_data(app, command_buffer, &mesh);
 
     SDL_GPUColorTargetInfo color_target_infos[] = {{
@@ -1658,21 +1675,46 @@ void re_render(App *app) {
                                                      c_arr_count(color_target_infos), nullptr);
     SDL_GPUBufferBinding vertex_buffer_bindings[] = {{.buffer = app->vertex_buffer, .offset = 0}};
     SDL_GPUBufferBinding index_buffer_binding = {.buffer = app->index_buffer, .offset = 0};
-    SDL_GPUTextureSamplerBinding tex_sampler_bindings[] = {{
+    SDL_GPUTextureSamplerBinding icon_tex_sampler_bindings[] = {{
         .texture = app->icon_atlas->texture,
         .sampler = app->icon_atlas->sampler,
     }};
+    SDL_GPUTextureSamplerBinding glyph_tex_sampler_bindings[] = {{
+        .texture = app->glyph_atlas->texture,
+        .sampler = app->glyph_atlas->sampler,
+    }};
 
     SDL_BindGPUGraphicsPipeline(pass, app->icon_pipeline);
-
-    // SDL_SetGPUViewport(pass);
     SDL_BindGPUVertexBuffers(pass, 0, vertex_buffer_bindings, c_arr_count(vertex_buffer_bindings));
     SDL_BindGPUIndexBuffer(pass, &index_buffer_binding, SDL_GPU_INDEXELEMENTSIZE_16BIT);
-    SDL_BindGPUFragmentSamplers(pass, 0, tex_sampler_bindings, c_arr_count(tex_sampler_bindings));
-    SDL_DrawGPUIndexedPrimitives(pass, (u32)mesh.indices.count, 1, 0, 0, 0);
+
+    // Draw icons
+    if (icon_quad_count > 0) {
+        SDL_BindGPUFragmentSamplers(pass, 0, icon_tex_sampler_bindings,
+                                    c_arr_count(icon_tex_sampler_bindings));
+        SDL_DrawGPUIndexedPrimitives(pass,
+                                     (u32)(icon_quad_count * 6),  // Index count
+                                     1,                           // Instance count
+                                     0,                           // First index
+                                     0,                           // Vertex offset
+                                     0                            // First instance
+        );
+    }
+
+    // Draw glyphs
+    if (glyph_quad_count > 0) {
+        SDL_BindGPUFragmentSamplers(pass, 0, glyph_tex_sampler_bindings,
+                                    c_arr_count(glyph_tex_sampler_bindings));
+        SDL_DrawGPUIndexedPrimitives(pass,
+                                     (u32)(glyph_quad_count * 6),  // Index count
+                                     1,                            // Instance count
+                                     (u32)(icon_quad_count * 6),   // First index
+                                     (i32)(icon_quad_count * 4),   // Vertex offset
+                                     0                             // First instance
+        );
+    }
 
     SDL_EndGPURenderPass(pass);
-
     SDL_SubmitGPUCommandBuffer(command_buffer);
 }
 
@@ -1727,4 +1769,11 @@ void re_init_text(ErrorContext *err, App *app, SDL_GPUCopyPass *pass) {
     // FT_Vector advance = app->font_face->glyph->advance;
     // u32 width = app->font_face->glyph->bitmap.width;
     // u32 height = app->font_face->glyph->bitmap.rows;
+}
+
+u64 make_glyphs_mesh(Arena *arena, PxSize window_size, Box *box, PxPos where, Atlas *atlas,
+                     Mesh *mesh) {
+    u64 start_vertex_count = mesh->vertices.count;
+    u64 end_vertex_count = mesh->vertices.count;
+    return (end_vertex_count - start_vertex_count) / 4;
 }

@@ -17,6 +17,7 @@
 <!--     Right-click menu? -->
 <!-- Either handle SDL errors or assert their absence -->
 Draw split/segment times
+Generate header files with function forward declarations
 
 ## Research
 
