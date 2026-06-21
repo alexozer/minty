@@ -1,0 +1,24 @@
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+struct Output
+{
+    float4 color [[color(0)]];
+};
+
+struct Input
+{
+    float2 texcoord [[user(locn0)]];
+    float4 color [[user(locn1)]];
+};
+
+fragment Output main0(Input in [[stage_in]], texture2d<float> Texture [[texture(0)]], sampler Sampler [[sampler(0)]])
+{
+    Output out = {};
+    float4 linear_color = Texture.sample(Sampler, in.texcoord);
+    out.color.rgb = pow(linear_color.rgb, float3(1 / 2.2));
+    out.color.a = 1;
+    return out;
+}

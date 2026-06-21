@@ -547,19 +547,31 @@ struct App {
     Session *session;  // Nullable
 
     SDL_GPUDevice *device;
+
+    // Shaders
     SDL_GPUShader *vert_shader;
     SDL_GPUShader *icon_frag_shader;
     SDL_GPUShader *glyph_frag_shader;
+    SDL_GPUShader *postproc_frag_shader;
+
+    // Pipelines
     SDL_GPUGraphicsPipeline *icon_pipeline;
     SDL_GPUGraphicsPipeline *glyph_pipeline;
+    SDL_GPUGraphicsPipeline *postproc_pipeline;
+
+    // Geometry buffers
     SDL_GPUTransferBuffer *vertex_transfer_buffer;
     SDL_GPUBuffer *vertex_buffer;
     SDL_GPUBuffer *index_buffer;
+
+    // Textures
     Atlas *icon_atlas;
+    Atlas *glyph_atlas;
+    SDL_GPUTexture *main_target_texture;
+    SDL_GPUSampler *main_target_sampler;
 
     // Text stuff
     FT_Library freetype;
-    Atlas *glyph_atlas;
 };
 
 SDL_HitTestResult hittest_callback(SDL_Window *window, const SDL_Point *point, void *data) {
@@ -1439,23 +1451,34 @@ SDL_GPUShader *load_shader(ErrorContext *err, SDL_GPUDevice *device, Str path, S
     return try_sdl(err, nullptr, SDL_CreateGPUShader(device, &info));
 }
 
+enum class BlendType {
+    None,
+    Over,
+};
+
 SDL_GPUGraphicsPipeline *make_render_pipeline(ErrorContext *err, SDL_GPUDevice *device,
                                               SDL_Window *window, SDL_GPUShader *vert_shader,
-                                              SDL_GPUShader *frag_shader) {
+                                              SDL_GPUShader *frag_shader,
+                                              SDL_GPUTextureFormat render_target_format,
+                                              BlendType blend_type) {
     err_scope(err, "Init render pipeline");
 
+    SDL_GPUColorTargetBlendState blend_state = {};
+    if (blend_type == BlendType::Over) {
+        blend_state = {
+            .src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA,
+            .dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+            .color_blend_op = SDL_GPU_BLENDOP_ADD,
+            .src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA,
+            .dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+            .alpha_blend_op = SDL_GPU_BLENDOP_ADD,
+            .enable_blend = true,
+        };
+    }
+
     SDL_GPUColorTargetDescription color_target_descs[] = {{
-        .format = SDL_GetGPUSwapchainTextureFormat(device, window),
-        .blend_state =
-            {
-                .src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA,
-                .dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
-                .color_blend_op = SDL_GPU_BLENDOP_ADD,
-                .src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA,
-                .dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
-                .alpha_blend_op = SDL_GPU_BLENDOP_ADD,
-                .enable_blend = true,
-            },
+        .format = render_target_format,
+        .blend_state = blend_state,
     }};
 
     SDL_GPUVertexBufferDescription vertex_buffer_descs[] = {{
@@ -1530,7 +1553,125 @@ void re_init_vertex_buffers(ErrorContext *err, App *app) {
         try_sdl(err, SDL_CreateGPUTransferBuffer(app->device, &transfer_buffer_info));
 }
 
-void re_upload_vertex_data(App *app, SDL_GPUCommandBuffer *command_buffer, Mesh *mesh) {
+void re_init_text(ErrorContext *err, App *app, SDL_GPUCopyPass *pass);
+
+void re_init_icons(ErrorContext *err, App *app, SDL_GPUCopyPass *pass) {
+    Arena *scratch = arena_acquire();
+    defer(arena_release(scratch));
+
+    Arr<SDL_Surface *> icon_surfaces = app->session->file.icons;
+    Arr<TextureBuffer> icon_textures = arena_push_arr<TextureBuffer>(scratch, icon_surfaces.count);
+    for (u64 i = 0; i < icon_textures.count; i++) {
+        icon_textures[i].format = SDL_GetGPUTextureFormatFromPixelFormat(icon_surfaces[i]->format);
+        icon_textures[i].buffer = Arr<u8>{.ptr = (u8 *)icon_surfaces[i]->pixels,
+                                          .count = sdl_surface_size(icon_surfaces[i])};
+        icon_textures[i].dims = {.w = (u16)icon_surfaces[i]->w, .h = (u16)icon_surfaces[i]->h};
+    }
+    app->icon_atlas = make_and_upload_atlas(app->session_arena, app->device, pass, S("Icon atlas"),
+                                            icon_textures, {.w = 1024, .h = 1024});
+}
+
+const SDL_GPUTextureFormat MAIN_TARGET_FORMAT = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM_SRGB;
+
+void init_render_pipelines(ErrorContext *err, App *app) {
+    // Load shaders
+    app->vert_shader = load_shader(err, app->device, S("src/shaders/vert.msl"), ShaderType::Vertex);
+    app->icon_frag_shader =
+        load_shader(err, app->device, S("src/shaders/frag_icon.msl"), ShaderType::Fragment);
+    app->glyph_frag_shader =
+        load_shader(err, app->device, S("src/shaders/frag_glyph.msl"), ShaderType::Fragment);
+    app->postproc_frag_shader =
+        load_shader(err, app->device, S("src/shaders/frag_postproc.msl"), ShaderType::Fragment);
+    if (err_occurred(err)) return;
+
+    // Init render pipelines
+    SDL_GPUTextureFormat swapchain_format =
+        SDL_GetGPUSwapchainTextureFormat(app->device, app->window);
+    app->icon_pipeline =
+        make_render_pipeline(err, app->device, app->window, app->vert_shader, app->icon_frag_shader,
+                             MAIN_TARGET_FORMAT, BlendType::Over);
+    app->glyph_pipeline =
+        make_render_pipeline(err, app->device, app->window, app->vert_shader,
+                             app->glyph_frag_shader, MAIN_TARGET_FORMAT, BlendType::Over);
+    app->postproc_pipeline =
+        make_render_pipeline(err, app->device, app->window, app->vert_shader,
+                             app->glyph_frag_shader, swapchain_format, BlendType::None);
+    if (err_occurred(err)) return;
+}
+
+void init_render_buffers(ErrorContext *err, App *app) {
+    SDL_GPUCommandBuffer *command_buffer = try_sdl(err, SDL_AcquireGPUCommandBuffer(app->device));
+    defer(SDL_SubmitGPUCommandBuffer(command_buffer));
+
+    // Init main render target texture
+    // TODO rebuild main render target texture on window resize, instead of computing it once
+    SDL_GPUTexture *swapchain = nullptr;
+    u32 width = 0;
+    u32 height = 0;
+    SDL_WaitAndAcquireGPUSwapchainTexture(command_buffer, app->window, &swapchain, &width, &height);
+    SDL_GPUTextureCreateInfo main_target_texture_info = {
+        .type = SDL_GPU_TEXTURETYPE_2D,
+        .format = MAIN_TARGET_FORMAT,
+        .usage = SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER,
+        .width = width,
+        .height = height,
+        .layer_count_or_depth = 1,
+        .num_levels = 1,
+    };
+    app->main_target_texture = SDL_CreateGPUTexture(app->device, &main_target_texture_info);
+    SDL_GPUSamplerCreateInfo sampler_info = {
+        .min_filter = SDL_GPU_FILTER_NEAREST,
+        .mag_filter = SDL_GPU_FILTER_NEAREST,
+        .mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_NEAREST,
+        .address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+        .address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+        .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+    };
+    app->main_target_sampler = SDL_CreateGPUSampler(app->device, &sampler_info);
+
+    re_init_vertex_buffers(err, app);
+    if (err_occurred(err)) return;
+
+    SDL_GPUCopyPass *pass = try_sdl(err, SDL_BeginGPUCopyPass(command_buffer));
+    defer(SDL_EndGPUCopyPass(pass));
+
+    re_init_icons(err, app, pass);
+    re_init_text(err, app, pass);
+}
+
+void re_init(ErrorContext *err, App *app) {
+    err_scope(err, "Initialize renderer");
+
+    app->device =
+        try_sdl(err, SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_MSL, RENDERER_DEBUG_MODE, nullptr));
+    try_sdl(err, SDL_ClaimWindowForGPUDevice(app->device, app->window));
+}
+
+u64 make_glyph_mesh(Arena *arena, PxSize window_size, Atlas *atlas, Mesh *mesh);
+
+u64 make_postproc_mesh(Arena *arena, Mesh *mesh) {
+    Arr<u16> indices = vec_extend_zero(arena, &mesh->indices, 6);
+    indices[0] = (u16)(mesh->vertices.count + 0);
+    indices[1] = (u16)(mesh->vertices.count + 1);
+    indices[2] = (u16)(mesh->vertices.count + 2);
+    indices[3] = (u16)(mesh->vertices.count + 2);
+    indices[4] = (u16)(mesh->vertices.count + 1);
+    indices[5] = (u16)(mesh->vertices.count + 3);
+
+    Arr<Vertex> vertices = vec_extend_zero(arena, &mesh->vertices, 4);
+    // Top left
+    vertices[0] = {.x = -1, .y = 1, .z = 0, .u = 0, .v = 0};
+    // Top right
+    vertices[1] = {.x = 1, .y = 1, .z = 0, .u = 1, .v = 0};
+    // Bottom left
+    vertices[2] = {.x = -1, .y = -1, .z = 0, .u = 0, .v = 1};
+    // Bottom right
+    vertices[3] = {.x = 1, .y = -1, .z = 0, .u = 1, .v = 1};
+
+    return 1;
+}
+
+void do_geometry_upload_pass(App *app, SDL_GPUCommandBuffer *command_buffer, Mesh *mesh) {
     log_assert(mesh->vertices.count <= MAX_VERTEX_COUNT);
     log_assert(mesh->indices.count <= MAX_INDEX_COUNT);
 
@@ -1572,90 +1713,10 @@ void re_upload_vertex_data(App *app, SDL_GPUCommandBuffer *command_buffer, Mesh 
     SDL_EndGPUCopyPass(pass);
 }
 
-void re_init_text(ErrorContext *err, App *app, SDL_GPUCopyPass *pass);
-
-void re_init_icons(ErrorContext *err, App *app, SDL_GPUCopyPass *pass) {
-    Arena *scratch = arena_acquire();
-    defer(arena_release(scratch));
-
-    Arr<SDL_Surface *> icon_surfaces = app->session->file.icons;
-    Arr<TextureBuffer> icon_textures = arena_push_arr<TextureBuffer>(scratch, icon_surfaces.count);
-    for (u64 i = 0; i < icon_textures.count; i++) {
-        icon_textures[i].format = SDL_GetGPUTextureFormatFromPixelFormat(icon_surfaces[i]->format);
-        icon_textures[i].buffer = Arr<u8>{.ptr = (u8 *)icon_surfaces[i]->pixels,
-                                          .count = sdl_surface_size(icon_surfaces[i])};
-        icon_textures[i].dims = {.w = (u16)icon_surfaces[i]->w, .h = (u16)icon_surfaces[i]->h};
-    }
-    app->icon_atlas = make_and_upload_atlas(app->session_arena, app->device, pass, S("Icon atlas"),
-                                            icon_textures, {.w = 1024, .h = 1024});
-}
-
-void re_init(ErrorContext *err, App *app) {
-    err_scope(err, "Initialize renderer");
-
-    app->device =
-        try_sdl(err, SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_MSL, RENDERER_DEBUG_MODE, nullptr));
-    try_sdl(err, SDL_ClaimWindowForGPUDevice(app->device, app->window));
-
-    app->vert_shader = load_shader(err, app->device, S("src/shaders/vert.msl"), ShaderType::Vertex);
-    app->icon_frag_shader =
-        load_shader(err, app->device, S("src/shaders/frag_icon.msl"), ShaderType::Fragment);
-    app->glyph_frag_shader =
-        load_shader(err, app->device, S("src/shaders/frag_glyph.msl"), ShaderType::Fragment);
-    if (err_occurred(err)) return;
-
-    app->icon_pipeline = make_render_pipeline(err, app->device, app->window, app->vert_shader,
-                                              app->icon_frag_shader);
-    app->glyph_pipeline = make_render_pipeline(err, app->device, app->window, app->vert_shader,
-                                               app->glyph_frag_shader);
-    if (err_occurred(err)) return;
-
-    re_init_vertex_buffers(err, app);
-    if (err_occurred(err)) return;
-
-    SDL_GPUCommandBuffer *command_buffer = try_sdl(err, SDL_AcquireGPUCommandBuffer(app->device));
-
-    SDL_GPUCopyPass *pass = try_sdl(err, SDL_BeginGPUCopyPass(command_buffer));
-    re_init_icons(err, app, pass);
-    re_init_text(err, app, pass);
-    SDL_EndGPUCopyPass(pass);
-
-    try_sdl(err, SDL_SubmitGPUCommandBuffer(command_buffer));
-}
-
-u64 make_glyph_mesh(Arena *arena, PxSize window_size, Atlas *atlas, Mesh *mesh);
-
-void re_render(App *app) {
-    Arena *frame_arena = arena_acquire();
-    defer(arena_release(frame_arena));
-
-    SDL_GPUCommandBuffer *command_buffer = SDL_AcquireGPUCommandBuffer(app->device);
-
-    // TODO should we get the window width and height earlier since
-    // SDL_WaitAndAcquireGPUSwapchainTexture() blocks?
-    SDL_GPUTexture *swapchain = nullptr;
-    u32 width = 0;
-    u32 height = 0;
-    SDL_WaitAndAcquireGPUSwapchainTexture(command_buffer, app->window, &swapchain, &width, &height);
-    if (swapchain == nullptr) return;  // Can happen if window is minimized?
-    PxSize window_size = {.w = (u16)width, .h = (u16)height};
-
-    Mesh mesh = {};
-    vec_prealloc(frame_arena, &mesh.vertices, MAX_VERTEX_COUNT);
-    vec_prealloc(frame_arena, &mesh.indices, MAX_INDEX_COUNT);
-
-    u64 icon_quad_count =
-        make_icon_mesh(frame_arena, window_size, app->session, app->icon_atlas, &mesh);
-    u64 glyph_quad_count = make_glyph_mesh(frame_arena, window_size, app->glyph_atlas, &mesh);
-
-    for (u64 i = 0; i < mesh.vertices.count; i++) {
-        mesh.vertices[i].y -= app->scroll * 0.1f;
-    }
-
-    re_upload_vertex_data(app, command_buffer, &mesh);
-
+void render_main_color_pass(App *app, SDL_GPUCommandBuffer *command_buffer, u64 icon_quad_count,
+                            u64 glyph_quad_count) {
     SDL_GPUColorTargetInfo color_target_infos[] = {{
-        .texture = swapchain,
+        .texture = app->main_target_texture,
         .clear_color = {0.f, 0.f, 0.f, 1.f},
         .load_op = SDL_GPU_LOADOP_CLEAR,
         .store_op = SDL_GPU_STOREOP_STORE,
@@ -1705,6 +1766,76 @@ void re_render(App *app) {
     }
 
     SDL_EndGPURenderPass(pass);
+}
+
+void render_postproc_pass(App *app, SDL_GPUCommandBuffer *command_buffer,
+                          SDL_GPUTexture *swapchain_texture, u64 quad_offset) {
+    SDL_GPUColorTargetInfo color_target_infos[] = {{
+        .texture = swapchain_texture,
+        .clear_color = {0.f, 0.f, 0.f, 1.f},
+        .load_op = SDL_GPU_LOADOP_CLEAR,
+        .store_op = SDL_GPU_STOREOP_STORE,
+    }};
+    SDL_GPURenderPass *pass = SDL_BeginGPURenderPass(command_buffer, color_target_infos,
+                                                     c_arr_count(color_target_infos), nullptr);
+    SDL_GPUBufferBinding vertex_buffer_bindings[] = {{.buffer = app->vertex_buffer, .offset = 0}};
+    SDL_GPUBufferBinding index_buffer_binding = {.buffer = app->index_buffer, .offset = 0};
+    SDL_GPUTextureSamplerBinding tex_sampler_bindings[] = {{
+        .texture = app->main_target_texture,
+        .sampler = app->main_target_sampler,
+    }};
+
+    SDL_BindGPUVertexBuffers(pass, 0, vertex_buffer_bindings, c_arr_count(vertex_buffer_bindings));
+    SDL_BindGPUIndexBuffer(pass, &index_buffer_binding, SDL_GPU_INDEXELEMENTSIZE_16BIT);
+
+    // Draw icons
+    SDL_BindGPUGraphicsPipeline(pass, app->icon_pipeline);
+    SDL_BindGPUFragmentSamplers(pass, 0, tex_sampler_bindings, c_arr_count(tex_sampler_bindings));
+    SDL_DrawGPUIndexedPrimitives(pass,
+                                 6,                       // Index count
+                                 1,                       // Instance count
+                                 (u32)(quad_offset * 6),  // First index
+                                 0,                       // Vertex offset
+                                 0                        // First instance
+    );
+
+    SDL_EndGPURenderPass(pass);
+}
+
+void re_render(App *app) {
+    Arena *frame_arena = arena_acquire();
+    defer(arena_release(frame_arena));
+
+    SDL_GPUCommandBuffer *command_buffer = SDL_AcquireGPUCommandBuffer(app->device);
+    SDL_GPUTexture *swapchain_texture = nullptr;
+    u32 width = 0;
+    u32 height = 0;
+    SDL_WaitAndAcquireGPUSwapchainTexture(command_buffer, app->window, &swapchain_texture, &width,
+                                          &height);
+    if (swapchain_texture == nullptr) {  // Apparently can occur if window is minimized
+        // Submit nothing in order to get rid of command buffer I guess?
+        SDL_SubmitGPUCommandBuffer(command_buffer);
+        return;
+    }
+    PxSize window_size = {.w = (u16)width, .h = (u16)height};
+
+    Mesh mesh = {};
+    vec_prealloc(frame_arena, &mesh.vertices, MAX_VERTEX_COUNT);
+    vec_prealloc(frame_arena, &mesh.indices, MAX_INDEX_COUNT);
+
+    u64 icon_quad_count =
+        make_icon_mesh(frame_arena, window_size, app->session, app->icon_atlas, &mesh);
+    u64 glyph_quad_count = make_glyph_mesh(frame_arena, window_size, app->glyph_atlas, &mesh);
+    for (u64 i = 0; i < mesh.vertices.count; i++) {
+        mesh.vertices[i].y -= app->scroll * 0.1f;
+    }
+    make_postproc_mesh(frame_arena, &mesh);
+
+    do_geometry_upload_pass(app, command_buffer, &mesh);
+    render_main_color_pass(app, command_buffer, icon_quad_count, glyph_quad_count);
+    render_postproc_pass(app, command_buffer, swapchain_texture,
+                         icon_quad_count + glyph_quad_count);
+
     SDL_SubmitGPUCommandBuffer(command_buffer);
 }
 
