@@ -1261,12 +1261,126 @@ struct TextureBuffer {
     PxSize dims;
 };
 
+enum class BlendType {
+    None,
+    Over,
+};
+
 u64 sdl_surface_size(SDL_Surface *surface) { return (u64)surface->h * (u64)surface->pitch; }
 
-Atlas *make_and_upload_atlas(Arena *arena, SDL_GPUDevice *device, SDL_GPUCopyPass *pass, Str name,
+SDL_GPUGraphicsPipeline *make_render_pipeline(ErrorContext *err, SDL_GPUDevice *device,
+                                              SDL_Window *window, SDL_GPUShader *vert_shader,
+                                              SDL_GPUShader *frag_shader,
+                                              SDL_GPUTextureFormat target_texture_format,
+                                              BlendType blend_type) {
+    err_scope(err, "Init render pipeline");
+
+    SDL_GPUColorTargetBlendState blend_state = {};
+    if (blend_type == BlendType::Over) {
+        blend_state = {
+            .src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA,
+            .dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+            .color_blend_op = SDL_GPU_BLENDOP_ADD,
+            .src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA,
+            .dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+            .alpha_blend_op = SDL_GPU_BLENDOP_ADD,
+            .enable_blend = true,
+        };
+    }
+
+    SDL_GPUColorTargetDescription color_target_descs[] = {{
+        .format = target_texture_format,
+        .blend_state = blend_state,
+    }};
+
+    SDL_GPUVertexBufferDescription vertex_buffer_descs[] = {{
+        .slot = 0,
+        .pitch = sizeof(Vertex),
+        .input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX,
+        .instance_step_rate = 0,
+    }};
+
+    SDL_GPUVertexAttribute vertex_attrs[] = {
+        {
+            .location = 0,
+            .buffer_slot = 0,
+            .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
+            .offset = 0,
+        },
+        {
+            .location = 1,
+            .buffer_slot = 0,
+            .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2,
+            .offset = sizeof(f32) * 3,
+        },
+        {
+            .location = 2,
+            .buffer_slot = 0,
+            .format = SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4,
+            .offset = sizeof(f32) * 5,
+        },
+    };
+
+    SDL_GPUGraphicsPipelineCreateInfo pipeline_create_info = {
+        .vertex_shader = vert_shader,
+        .fragment_shader = frag_shader,
+        .vertex_input_state =
+            {
+                .vertex_buffer_descriptions = vertex_buffer_descs,
+                .num_vertex_buffers = c_arr_count(vertex_buffer_descs),
+                .vertex_attributes = vertex_attrs,
+                .num_vertex_attributes = c_arr_count(vertex_attrs),
+            },
+        .primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
+        .target_info =
+            {
+                .color_target_descriptions = color_target_descs,
+                .num_color_targets = c_arr_count(color_target_descs),
+            },
+    };
+    return try_sdl(err, nullptr, SDL_CreateGPUGraphicsPipeline(device, &pipeline_create_info));
+}
+
+void clear_texture(ErrorContext *err, App *app, SDL_GPUCommandBuffer *command_buffer,
+                   SDL_GPUTexture *texture, SDL_GPUTextureFormat format) {
+    SDL_GPUGraphicsPipeline *pipeline =
+        make_render_pipeline(err, app->device, app->window, app->vert_shader, app->icon_frag_shader,
+                             format, BlendType::None);
+    SDL_GPUColorTargetInfo color_target_infos[] = {{
+        .texture = texture,
+        .clear_color = {0.f, 0.f, 0.f, 1.f},
+        .load_op = SDL_GPU_LOADOP_CLEAR,
+        .store_op = SDL_GPU_STOREOP_STORE,
+    }};
+    SDL_GPURenderPass *pass = SDL_BeginGPURenderPass(command_buffer, color_target_infos,
+                                                     c_arr_count(color_target_infos), nullptr);
+    SDL_BindGPUGraphicsPipeline(pass, pipeline);
+    SDL_EndGPURenderPass(pass);
+}
+
+Atlas *make_and_upload_atlas(ErrorContext *err, Arena *arena, App *app,
+                             SDL_GPUCommandBuffer *command_buffer, Str name,
                              Arr<TextureBuffer> textures, PxSize atlas_size) {
     Arena *scratch = arena_acquire();
     defer(arena_release(scratch));
+
+    //
+    // Allocate and clear GPU texture
+    //
+
+    SDL_GPUTextureCreateInfo gpu_texture_info = {
+        .type = SDL_GPU_TEXTURETYPE_2D,
+        .format = textures[0].format,
+        .usage = SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COLOR_TARGET,
+        .width = (u32)atlas_size.w,
+        .height = (u32)atlas_size.h,
+        .layer_count_or_depth = 1,
+        .num_levels = 1,
+    };
+    SDL_GPUTexture *texture = SDL_CreateGPUTexture(app->device, &gpu_texture_info);
+    char *name_cstr = str_to_c(scratch, name);
+    SDL_SetGPUTextureName(app->device, texture, name_cstr);
+    clear_texture(err, app, command_buffer, texture, textures[0].format);
 
     // Texture formats must be equal
     log_assert(textures.count > 0);
@@ -1313,9 +1427,9 @@ Atlas *make_and_upload_atlas(Arena *arena, SDL_GPUDevice *device, SDL_GPUCopyPas
         .size = atlas_size.w * atlas_size.h * texel_size,
     };
     SDL_GPUTransferBuffer *transfer_buffer =
-        SDL_CreateGPUTransferBuffer(device, &transfer_buffer_info);
+        SDL_CreateGPUTransferBuffer(app->device, &transfer_buffer_info);
 
-    void *buf = SDL_MapGPUTransferBuffer(device, transfer_buffer, false);
+    void *buf = SDL_MapGPUTransferBuffer(app->device, transfer_buffer, false);
     u64 offset = 0;
     for (u64 i = 0; i < textures.count; i++) {
         if (i > 0) {
@@ -1325,24 +1439,14 @@ Atlas *make_and_upload_atlas(Arena *arena, SDL_GPUDevice *device, SDL_GPUCopyPas
         u64 size = textures[i].buffer.count;
         SDL_memcpy((u8 *)buf + offset, textures[i].buffer.ptr, size);
     }
-    SDL_UnmapGPUTransferBuffer(device, transfer_buffer);
+    SDL_UnmapGPUTransferBuffer(app->device, transfer_buffer);
 
     //
     // Upload textures
     //
 
-    SDL_GPUTextureCreateInfo gpu_texture_info = {
-        .type = SDL_GPU_TEXTURETYPE_2D,
-        .format = textures[0].format,
-        .usage = SDL_GPU_TEXTUREUSAGE_SAMPLER,
-        .width = (u32)atlas_size.w,
-        .height = (u32)atlas_size.h,
-        .layer_count_or_depth = 1,
-        .num_levels = 1,
-    };
-    SDL_GPUTexture *texture = SDL_CreateGPUTexture(device, &gpu_texture_info);
-    char *name_cstr = str_to_c(scratch, name);
-    SDL_SetGPUTextureName(device, texture, name_cstr);
+    // TODO coalesce atlas-related copy and render passes
+    SDL_GPUCopyPass *copy_pass = SDL_BeginGPUCopyPass(command_buffer);
 
     offset = 0;
     for (u64 i = 0; i < textures.count; i++) {
@@ -1366,8 +1470,10 @@ Atlas *make_and_upload_atlas(Arena *arena, SDL_GPUDevice *device, SDL_GPUCopyPas
             .h = (u32)placements[i].h,
             .d = 1,
         };
-        SDL_UploadToGPUTexture(pass, &src, &dest, false);
+        SDL_UploadToGPUTexture(copy_pass, &src, &dest, false);
     }
+
+    SDL_EndGPUCopyPass(copy_pass);
 
     //
     // Make sampler (doesn't super duper need to happen here but w/e)
@@ -1381,7 +1487,7 @@ Atlas *make_and_upload_atlas(Arena *arena, SDL_GPUDevice *device, SDL_GPUCopyPas
         .address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
         .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
     };
-    SDL_GPUSampler *sampler = SDL_CreateGPUSampler(device, &sampler_info);
+    SDL_GPUSampler *sampler = SDL_CreateGPUSampler(app->device, &sampler_info);
 
     //
     // Return atlas descriptor
@@ -1455,84 +1561,6 @@ SDL_GPUShader *load_shader(ErrorContext *err, SDL_GPUDevice *device, Str path, S
     return try_sdl(err, nullptr, SDL_CreateGPUShader(device, &info));
 }
 
-enum class BlendType {
-    None,
-    Over,
-};
-
-SDL_GPUGraphicsPipeline *make_render_pipeline(ErrorContext *err, SDL_GPUDevice *device,
-                                              SDL_Window *window, SDL_GPUShader *vert_shader,
-                                              SDL_GPUShader *frag_shader,
-                                              SDL_GPUTextureFormat swapchain_format,
-                                              BlendType blend_type) {
-    err_scope(err, "Init render pipeline");
-
-    SDL_GPUColorTargetBlendState blend_state = {};
-    if (blend_type == BlendType::Over) {
-        blend_state = {
-            .src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA,
-            .dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
-            .color_blend_op = SDL_GPU_BLENDOP_ADD,
-            .src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA,
-            .dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
-            .alpha_blend_op = SDL_GPU_BLENDOP_ADD,
-            .enable_blend = true,
-        };
-    }
-
-    SDL_GPUColorTargetDescription color_target_descs[] = {{
-        .format = swapchain_format,
-        .blend_state = blend_state,
-    }};
-
-    SDL_GPUVertexBufferDescription vertex_buffer_descs[] = {{
-        .slot = 0,
-        .pitch = sizeof(Vertex),
-        .input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX,
-        .instance_step_rate = 0,
-    }};
-
-    SDL_GPUVertexAttribute vertex_attrs[] = {
-        {
-            .location = 0,
-            .buffer_slot = 0,
-            .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
-            .offset = 0,
-        },
-        {
-            .location = 1,
-            .buffer_slot = 0,
-            .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2,
-            .offset = sizeof(f32) * 3,
-        },
-        {
-            .location = 2,
-            .buffer_slot = 0,
-            .format = SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4,
-            .offset = sizeof(f32) * 5,
-        },
-    };
-
-    SDL_GPUGraphicsPipelineCreateInfo pipeline_create_info = {
-        .vertex_shader = vert_shader,
-        .fragment_shader = frag_shader,
-        .vertex_input_state =
-            {
-                .vertex_buffer_descriptions = vertex_buffer_descs,
-                .num_vertex_buffers = c_arr_count(vertex_buffer_descs),
-                .vertex_attributes = vertex_attrs,
-                .num_vertex_attributes = c_arr_count(vertex_attrs),
-            },
-        .primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
-        .target_info =
-            {
-                .color_target_descriptions = color_target_descs,
-                .num_color_targets = c_arr_count(color_target_descs),
-            },
-    };
-    return try_sdl(err, nullptr, SDL_CreateGPUGraphicsPipeline(device, &pipeline_create_info));
-}
-
 void re_init_vertex_buffers(ErrorContext *err, App *app) {
     err_scope(err, "Init vertex+index buffers");
 
@@ -1557,9 +1585,9 @@ void re_init_vertex_buffers(ErrorContext *err, App *app) {
         try_sdl(err, SDL_CreateGPUTransferBuffer(app->device, &transfer_buffer_info));
 }
 
-void make_and_upload_text_atlas(ErrorContext *err, App *app, SDL_GPUCopyPass *pass);
+void make_and_upload_text_atlas(ErrorContext *err, App *app, SDL_GPUCommandBuffer *command_buffer);
 
-void make_and_upload_icon_atlas(ErrorContext *err, App *app, SDL_GPUCopyPass *pass) {
+void make_and_upload_icon_atlas(ErrorContext *err, App *app, SDL_GPUCommandBuffer *command_buffer) {
     Arena *scratch = arena_acquire();
     defer(arena_release(scratch));
 
@@ -1571,8 +1599,8 @@ void make_and_upload_icon_atlas(ErrorContext *err, App *app, SDL_GPUCopyPass *pa
                                           .count = sdl_surface_size(icon_surfaces[i])};
         icon_textures[i].dims = {.w = (u16)icon_surfaces[i]->w, .h = (u16)icon_surfaces[i]->h};
     }
-    app->icon_atlas = make_and_upload_atlas(app->session_arena, app->device, pass, S("Icon atlas"),
-                                            icon_textures, {.w = 1024, .h = 1024});
+    app->icon_atlas = make_and_upload_atlas(err, app->session_arena, app, command_buffer,
+                                            S("Icon atlas"), icon_textures, {.w = 1024, .h = 1024});
 }
 
 void init_render_pipelines(ErrorContext *err, App *app) {
@@ -1606,11 +1634,8 @@ void init_render_buffers(ErrorContext *err, App *app) {
     re_init_vertex_buffers(err, app);
     if (err_occurred(err)) return;
 
-    SDL_GPUCopyPass *pass = try_sdl(err, SDL_BeginGPUCopyPass(command_buffer));
-    defer(SDL_EndGPUCopyPass(pass));
-
-    make_and_upload_icon_atlas(err, app, pass);
-    make_and_upload_text_atlas(err, app, pass);
+    make_and_upload_icon_atlas(err, app, command_buffer);
+    make_and_upload_text_atlas(err, app, command_buffer);
 }
 
 void re_init(ErrorContext *err, App *app) {
@@ -1763,7 +1788,7 @@ void re_render(App *app) {
 // MARK:Text rendering
 //
 
-void make_and_upload_text_atlas(ErrorContext *err, App *app, SDL_GPUCopyPass *pass) {
+void make_and_upload_text_atlas(ErrorContext *err, App *app, SDL_GPUCommandBuffer *command_buffer) {
     err_scope(err, "Initialize text rendering");
 
     Arena *scratch = arena_acquire();
@@ -1804,8 +1829,8 @@ void make_and_upload_text_atlas(ErrorContext *err, App *app, SDL_GPUCopyPass *pa
     }
 
     PxSize font_atlas_size = {.w = 2048, .h = 2048};
-    app->glyph_atlas = make_and_upload_atlas(app->app_arena, app->device, pass, S("Glyph atlas"),
-                                             textures, font_atlas_size);
+    app->glyph_atlas = make_and_upload_atlas(err, app->app_arena, app, command_buffer,
+                                             S("Glyph atlas"), textures, font_atlas_size);
 
     // FT_Vector advance = app->font_face->glyph->advance;
     // u32 width = app->font_face->glyph->bitmap.width;
