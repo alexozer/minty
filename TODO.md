@@ -18,6 +18,8 @@
 <!-- Either handle SDL errors or assert their absence -->
 Draw split/segment times
 Generate header files with function forward declarations
+Test on Windows
+    Port shaders to HLSL I suppose?
 
 ## Research
 

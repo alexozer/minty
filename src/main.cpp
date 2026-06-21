@@ -520,6 +520,10 @@ struct Atlas {
     Arr<PxRect> placements;
     // Not sure if it's ever worth coalescing transfer buffers
     SDL_GPUTransferBuffer *transfer_buffer;
+
+    // Rect packer state, useful for online repacking
+    Arr<stbrp_node> packer_nodes;
+    Arr<stbrp_rect> packer_rects;
 };
 
 // TODO optimize vertex format?
@@ -1277,18 +1281,26 @@ Atlas *make_and_upload_atlas(Arena *arena, SDL_GPUDevice *device, SDL_GPUCopyPas
     //
 
     stbrp_context packer_ctx = {};
-    Arr<stbrp_node> packer_nodes = arena_push_arr<stbrp_node>(scratch, atlas_size.w);
+    Arr<stbrp_node> packer_nodes = arena_push_arr<stbrp_node>(arena, atlas_size.w);
     stbrp_init_target(&packer_ctx, (i32)atlas_size.w, (i32)atlas_size.h, packer_nodes.ptr,
                       (i32)packer_nodes.count);
 
-    Arr<stbrp_rect> rects = arena_push_arr<stbrp_rect>(scratch, textures.count);
+    Arr<stbrp_rect> packer_rects = arena_push_arr<stbrp_rect>(arena, textures.count);
     for (u64 i = 0; i < textures.count; i++) {
-        rects[i].id = (i32)i;
-        rects[i].w = textures[i].dims.w;
-        rects[i].h = textures[i].dims.h;
+        packer_rects[i].id = (i32)i;
+        packer_rects[i].w = textures[i].dims.w + 2;
+        packer_rects[i].h = textures[i].dims.h + 2;
     }
 
-    log_assert(stbrp_pack_rects(&packer_ctx, rects.ptr, (i32)rects.count) == 1);
+    log_assert(stbrp_pack_rects(&packer_ctx, packer_rects.ptr, (i32)packer_rects.count) == 1);
+
+    Arr<PxRect> placements = arena_push_arr<PxRect>(arena, textures.count);
+    for (u64 i = 0; i < textures.count; i++) {
+        placements[i].x = (u16)packer_rects[i].x + 1;
+        placements[i].y = (u16)packer_rects[i].y + 1;
+        placements[i].w = (u16)textures[i].dims.w;
+        placements[i].h = (u16)textures[i].dims.h;
+    }
 
     //
     // Pack textures into transfer buffer
@@ -1347,11 +1359,11 @@ Atlas *make_and_upload_atlas(Arena *arena, SDL_GPUDevice *device, SDL_GPUCopyPas
             .texture = texture,
             .mip_level = 0,
             .layer = 0,
-            .x = (u32)rects[i].x,
-            .y = (u32)rects[i].y,
+            .x = (u32)placements[i].x,
+            .y = (u32)placements[i].y,
             .z = 0,
-            .w = (u32)textures[i].dims.w,
-            .h = (u32)textures[i].dims.h,
+            .w = (u32)placements[i].w,
+            .h = (u32)placements[i].h,
             .d = 1,
         };
         SDL_UploadToGPUTexture(pass, &src, &dest, false);
@@ -1380,13 +1392,9 @@ Atlas *make_and_upload_atlas(Arena *arena, SDL_GPUDevice *device, SDL_GPUCopyPas
     atlas->texture = texture;
     atlas->sampler = sampler;
     atlas->transfer_buffer = transfer_buffer;
-    atlas->placements = arena_push_arr<PxRect>(arena, textures.count);
-    for (u64 i = 0; i < textures.count; i++) {
-        atlas->placements[i].x = (u16)rects[i].x;
-        atlas->placements[i].y = (u16)rects[i].y;
-        atlas->placements[i].w = (u16)rects[i].w;
-        atlas->placements[i].h = (u16)rects[i].h;
-    }
+    atlas->placements = placements;
+    atlas->packer_nodes = packer_nodes;
+    atlas->packer_rects = packer_rects;
 
     return atlas;
 }
