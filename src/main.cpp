@@ -1455,7 +1455,7 @@ enum class BlendType {
 SDL_GPUGraphicsPipeline *make_render_pipeline(ErrorContext *err, SDL_GPUDevice *device,
                                               SDL_Window *window, SDL_GPUShader *vert_shader,
                                               SDL_GPUShader *frag_shader,
-                                              SDL_GPUTextureFormat render_target_format,
+                                              SDL_GPUTextureFormat swapchain_format,
                                               BlendType blend_type) {
     err_scope(err, "Init render pipeline");
 
@@ -1473,7 +1473,7 @@ SDL_GPUGraphicsPipeline *make_render_pipeline(ErrorContext *err, SDL_GPUDevice *
     }
 
     SDL_GPUColorTargetDescription color_target_descs[] = {{
-        .format = render_target_format,
+        .format = swapchain_format,
         .blend_state = blend_state,
     }};
 
