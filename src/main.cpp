@@ -1612,10 +1612,15 @@ void init_render_pipelines(ErrorContext *err, App *app) {
         load_shader(err, app->device, S("src/shaders/frag_glyph.msl"), ShaderType::Fragment);
     if (err_occurred(err)) return;
 
-    // TODO use vsync or mailbox
-    try_sdl(err, SDL_SetGPUSwapchainParameters(app->device, app->window,
-                                               SDL_GPU_SWAPCHAINCOMPOSITION_SDR_LINEAR,
-                                               SDL_GPU_PRESENTMODE_IMMEDIATE));
+    if (SDL_WindowSupportsGPUPresentMode(app->device, app->window, SDL_GPU_PRESENTMODE_MAILBOX)) {
+        try_sdl(err, SDL_SetGPUSwapchainParameters(app->device, app->window,
+                                                   SDL_GPU_SWAPCHAINCOMPOSITION_SDR_LINEAR,
+                                                   SDL_GPU_PRESENTMODE_MAILBOX));
+    } else {
+        try_sdl(err, SDL_SetGPUSwapchainParameters(app->device, app->window,
+                                                   SDL_GPU_SWAPCHAINCOMPOSITION_SDR_LINEAR,
+                                                   SDL_GPU_PRESENTMODE_VSYNC));
+    }
     SDL_GPUTextureFormat swapchain_format =
         SDL_GetGPUSwapchainTextureFormat(app->device, app->window);
     app->icon_pipeline =
