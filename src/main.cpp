@@ -625,8 +625,6 @@ App *init_app(ErrorContext *err) {
     return app;
 }
 
-void shape_test();
-
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     thread_init(argc, argv);
 
@@ -640,9 +638,6 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
         return SDL_APP_FAILURE;
     }
     *appstate = app;
-
-    // TODO remove
-    // shape_test();
 
     return SDL_APP_CONTINUE;
 }
@@ -1211,50 +1206,10 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 }
 
 //
-// MARK:Font stuff
-//
-
-void shape_test() {
-    kbts_shape_context *context = kbts_CreateShapeContext(0, 0);
-    defer(kbts_DestroyShapeContext(context));
-    kbts_ShapePushFontFromFile(context, "data/Roboto-Medium.ttf", 0);
-
-    Str shape_text = S("Let's shape something!");
-
-    kbts_ShapeBegin(context, KBTS_DIRECTION_DONT_KNOW, KBTS_LANGUAGE_DONT_KNOW);
-    kbts_ShapeUtf8(context, (char *)shape_text.ptr, (i32)shape_text.count,
-                   KBTS_USER_ID_GENERATION_MODE_CODEPOINT_INDEX);
-    kbts_ShapeEnd(context);
-
-    // Layout runs naively left to right.
-    kbts_run Run = {};
-    int CursorX = 0, CursorY = 0;
-    u64 run_idx = 0;
-    while (kbts_ShapeRun(context, &Run)) {
-        log_info("Run idx = %" PRIu64, run_idx);
-        u64 glyph_idx = 0;
-        kbts_glyph *Glyph = nullptr;
-        while (kbts_GlyphIteratorNext(&Run.Glyphs, &Glyph)) {
-            int GlyphX = CursorX + Glyph->OffsetX;
-            int GlyphY = CursorY + Glyph->OffsetY;
-
-            // DisplayGlyph(Glyph->Id, GlyphX, GlyphY);
-            log_info("Display glyph: idx = %" PRIu64 ", id = %d, x = %d, y = %d\n", glyph_idx,
-                     Glyph->Id, GlyphX, GlyphY);
-
-            CursorX += Glyph->AdvanceX;
-            CursorY += Glyph->AdvanceY;
-            glyph_idx++;
-        }
-        run_idx++;
-    }
-}
-
-//
 // MARK:Renderer
 //
 
-// CPU
+// CPU texture
 struct TextureBuffer {
     SDL_GPUTextureFormat format;
     Arr<u8> buffer;
@@ -1830,6 +1785,48 @@ void re_render(App *app) {
 // MARK:Text rendering
 //
 
+struct ShapedGlyph {
+    u32 glyph_idx;
+    i32 glyph_x;
+    i32 glyph_y;
+};
+
+Arr<ShapedGlyph> simple_shape(Arena *arena, Str text) {
+    kbts_shape_context *context = kbts_CreateShapeContext(0, 0);
+    defer(kbts_DestroyShapeContext(context));
+    kbts_ShapePushFontFromFile(context, "data/Roboto-Medium.ttf", 0);
+
+    kbts_ShapeBegin(context, KBTS_DIRECTION_DONT_KNOW, KBTS_LANGUAGE_DONT_KNOW);
+    kbts_ShapeUtf8(context, (char *)text.ptr, (i32)text.count,
+                   KBTS_USER_ID_GENERATION_MODE_CODEPOINT_INDEX);
+    kbts_ShapeEnd(context);
+
+    // Layout runs naively left to right.
+    kbts_run Run = {};
+    i32 cursor_x = 0, cursor_y = 0;
+    // u32 run_idx = 0;
+    Vec<ShapedGlyph> output = {};
+    vec_prealloc(arena, &output, text.count);
+    while (kbts_ShapeRun(context, &Run)) {
+        kbts_glyph *glyph = nullptr;
+        while (kbts_GlyphIteratorNext(&Run.Glyphs, &glyph)) {
+            i32 glyph_x = cursor_x + glyph->OffsetX;
+            i32 glyph_y = cursor_y + glyph->OffsetY;
+
+            cursor_x += glyph->AdvanceX;
+            cursor_y += glyph->AdvanceY;
+
+            ShapedGlyph *g = vec_push_zero(arena, &output);
+            g->glyph_idx = glyph->Id;
+            g->glyph_x = glyph_x;
+            g->glyph_y = glyph_y;
+        }
+        // run_idx++;
+    }
+
+    return vec_arr(&output);
+}
+
 void make_and_upload_text_atlas(ErrorContext *err, App *app, SDL_GPUCommandBuffer *command_buffer) {
     err_scope(err, "Initialize text rendering");
 
@@ -1880,10 +1877,14 @@ void make_and_upload_text_atlas(ErrorContext *err, App *app, SDL_GPUCommandBuffe
 u64 make_glyph_mesh(Arena *arena, PxSize window_size, Atlas *atlas, Mesh *mesh) {
     u64 start_vertex_count = mesh->vertices.count;
 
-    PxRect src = atlas->placements[49];
-    PxRect dst = {.x = 150, .y = 150, .w = src.w, .h = src.h};
-    Color color = {.r = 255, .g = 0, .b = 127, .a = 255};
-    push_atlas_quad(arena, window_size, atlas, mesh, src, dst, color);
+    Str text = S("Hello, world!");
+    Arr<ShapedGlyph> glyphs = simple_shape(arena, text);
+    for (u64 i = 0; i < glyphs.count; i++) {
+        PxRect src = atlas->placements[glyphs[i].glyph_idx];
+        PxRect dst = {.x = (u16)(200 + i * 40), .y = 200, .w = src.w, .h = src.h};
+        Color color = {.r = 255, .g = 255, .b = 255, .a = 255};
+        push_atlas_quad(arena, window_size, atlas, mesh, src, dst, color);
+    }
 
     u64 end_vertex_count = mesh->vertices.count;
     return (end_vertex_count - start_vertex_count) / 4;
