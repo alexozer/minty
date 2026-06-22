@@ -8,3 +8,4 @@
 /.cache
 /zig-pkg
 /test-images
+/blitter.xcodeproj

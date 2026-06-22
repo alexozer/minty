@@ -1,5 +1,10 @@
 # TODO
 
+## Next
+
+Put all glyph bitmaps for font in atlas
+    Continue using arrays for now, make packer eat empty textures
+
 ## Prototyping
 
 <!-- Render Roboto font -->
@@ -53,6 +58,7 @@ Font outlines
 Upgrade SDL version
 Vendor some deps so things like the above are easier
 Prune SDL features to bring down binary size
+Forward decl generator
 
 ## Error handling
 

@@ -1266,6 +1266,11 @@ enum class BlendType {
     Over,
 };
 
+enum class TextureFilterType {
+    Nearest,
+    Linear,
+};
+
 u64 sdl_surface_size(SDL_Surface *surface) { return (u64)surface->h * (u64)surface->pitch; }
 
 SDL_GPUGraphicsPipeline *make_render_pipeline(ErrorContext *err, SDL_GPUDevice *device,
@@ -1360,9 +1365,24 @@ void clear_texture(ErrorContext *err, App *app, SDL_GPUCommandBuffer *command_bu
 
 Atlas *make_and_upload_atlas(ErrorContext *err, Arena *arena, App *app,
                              SDL_GPUCommandBuffer *command_buffer, Str name,
-                             Arr<TextureBuffer> textures, PxSize atlas_size) {
+                             Arr<TextureBuffer> textures, PxSize atlas_size,
+                             TextureFilterType filter) {
     Arena *scratch = arena_acquire();
     defer(arena_release(scratch));
+
+    // Texture formats must be equal
+    SDL_GPUTextureFormat texture_format = SDL_GPU_TEXTUREFORMAT_INVALID;
+    for (u64 i = 0; i < textures.count; i++) {
+        if (textures[i].dims.w > 0 && textures[i].dims.h > 0) {
+            if (texture_format == SDL_GPU_TEXTUREFORMAT_INVALID) {
+                texture_format = textures[i].format;
+            } else {
+                log_assert(texture_format == textures[i].format);
+            }
+        }
+    }
+    // There must be at least one non-empty texture
+    log_assert(texture_format != SDL_GPU_TEXTUREFORMAT_INVALID);
 
     //
     // Allocate and clear GPU texture
@@ -1370,7 +1390,7 @@ Atlas *make_and_upload_atlas(ErrorContext *err, Arena *arena, App *app,
 
     SDL_GPUTextureCreateInfo gpu_texture_info = {
         .type = SDL_GPU_TEXTURETYPE_2D,
-        .format = textures[0].format,
+        .format = texture_format,
         .usage = SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COLOR_TARGET,
         .width = (u32)atlas_size.w,
         .height = (u32)atlas_size.h,
@@ -1380,15 +1400,7 @@ Atlas *make_and_upload_atlas(ErrorContext *err, Arena *arena, App *app,
     SDL_GPUTexture *texture = SDL_CreateGPUTexture(app->device, &gpu_texture_info);
     char *name_cstr = str_to_c(scratch, name);
     SDL_SetGPUTextureName(app->device, texture, name_cstr);
-    clear_texture(err, app, command_buffer, texture, textures[0].format);
-
-    // Texture formats must be equal
-    log_assert(textures.count > 0);
-    for (u64 i = 0; i < textures.count; i++) {
-        log_assert(textures[i].format == textures[0].format);
-        log_assert(textures[i].dims.w > 0);
-        log_assert(textures[i].dims.h > 0);
-    }
+    clear_texture(err, app, command_buffer, texture, texture_format);
 
     //
     // Compute atlas packing
@@ -1402,18 +1414,22 @@ Atlas *make_and_upload_atlas(ErrorContext *err, Arena *arena, App *app,
     Arr<stbrp_rect> packer_rects = arena_push_arr<stbrp_rect>(arena, textures.count);
     for (u64 i = 0; i < textures.count; i++) {
         packer_rects[i].id = (i32)i;
-        packer_rects[i].w = textures[i].dims.w + 2;
-        packer_rects[i].h = textures[i].dims.h + 2;
+        if (textures[i].dims.w > 0 && textures[i].dims.h > 0) {
+            packer_rects[i].w = textures[i].dims.w + 2;
+            packer_rects[i].h = textures[i].dims.h + 2;
+        }
     }
 
     log_assert(stbrp_pack_rects(&packer_ctx, packer_rects.ptr, (i32)packer_rects.count) == 1);
 
     Arr<PxRect> placements = arena_push_arr<PxRect>(arena, textures.count);
     for (u64 i = 0; i < textures.count; i++) {
-        placements[i].x = (u16)packer_rects[i].x + 1;
-        placements[i].y = (u16)packer_rects[i].y + 1;
-        placements[i].w = (u16)textures[i].dims.w;
-        placements[i].h = (u16)textures[i].dims.h;
+        if (textures[i].dims.w > 0 && textures[i].dims.h > 0) {
+            placements[i].x = (u16)packer_rects[i].x + 1;
+            placements[i].y = (u16)packer_rects[i].y + 1;
+            placements[i].w = (u16)textures[i].dims.w;
+            placements[i].h = (u16)textures[i].dims.h;
+        }
     }
 
     //
@@ -1421,7 +1437,7 @@ Atlas *make_and_upload_atlas(ErrorContext *err, Arena *arena, App *app,
     //
 
     // TODO reuse transfer buffer and/or destroy?
-    u32 texel_size = SDL_GPUTextureFormatTexelBlockSize(textures[0].format);
+    u32 texel_size = SDL_GPUTextureFormatTexelBlockSize(texture_format);
     SDL_GPUTransferBufferCreateInfo transfer_buffer_info = {
         .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
         .size = atlas_size.w * atlas_size.h * texel_size,
@@ -1455,22 +1471,24 @@ Atlas *make_and_upload_atlas(ErrorContext *err, Arena *arena, App *app,
             offset = align_to(offset + prev_size, 512);
         }
 
-        SDL_GPUTextureTransferInfo src = {
-            .transfer_buffer = transfer_buffer,
-            .offset = (u32)offset,
-        };
-        SDL_GPUTextureRegion dest = {
-            .texture = texture,
-            .mip_level = 0,
-            .layer = 0,
-            .x = (u32)placements[i].x,
-            .y = (u32)placements[i].y,
-            .z = 0,
-            .w = (u32)placements[i].w,
-            .h = (u32)placements[i].h,
-            .d = 1,
-        };
-        SDL_UploadToGPUTexture(copy_pass, &src, &dest, false);
+        if (textures[i].dims.w > 0 && textures[i].dims.h > 0) {
+            SDL_GPUTextureTransferInfo src = {
+                .transfer_buffer = transfer_buffer,
+                .offset = (u32)offset,
+            };
+            SDL_GPUTextureRegion dest = {
+                .texture = texture,
+                .mip_level = 0,
+                .layer = 0,
+                .x = (u32)placements[i].x,
+                .y = (u32)placements[i].y,
+                .z = 0,
+                .w = (u32)placements[i].w,
+                .h = (u32)placements[i].h,
+                .d = 1,
+            };
+            SDL_UploadToGPUTexture(copy_pass, &src, &dest, false);
+        }
     }
 
     SDL_EndGPUCopyPass(copy_pass);
@@ -1479,14 +1497,32 @@ Atlas *make_and_upload_atlas(ErrorContext *err, Arena *arena, App *app,
     // Make sampler (doesn't super duper need to happen here but w/e)
     //
 
-    SDL_GPUSamplerCreateInfo sampler_info = {
-        .min_filter = SDL_GPU_FILTER_LINEAR,
-        .mag_filter = SDL_GPU_FILTER_LINEAR,
-        .mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_LINEAR,
-        .address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
-        .address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
-        .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
-    };
+    SDL_GPUSamplerCreateInfo sampler_info = {};
+    switch (filter) {
+    case TextureFilterType::Linear: {
+        sampler_info = {
+            .min_filter = SDL_GPU_FILTER_LINEAR,
+            .mag_filter = SDL_GPU_FILTER_LINEAR,
+            .mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_LINEAR,
+            .address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+            .address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+            .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+        };
+        break;
+    }
+    case TextureFilterType::Nearest: {
+        sampler_info = {
+            .min_filter = SDL_GPU_FILTER_NEAREST,
+            .mag_filter = SDL_GPU_FILTER_NEAREST,
+            .mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_NEAREST,
+            .address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+            .address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+            .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+        };
+        break;
+    }
+    }
+
     SDL_GPUSampler *sampler = SDL_CreateGPUSampler(app->device, &sampler_info);
 
     //
@@ -1599,8 +1635,9 @@ void make_and_upload_icon_atlas(ErrorContext *err, App *app, SDL_GPUCommandBuffe
                                           .count = sdl_surface_size(icon_surfaces[i])};
         icon_textures[i].dims = {.w = (u16)icon_surfaces[i]->w, .h = (u16)icon_surfaces[i]->h};
     }
-    app->icon_atlas = make_and_upload_atlas(err, app->session_arena, app, command_buffer,
-                                            S("Icon atlas"), icon_textures, {.w = 1024, .h = 1024});
+    app->icon_atlas =
+        make_and_upload_atlas(err, app->session_arena, app, command_buffer, S("Icon atlas"),
+                              icon_textures, {.w = 1024, .h = 1024}, TextureFilterType::Linear);
 }
 
 void init_render_pipelines(ErrorContext *err, App *app) {
@@ -1811,14 +1848,11 @@ void make_and_upload_text_atlas(ErrorContext *err, App *app, SDL_GPUCommandBuffe
                                    &face));
     defer(FT_Done_Face(face));
 
-    try_ft(err, FT_Set_Pixel_Sizes(face, 0, 128));
+    try_ft(err, FT_Set_Pixel_Sizes(face, 0, 64));
 
-    u64 glyph_start = 5;
-    u64 glyph_end = 300;
-    Arr<TextureBuffer> textures = arena_push_arr<TextureBuffer>(scratch, glyph_end - glyph_start);
+    Arr<TextureBuffer> textures = arena_push_arr<TextureBuffer>(scratch, (u64)face->num_glyphs);
 
-    for (u64 glyph_idx = glyph_start; glyph_idx < glyph_end; glyph_idx++) {
-        u64 texture_idx = glyph_idx - glyph_start;
+    for (u64 glyph_idx = 0; glyph_idx < face->num_glyphs; glyph_idx++) {
         try_ft(err, FT_Load_Glyph(face, (u32)glyph_idx, 0));
         // if (face->glyph->format == FT_GLYPH_FORMAT_BITMAP) {
         //     bail(err, "TODO: handle bitmap glyph");
@@ -1826,7 +1860,7 @@ void make_and_upload_text_atlas(ErrorContext *err, App *app, SDL_GPUCommandBuffe
         try_ft(err, FT_Render_Glyph(face->glyph, FT_RENDER_MODE_NORMAL));
 
         FT_Bitmap bitmap = face->glyph->bitmap;
-        TextureBuffer *texture = &textures[texture_idx];
+        TextureBuffer *texture = &textures[glyph_idx];
         Arr<u8> tmp_buffer = {.ptr = bitmap.buffer, .count = bitmap.width * bitmap.rows};
         texture->format = SDL_GPU_TEXTUREFORMAT_R8_UNORM;
         texture->buffer = arr_clone(scratch, tmp_buffer);
@@ -1834,8 +1868,9 @@ void make_and_upload_text_atlas(ErrorContext *err, App *app, SDL_GPUCommandBuffe
     }
 
     PxSize font_atlas_size = {.w = 2048, .h = 2048};
-    app->glyph_atlas = make_and_upload_atlas(err, app->app_arena, app, command_buffer,
-                                             S("Glyph atlas"), textures, font_atlas_size);
+    app->glyph_atlas =
+        make_and_upload_atlas(err, app->app_arena, app, command_buffer, S("Glyph atlas"), textures,
+                              font_atlas_size, TextureFilterType::Nearest);
 
     // FT_Vector advance = app->font_face->glyph->advance;
     // u32 width = app->font_face->glyph->bitmap.width;
@@ -1845,9 +1880,9 @@ void make_and_upload_text_atlas(ErrorContext *err, App *app, SDL_GPUCommandBuffe
 u64 make_glyph_mesh(Arena *arena, PxSize window_size, Atlas *atlas, Mesh *mesh) {
     u64 start_vertex_count = mesh->vertices.count;
 
-    PxRect src = atlas->placements[42];
-    PxRect dst = {.x = 100, .y = 100, .w = src.w, .h = src.h};
-    Color color = {.r = 255, .g = 255, .b = 255, .a = 255};
+    PxRect src = atlas->placements[49];
+    PxRect dst = {.x = 150, .y = 150, .w = src.w, .h = src.h};
+    Color color = {.r = 255, .g = 80, .b = 127, .a = 255};
     push_atlas_quad(arena, window_size, atlas, mesh, src, dst, color);
 
     u64 end_vertex_count = mesh->vertices.count;
