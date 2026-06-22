@@ -114,7 +114,10 @@ Baby steps.
 <!-- - Draw a single character bitmap rendered with freetype -->
 <!-- - Make it possible to create more than one atlas/rendering pipeline -->
 <!-- - Colored text -->
-- 1px atlas gap?
+<!-- - 2px atlas gap? -->
+<!-- - Wipe atlas textures in render pass before writing -->
+- Render all glyphs in font to atlas
+    - Convert to hashmap stuff
 - Alphabet (simple shaping, aligned to pixel boundaries)
 
 BUGS:
@@ -123,9 +126,6 @@ BUGS:
 <!--     - It's almost like we're rendering at half resolution or something -->
 <!--     - Or it could just be (lack of) gamma correction -->
 - Neovim LSP autosave failing on blank documents, lololol, just create autocmd on lspattach autocmd?
-
-- Wipe atlas textures in render pass before writing
-- Atlas 1px padding on both sides for glyphs
 
 # Gamma correction
 

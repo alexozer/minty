@@ -350,6 +350,76 @@ bool vec_is_empty(Vec<T> *vec) {
 }
 
 //
+// Hashmaps
+//
+
+// TODO: replace with actual hashmap implementation
+template <typename K, typename V>
+struct Map {
+    Vec<K> keys;
+    Vec<V> values;
+};
+
+template <typename K, typename V>
+V *map__find_slot(Map<K, V> *map, K key) {
+    for (u64 i = 0; i < map->keys.count; i++) {
+        if (map->keys[i] == key) {
+            return &map->values[i];
+        }
+    }
+    return nullptr;
+}
+
+template <typename E, typename V>
+V *map__find_slot(Map<Arr<E>, V> *map, Arr<E> key) {
+    for (u64 i = 0; i < map->keys.count; i++) {
+        if (arr_eq(map->keys[i], key)) {
+            return &map->values[i];
+        }
+    }
+    return nullptr;
+}
+
+template <typename K, typename V>
+V map_get(Map<K, V> *map, K key) {
+    V *slot = map__find_slot(map, key);
+    if (slot != nullptr) {
+        return *slot;
+    }
+    return {};
+}
+
+template <typename K, typename V>
+void map_set(Arena *arena, Map<K, V> *map, K key, V value) {
+    V *slot = map__find_slot(map, key);
+    if (slot != nullptr) {
+        *slot = value;
+    } else {
+        vec_push(arena, &map->keys, key);
+        vec_push(arena, &map->values, value);
+    }
+}
+
+template <typename K, typename V>
+bool map_has(Map<K, V> *map, K key) {
+    return map__find_slot(map, key) != nullptr;
+}
+
+template <typename K, typename V>
+void map_del(Arena *arena, Map<K, V> *map, K key) {
+    V *slot = map__find_slot(map, key);
+    if (slot != nullptr) {
+        // Count must be at least 1
+        if (map->keys.count > 1) {
+            map->keys[slot - map->values.ptr] = map->keys[map->keys.count - 1];
+            *slot = map->values[map->values.count - 1];
+        }
+        vec_pop(&map->keys);
+        vec_pop(&map->values);
+    }
+}
+
+//
 // Defer
 //
 
