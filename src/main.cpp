@@ -1321,7 +1321,7 @@ SDL_GPUGraphicsPipeline *make_render_pipeline(ErrorContext *err, SDL_GPUDevice *
         {
             .location = 2,
             .buffer_slot = 0,
-            .format = SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4,
+            .format = SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM,
             .offset = sizeof(f32) * 5,
         },
     };
@@ -1882,7 +1882,7 @@ u64 make_glyph_mesh(Arena *arena, PxSize window_size, Atlas *atlas, Mesh *mesh) 
 
     PxRect src = atlas->placements[49];
     PxRect dst = {.x = 150, .y = 150, .w = src.w, .h = src.h};
-    Color color = {.r = 255, .g = 80, .b = 127, .a = 255};
+    Color color = {.r = 255, .g = 0, .b = 127, .a = 255};
     push_atlas_quad(arena, window_size, atlas, mesh, src, dst, color);
 
     u64 end_vertex_count = mesh->vertices.count;

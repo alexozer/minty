@@ -2,8 +2,9 @@
 
 ## Next
 
-Put all glyph bitmaps for font in atlas
-    Continue using arrays for now, make packer eat empty textures
+<!-- Put all glyph bitmaps for font in atlas -->
+    <!-- Continue using arrays for now, make packer eat empty textures -->
+Fix glyph color bug
 
 ## Prototyping
 
