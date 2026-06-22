@@ -84,10 +84,10 @@ Box can have
 Instead of computing atlases CPU-side, we can use transfer buffers / partial
 texture upload to pack them on GPU at runtime!
 
-For all new textures:
-    Pack with stb_rect_pack, for now
-    Pack into transfer buffer
-    Upload to new positions in a copy pass
+<!-- For all new textures: -->
+<!--     Pack with stb_rect_pack, for now -->
+<!--     Pack into transfer buffer -->
+<!--     Upload to new positions in a copy pass -->
 
 <!-- For a first pass: just rect pack, transfer buffer pack, and upload in one go -->
 Make basic UI engine use atlas
@@ -117,7 +117,8 @@ Baby steps.
 <!-- - 2px atlas gap? -->
 <!-- - Wipe atlas textures in render pass before writing -->
 - Render all glyphs in font to atlas
-    - Convert to hashmap stuff
+    <!-- - Convert to hashmap stuff -->
+    - Actually, simpler for now: just keep using glyph index as key, make atlas packer resilient to empty textures
 - Alphabet (simple shaping, aligned to pixel boundaries)
 
 BUGS:
@@ -125,7 +126,7 @@ BUGS:
 <!-- - Blurry fonts? -->
 <!--     - It's almost like we're rendering at half resolution or something -->
 <!--     - Or it could just be (lack of) gamma correction -->
-- Neovim LSP autosave failing on blank documents, lololol, just create autocmd on lspattach autocmd?
+<!-- - Neovim LSP autosave failing on blank documents, lololol, just create autocmd on lspattach autocmd? -->
 
 # Gamma correction
 
