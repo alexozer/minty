@@ -123,12 +123,12 @@ Baby steps.
 <!-- - Colored text -->
 <!-- - 2px atlas gap? -->
 <!-- - Wipe atlas textures in render pass before writing -->
-- Render all glyphs in font to atlas
+<!-- - Render all glyphs in font to atlas -->
     <!-- - Convert to hashmap stuff -->
     - Actually, simpler for now: just keep using glyph index as key, make atlas packer resilient to empty textures
-- Alphabet (simple shaping, aligned to pixel boundaries)
+<!-- - Alphabet (simple shaping, aligned to pixel boundaries) -->
 
-BUGS:
+<!-- BUGS: -->
 
 <!-- - Blurry fonts? -->
 <!--     - It's almost like we're rendering at half resolution or something -->
@@ -143,5 +143,23 @@ BUGS:
 
 # Font shaping
 
-Figure out how these silly font coordinate systems work
+<!-- Figure out how these silly font coordinate systems work -->
 Figure out how I'm supposed to position glyphs w.r.t. shaping results
+    Read refpad
+
+# Texture caching
+
+Idea for kinda-sorta immediate mode texture caching system:
+
+API takes "request" to draw texture comprising of e.g. raw texture bitmap buffer, and
+    - Produces handle / hash of contents
+    - Produces instructions for drawing (e.g. atlas texture ID / coords)
+    - Schedules request to batch upload textures etc. as needed
+
+Idk the simplest/most elegant shape of the API, but the point is to avoid manually managing the
+persistent state of atlases and treat them as implicit caches
+
+You could imagine doing this for other state too, like parsing split files
+
+Text cache API could wrap the atlas cache API, instead taking e.g. font, glyph ID, pixel size,
+subpixel position, next lower/higher size?
