@@ -68,6 +68,10 @@ pub fn build(b: *std.Build) !void {
     const freetype = b.dependency("freetype", .{ .optimize = optimize, .target = target });
     try cdb_targets.append(b.allocator, freetype.artifact("freetype"));
 
+    //
+    // simdutf
+    //
+
     const simdutf = b.addLibrary(.{
         .name = "simdutf",
         .root_module = b.createModule(.{
@@ -83,6 +87,31 @@ pub fn build(b: *std.Build) !void {
     });
     simdutf.installHeader(b.path("3rdparty/simdutf_c.h"), "simdutf_c.h");
     try cdb_targets.append(b.allocator, simdutf);
+
+    //
+    // refpad demo
+    //
+    const refpad = b.addExecutable(.{
+        .name = "refpad",
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+            .strip = false,
+            .link_libc = true,
+            .link_libcpp = false,
+        }),
+    });
+    refpad.root_module.addCSourceFiles(.{
+        .files = &.{"3rdparty/refpad/refpad_sdl3.c"},
+        .flags = c_flags,
+        .language = .c,
+    });
+    refpad.root_module.linkLibrary(sdl.artifact("SDL3"));
+    b.installArtifact(refpad);
+
+    //
+    // blitter
+    //
 
     const blitter = b.addExecutable(.{
         .name = "blitter",
