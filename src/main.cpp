@@ -1197,7 +1197,9 @@ u64 make_glyph_mesh(Arena* arena, PxSize window_size, Atlas* atlas, Mesh* mesh) 
     Arr<ShapedGlyph> glyphs = simple_shape(arena, text);
     for (u64 i = 0; i < glyphs.count; i++) {
         PxRect src = atlas->placements[glyphs[i].glyph_idx];
-        PxRect dst = {.x = (u16)(200 + i * 40), .y = 200, .w = src.w, .h = src.h};
+        u16 dest_x = (u16)(200 + glyphs[i].glyph_x / 64);
+        u16 dest_y = (u16)(200 - glyphs[i].glyph_y / 64);
+        PxRect dst = {.x = dest_x, .y = dest_y, .w = src.w, .h = src.h};
         Color color = {.r = 255, .g = 255, .b = 255, .a = 255};
         push_atlas_quad(arena, window_size, atlas, mesh, src, dst, color);
     }
@@ -1207,7 +1209,7 @@ u64 make_glyph_mesh(Arena* arena, PxSize window_size, Atlas* atlas, Mesh* mesh) 
 }
 
 //
-// :Rendering
+// MARK:Rendering
 //
 
 SDL_GPUGraphicsPipeline* make_render_pipeline(ErrorContext* err,
@@ -1293,6 +1295,7 @@ void clear_texture(ErrorContext* err,
     SDL_GPUGraphicsPipeline* pipeline =
         make_render_pipeline(err, app->device, app->window, app->vert_shader, app->icon_frag_shader,
                              format, BlendType::None);
+
     SDL_GPUColorTargetInfo color_target_infos[] = {{
         .texture = texture,
         .clear_color = {0.f, 0.f, 0.f, 1.f},
