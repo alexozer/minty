@@ -635,8 +635,7 @@ void load_livesplit_lss(Arena* arena, ErrorContext* err, Str lss_path, FileDef* 
     defer(arena_release(scratch));
 
     Arr<u8> xml = fs_load_file(err, scratch, lss_path);
-    if (err_occurred(err))
-        return;
+    if (err_occurred(err)) return;
 
     parse_livesplit_lss(err, arena, file, xml);
     load_timer_textures(err, arena, file);
@@ -1153,8 +1152,7 @@ void make_and_upload_glyph_atlas(ErrorContext* err,
     Arr<u8> font_contents = fs_load_file(err, scratch, S("data/Roboto-Medium.ttf"));
     // Arr<u8> font_contents = fs_load_file(err, scratch,
     // S("data/NotoSansJP-VariableFont_wght.ttf"));
-    if (err_occurred(err))
-        return;
+    if (err_occurred(err)) return;
 
     FT_Face face = {};
     try_ft(err, FT_New_Memory_Face(app->freetype, font_contents.ptr, (long)font_contents.count, 0,
@@ -1497,8 +1495,7 @@ SDL_GPUShader* load_shader(ErrorContext* err, SDL_GPUDevice* device, Str path, S
     defer(arena_release(scratch));
 
     Arr<u8> source = fs_load_file(err, scratch, path);
-    if (err_occurred(err))
-        return nullptr;
+    if (err_occurred(err)) return nullptr;
 
     SDL_GPUShaderCreateInfo info = {};
     switch (type) {
@@ -1586,8 +1583,7 @@ void init_render_pipelines(ErrorContext* err, App* app) {
         load_shader(err, app->device, S("src/shaders/frag_icon.msl"), ShaderType::Fragment);
     app->glyph_frag_shader =
         load_shader(err, app->device, S("src/shaders/frag_glyph.msl"), ShaderType::Fragment);
-    if (err_occurred(err))
-        return;
+    if (err_occurred(err)) return;
 
     if (SDL_WindowSupportsGPUPresentMode(app->device, app->window, SDL_GPU_PRESENTMODE_MAILBOX)) {
         try_sdl(err, SDL_SetGPUSwapchainParameters(app->device, app->window,
@@ -1606,8 +1602,7 @@ void init_render_pipelines(ErrorContext* err, App* app) {
     app->glyph_pipeline =
         make_render_pipeline(err, app->device, app->window, app->vert_shader,
                              app->glyph_frag_shader, swapchain_format, BlendType::Over);
-    if (err_occurred(err))
-        return;
+    if (err_occurred(err)) return;
 }
 
 void init_render_buffers(ErrorContext* err, App* app) {
@@ -1615,8 +1610,7 @@ void init_render_buffers(ErrorContext* err, App* app) {
     defer(SDL_SubmitGPUCommandBuffer(command_buffer));
 
     re_init_vertex_buffers(err, app);
-    if (err_occurred(err))
-        return;
+    if (err_occurred(err)) return;
 
     make_and_upload_icon_atlas(err, app, command_buffer);
     make_and_upload_glyph_atlas(err, app, command_buffer);
