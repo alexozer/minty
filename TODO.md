@@ -140,3 +140,8 @@ BUGS:
 <!-- - Understand gamma correction math better -->
 <!-- - Figure out how to do gamma encode/decode using GPU texture buffer formats, if it makes sense -->
 <!--     - See what noclip is doing? Or ask Jasper if I can't figure it out? -->
+
+# Font shaping
+
+Figure out how these silly font coordinate systems work
+Figure out how I'm supposed to position glyphs w.r.t. shaping results
