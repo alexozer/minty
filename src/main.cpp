@@ -149,6 +149,12 @@ struct Atlas {
     Arr<stbrp_rect> packer_rects;
 };
 
+struct GlyphAtlas {
+    Atlas* atlas;
+    u16 px_per_em;  // AKA the face size in pixels
+    u16 units_per_em;
+};
+
 struct Mesh {
     Vec<Vertex> vertices;
     Vec<u16> indices;
@@ -218,6 +224,8 @@ struct App {
     // Pipelines
     SDL_GPUGraphicsPipeline* icon_pipeline;
     SDL_GPUGraphicsPipeline* glyph_pipeline;
+    SDL_GPUGraphicsPipeline* clear_icon_pipeline;
+    SDL_GPUGraphicsPipeline* clear_glyph_pipeline;
 
     // Geometry buffers
     SDL_GPUTransferBuffer* vertex_transfer_buffer;
@@ -226,7 +234,7 @@ struct App {
 
     // Textures
     Atlas* icon_atlas;
-    Atlas* glyph_atlas;
+    GlyphAtlas glyph_atlas;
 
     // Text stuff
     FT_Library freetype;
@@ -1132,43 +1140,48 @@ Arr<ShapedGlyph> simple_shape(Arena* arena, Str text) {
 
 Atlas* make_and_upload_atlas(ErrorContext* err,
                              Arena* arena,
-                             App* app,
+                             SDL_GPUDevice* device,
                              SDL_GPUCommandBuffer* command_buffer,
+                             SDL_GPUGraphicsPipeline* clear_texture_pipeline,
                              Str name,
                              Arr<CPUTexture> textures,
                              PxSize atlas_size,
                              TextureFilterType filter);
 
-void make_and_upload_glyph_atlas(ErrorContext* err,
-                                 App* app,
-                                 SDL_GPUCommandBuffer* command_buffer) {
+GlyphAtlas make_and_upload_glyph_atlas(ErrorContext* err,
+                                       Arena* arena,
+                                       SDL_GPUDevice* device,
+                                       SDL_GPUCommandBuffer* command_buffer,
+                                       SDL_GPUGraphicsPipeline* clear_texture_pipeline,
+                                       FT_Library freetype_handle,
+                                       Str face_path,
+                                       u16 face_size_px) {
     err_scope(err, "Initialize text rendering");
+
+    log_assert(face_size_px > 0);
 
     Arena* scratch = arena_acquire();
     defer(arena_release(scratch));
 
-    try_ft(err, FT_Init_FreeType(&app->freetype));
-
-    Arr<u8> font_contents = fs_load_file(err, scratch, S("data/Roboto-Medium.ttf"));
-    // Arr<u8> font_contents = fs_load_file(err, scratch,
-    // S("data/NotoSansJP-VariableFont_wght.ttf"));
-    if (err_occurred(err)) return;
+    Arr<u8> font_contents = fs_load_file(err, scratch, face_path);
+    if (err_occurred(err)) return {};
 
     FT_Face face = {};
-    try_ft(err, FT_New_Memory_Face(app->freetype, font_contents.ptr, (long)font_contents.count, 0,
-                                   &face));
+    try_ft(err, {},
+           FT_New_Memory_Face(freetype_handle, font_contents.ptr, (long)font_contents.count, 0,
+                              &face));
     defer(FT_Done_Face(face));
 
-    try_ft(err, FT_Set_Pixel_Sizes(face, 0, 64));
+    try_ft(err, {}, FT_Set_Pixel_Sizes(face, face_size_px, 0));
 
     Arr<CPUTexture> textures = arena_push_arr<CPUTexture>(scratch, (u64)face->num_glyphs);
 
     for (u64 glyph_idx = 0; glyph_idx < face->num_glyphs; glyph_idx++) {
-        try_ft(err, FT_Load_Glyph(face, (u32)glyph_idx, 0));
+        try_ft(err, {}, FT_Load_Glyph(face, (u32)glyph_idx, 0));
         // if (face->glyph->format == FT_GLYPH_FORMAT_BITMAP) {
         //     bail(err, "TODO: handle bitmap glyph");
         // }
-        try_ft(err, FT_Render_Glyph(face->glyph, FT_RENDER_MODE_NORMAL));
+        try_ft(err, {}, FT_Render_Glyph(face->glyph, FT_RENDER_MODE_NORMAL));
 
         FT_Bitmap bitmap = face->glyph->bitmap;
         CPUTexture* texture = &textures[glyph_idx];
@@ -1179,27 +1192,30 @@ void make_and_upload_glyph_atlas(ErrorContext* err,
     }
 
     PxSize font_atlas_size = {.w = 2048, .h = 2048};
-    app->glyph_atlas =
-        make_and_upload_atlas(err, app->app_arena, app, command_buffer, S("Glyph atlas"), textures,
-                              font_atlas_size, TextureFilterType::Nearest);
-
-    // FT_Vector advance = app->font_face->glyph->advance;
-    // u32 width = app->font_face->glyph->bitmap.width;
-    // u32 height = app->font_face->glyph->bitmap.rows;
+    Str texture_name = str_format(scratch, "Glyph atlas: family = '%s', style = '%s', size = %dpx",
+                                  face->family_name, face->style_name, face_size_px);
+    Atlas* atlas =
+        make_and_upload_atlas(err, arena, device, command_buffer, clear_texture_pipeline,
+                              texture_name, textures, font_atlas_size, TextureFilterType::Nearest);
+    return {
+        .atlas = atlas,
+        .px_per_em = face_size_px,
+        .units_per_em = face->units_per_EM,
+    };
 }
 
-u64 make_glyph_mesh(Arena* arena, PxSize window_size, Atlas* atlas, Mesh* mesh) {
+u64 make_glyph_mesh(Arena* arena, PxSize window_size, GlyphAtlas* atlas, Mesh* mesh) {
     u64 start_vertex_count = mesh->vertices.count;
 
     Str text = S("Hello, world!");
     Arr<ShapedGlyph> glyphs = simple_shape(arena, text);
     for (u64 i = 0; i < glyphs.count; i++) {
-        PxRect src = atlas->placements[glyphs[i].glyph_idx];
+        PxRect src = atlas->atlas->placements[glyphs[i].glyph_idx];
         u16 dest_x = (u16)(200 + glyphs[i].glyph_x / 64);
         u16 dest_y = (u16)(200 - glyphs[i].glyph_y / 64);
         PxRect dst = {.x = dest_x, .y = dest_y, .w = src.w, .h = src.h};
         Color color = {.r = 255, .g = 255, .b = 255, .a = 255};
-        push_atlas_quad(arena, window_size, atlas, mesh, src, dst, color);
+        push_atlas_quad(arena, window_size, atlas->atlas, mesh, src, dst, color);
     }
 
     u64 end_vertex_count = mesh->vertices.count;
@@ -1286,14 +1302,9 @@ SDL_GPUGraphicsPipeline* make_render_pipeline(ErrorContext* err,
 }
 
 void clear_texture(ErrorContext* err,
-                   App* app,
                    SDL_GPUCommandBuffer* command_buffer,
-                   SDL_GPUTexture* texture,
-                   SDL_GPUTextureFormat format) {
-    SDL_GPUGraphicsPipeline* pipeline =
-        make_render_pipeline(err, app->device, app->window, app->vert_shader, app->icon_frag_shader,
-                             format, BlendType::None);
-
+                   SDL_GPUGraphicsPipeline* pipeline,
+                   SDL_GPUTexture* texture) {
     SDL_GPUColorTargetInfo color_target_infos[] = {{
         .texture = texture,
         .clear_color = {0.f, 0.f, 0.f, 1.f},
@@ -1308,8 +1319,9 @@ void clear_texture(ErrorContext* err,
 
 Atlas* make_and_upload_atlas(ErrorContext* err,
                              Arena* arena,
-                             App* app,
+                             SDL_GPUDevice* device,
                              SDL_GPUCommandBuffer* command_buffer,
+                             SDL_GPUGraphicsPipeline* clear_texture_pipeline,
                              Str name,
                              Arr<CPUTexture> textures,
                              PxSize atlas_size,
@@ -1344,10 +1356,10 @@ Atlas* make_and_upload_atlas(ErrorContext* err,
         .layer_count_or_depth = 1,
         .num_levels = 1,
     };
-    SDL_GPUTexture* texture = SDL_CreateGPUTexture(app->device, &gpu_texture_info);
+    SDL_GPUTexture* texture = SDL_CreateGPUTexture(device, &gpu_texture_info);
     char* name_cstr = str_to_c(scratch, name);
-    SDL_SetGPUTextureName(app->device, texture, name_cstr);
-    clear_texture(err, app, command_buffer, texture, texture_format);
+    SDL_SetGPUTextureName(device, texture, name_cstr);
+    clear_texture(err, command_buffer, clear_texture_pipeline, texture);
 
     //
     // Compute atlas packing
@@ -1390,9 +1402,9 @@ Atlas* make_and_upload_atlas(ErrorContext* err,
         .size = atlas_size.w * atlas_size.h * texel_size,
     };
     SDL_GPUTransferBuffer* transfer_buffer =
-        SDL_CreateGPUTransferBuffer(app->device, &transfer_buffer_info);
+        SDL_CreateGPUTransferBuffer(device, &transfer_buffer_info);
 
-    void* buf = SDL_MapGPUTransferBuffer(app->device, transfer_buffer, false);
+    void* buf = SDL_MapGPUTransferBuffer(device, transfer_buffer, false);
     u64 offset = 0;
     for (u64 i = 0; i < textures.count; i++) {
         if (i > 0) {
@@ -1402,7 +1414,7 @@ Atlas* make_and_upload_atlas(ErrorContext* err,
         u64 size = textures[i].buffer.count;
         SDL_memcpy((u8*)buf + offset, textures[i].buffer.ptr, size);
     }
-    SDL_UnmapGPUTransferBuffer(app->device, transfer_buffer);
+    SDL_UnmapGPUTransferBuffer(device, transfer_buffer);
 
     //
     // Upload textures
@@ -1470,7 +1482,7 @@ Atlas* make_and_upload_atlas(ErrorContext* err,
     }
     }
 
-    SDL_GPUSampler* sampler = SDL_CreateGPUSampler(app->device, &sampler_info);
+    SDL_GPUSampler* sampler = SDL_CreateGPUSampler(device, &sampler_info);
 
     //
     // Return atlas descriptor
@@ -1531,7 +1543,7 @@ SDL_GPUShader* load_shader(ErrorContext* err, SDL_GPUDevice* device, Str path, S
     return try_sdl(err, nullptr, SDL_CreateGPUShader(device, &info));
 }
 
-void re_init_vertex_buffers(ErrorContext* err, App* app) {
+void init_vertex_buffers(ErrorContext* err, App* app) {
     err_scope(err, "Init vertex+index buffers");
 
     SDL_GPUBufferCreateInfo vert_info = {
@@ -1571,9 +1583,9 @@ void make_and_upload_icon_atlas(ErrorContext* err, App* app, SDL_GPUCommandBuffe
                                           .count = sdl_surface_size(icon_surfaces[i])};
         icon_textures[i].dims = {.w = (u16)icon_surfaces[i]->w, .h = (u16)icon_surfaces[i]->h};
     }
-    app->icon_atlas =
-        make_and_upload_atlas(err, app->session_arena, app, command_buffer, S("Icon atlas"),
-                              icon_textures, {.w = 1024, .h = 1024}, TextureFilterType::Linear);
+    app->icon_atlas = make_and_upload_atlas(
+        err, app->session_arena, app->device, command_buffer, app->clear_icon_pipeline,
+        S("Icon atlas"), icon_textures, {.w = 1024, .h = 1024}, TextureFilterType::Linear);
 }
 
 void init_render_pipelines(ErrorContext* err, App* app) {
@@ -1602,6 +1614,12 @@ void init_render_pipelines(ErrorContext* err, App* app) {
     app->glyph_pipeline =
         make_render_pipeline(err, app->device, app->window, app->vert_shader,
                              app->glyph_frag_shader, swapchain_format, BlendType::Over);
+    app->clear_icon_pipeline =
+        make_render_pipeline(err, app->device, app->window, app->vert_shader, app->icon_frag_shader,
+                             SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM_SRGB, BlendType::None);
+    app->clear_glyph_pipeline =
+        make_render_pipeline(err, app->device, app->window, app->vert_shader, app->icon_frag_shader,
+                             SDL_GPU_TEXTUREFORMAT_R8_UNORM, BlendType::None);
     if (err_occurred(err)) return;
 }
 
@@ -1609,15 +1627,23 @@ void init_render_buffers(ErrorContext* err, App* app) {
     SDL_GPUCommandBuffer* command_buffer = try_sdl(err, SDL_AcquireGPUCommandBuffer(app->device));
     defer(SDL_SubmitGPUCommandBuffer(command_buffer));
 
-    re_init_vertex_buffers(err, app);
+    init_vertex_buffers(err, app);
     if (err_occurred(err)) return;
 
     make_and_upload_icon_atlas(err, app, command_buffer);
-    make_and_upload_glyph_atlas(err, app, command_buffer);
+    if (err_occurred(err)) return;
+
+    u16 face_size_px = 64;
+    Str face_path = S("data/Roboto-Medium.ttf");
+    app->glyph_atlas = make_and_upload_glyph_atlas(err, app->app_arena, app->device, command_buffer,
+                                                   app->clear_glyph_pipeline, app->freetype,
+                                                   face_path, face_size_px);
 }
 
-void re_init(ErrorContext* err, App* app) {
+void init_renderer(ErrorContext* err, App* app) {
     err_scope(err, "Initialize renderer");
+
+    try_ft(err, FT_Init_FreeType(&app->freetype));
 
     app->device = try_sdl(
         err, SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_MSL, RENDERER_DEBUG_MODE_ENABLED, nullptr));
@@ -1689,8 +1715,8 @@ void render_main_color_pass(App* app,
         .sampler = app->icon_atlas->sampler,
     }};
     SDL_GPUTextureSamplerBinding glyph_tex_sampler_bindings[] = {{
-        .texture = app->glyph_atlas->texture,
-        .sampler = app->glyph_atlas->sampler,
+        .texture = app->glyph_atlas.atlas->texture,
+        .sampler = app->glyph_atlas.atlas->sampler,
     }};
 
     SDL_BindGPUVertexBuffers(pass, 0, vertex_buffer_bindings, c_arr_count(vertex_buffer_bindings));
@@ -1727,7 +1753,7 @@ void render_main_color_pass(App* app,
     SDL_EndGPURenderPass(pass);
 }
 
-void re_render(App* app) {
+void render(App* app) {
     Arena* frame_arena = arena_acquire();
     defer(arena_release(frame_arena));
 
@@ -1750,7 +1776,7 @@ void re_render(App* app) {
 
     u64 icon_quad_count =
         make_icon_mesh(frame_arena, window_size, app->session, app->icon_atlas, &mesh);
-    u64 glyph_quad_count = make_glyph_mesh(frame_arena, window_size, app->glyph_atlas, &mesh);
+    u64 glyph_quad_count = make_glyph_mesh(frame_arena, window_size, &app->glyph_atlas, &mesh);
     for (u64 i = 0; i < mesh.vertices.count; i++) {
         mesh.vertices[i].y -= app->scroll * 0.1f;
     }
@@ -1810,7 +1836,7 @@ App* init_app(ErrorContext* err) {
         return app;
     }
 
-    re_init(err, app);
+    init_renderer(err, app);
 
     return app;
 }
@@ -1918,7 +1944,7 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
 
 SDL_AppResult SDL_AppIterate(void* appstate) {
     App* app = (App*)appstate;
-    re_render(app);
+    render(app);
     return SDL_APP_CONTINUE;
 }
 
