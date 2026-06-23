@@ -23,22 +23,27 @@ extern "C" {
 #include <yyjson.h>
 
 //
-// MARK:Timer
+// MARK:Constants
 //
 
-Opt<Duration> operator+(const Opt<Duration> &d1, const Opt<Duration> &d2) {
-    return {
-        .present = d1.present && d2.present,
-        .opt = d1.opt + d2.opt,
-    };
-}
+// TODO toggle through build system or something
+constexpr bool RENDERER_DEBUG_MODE_ENABLED = true;
 
-Opt<Duration> operator-(const Opt<Duration> &d1, const Opt<Duration> &d2) {
-    return {
-        .present = d1.present && d2.present,
-        .opt = d1.opt - d2.opt,
-    };
-}
+// TODO define these in a more principled way
+constexpr u64 MAX_QUAD_COUNT = 512;
+constexpr u64 MAX_VERTEX_COUNT = MAX_QUAD_COUNT * 4;
+constexpr u64 MAX_INDEX_COUNT = MAX_QUAD_COUNT * 6;
+
+struct PxSize {
+    u16 w, h;
+};
+
+constexpr PxSize DEFAULT_WINDOW_SIZE = {.w = 360, .h = 600};
+constexpr PxSize MIN_WINDOW_SIZE = {.w = 200, .h = 100};
+
+//
+// MARK:Types
+//
 
 struct SplitRecord {
     u64 attempt_num;
@@ -96,6 +101,145 @@ struct SegSummary {
 
     bool is_new_gold;
 };
+
+enum class ShaderType {
+    Vertex,
+    Fragment,
+};
+
+// Icons don't need color, but it's simpler to just have one format for now
+struct Vertex {
+    float x, y, z;
+    float u, v;
+    u8 r, g, b, a;
+};
+
+struct Color {
+    u8 r, g, b, a;
+};
+
+struct PxPos {
+    u16 x, y;
+};
+
+struct PxRect {
+    u16 x, y;
+    u16 w, h;
+};
+
+struct Atlas {
+    PxSize size;
+    SDL_GPUTexture *texture;
+    SDL_GPUSampler *sampler;
+    Arr<PxRect> placements;
+    // Not sure if it's ever worth coalescing transfer buffers
+    SDL_GPUTransferBuffer *transfer_buffer;
+
+    // Rect packer state, useful for online repacking
+    Arr<stbrp_node> packer_nodes;
+    Arr<stbrp_rect> packer_rects;
+};
+
+struct Mesh {
+    Vec<Vertex> vertices;
+    Vec<u16> indices;
+};
+
+// CPU texture
+struct CPUTexture {
+    SDL_GPUTextureFormat format;
+    Arr<u8> buffer;
+    PxSize dims;
+};
+
+struct ShapedGlyph {
+    u32 glyph_idx;
+    i32 glyph_x;
+    i32 glyph_y;
+};
+
+enum class BlendType {
+    None,
+    Over,
+};
+
+enum class TextureFilterType {
+    Nearest,
+    Linear,
+};
+
+enum class BoxType {
+    Empty,
+    Text,
+    Texture,
+    SolidColor,
+    TopToBottomStack,
+    LeftToRightStack,
+    BackToFrontStack,
+};
+
+// Try some fat struct stuff?
+struct Box {
+    BoxType type;
+    Opt<PxSize> bbox;
+    u64 texture_idx;
+    SDL_FColor color;
+    Vec<Box *> children;
+};
+
+struct App {
+    Arena *app_arena;  // Lives for duration of application
+    SDL_Window *window;
+
+    SDL_Keycode prev_keys;
+    // TODO: float-based scrolling on NDC could mess with pixel-perfect alignment
+    f32 scroll;
+    f32 scale;  // `scale + 1.0f` is actual scale
+
+    Arena *session_arena;
+    Session *session;  // Nullable
+
+    SDL_GPUDevice *device;
+
+    // Shaders
+    SDL_GPUShader *vert_shader;
+    SDL_GPUShader *icon_frag_shader;
+    SDL_GPUShader *glyph_frag_shader;
+
+    // Pipelines
+    SDL_GPUGraphicsPipeline *icon_pipeline;
+    SDL_GPUGraphicsPipeline *glyph_pipeline;
+
+    // Geometry buffers
+    SDL_GPUTransferBuffer *vertex_transfer_buffer;
+    SDL_GPUBuffer *vertex_buffer;
+    SDL_GPUBuffer *index_buffer;
+
+    // Textures
+    Atlas *icon_atlas;
+    Atlas *glyph_atlas;
+
+    // Text stuff
+    FT_Library freetype;
+};
+
+//
+// MARK:Timer
+//
+
+Opt<Duration> operator+(const Opt<Duration> &d1, const Opt<Duration> &d2) {
+    return {
+        .present = d1.present && d2.present,
+        .opt = d1.opt + d2.opt,
+    };
+}
+
+Opt<Duration> operator-(const Opt<Duration> &d1, const Opt<Duration> &d2) {
+    return {
+        .present = d1.present && d2.present,
+        .opt = d1.opt - d2.opt,
+    };
+}
 
 Arr<SegSummary> calc_seg_summary(Arena *arena, Session *session) {
     Timer *timer = &session->timer;
@@ -494,264 +638,8 @@ void load_livesplit_lss(Arena *arena, ErrorContext *err, Str lss_path, FileDef *
 }
 
 //
-// Main
-//
-
-struct PxSize {
-    u16 w, h;
-};
-
-struct PxPos {
-    u16 x, y;
-};
-
-struct PxRect {
-    u16 x, y;
-    u16 w, h;
-};
-
-constexpr PxSize DEFAULT_WINDOW_SIZE = {.w = 360, .h = 600};
-constexpr PxSize MIN_WINDOW_SIZE = {.w = 200, .h = 100};
-
-struct Atlas {
-    PxSize size;
-    SDL_GPUTexture *texture;
-    SDL_GPUSampler *sampler;
-    Arr<PxRect> placements;
-    // Not sure if it's ever worth coalescing transfer buffers
-    SDL_GPUTransferBuffer *transfer_buffer;
-
-    // Rect packer state, useful for online repacking
-    Arr<stbrp_node> packer_nodes;
-    Arr<stbrp_rect> packer_rects;
-};
-
-// TODO optimize vertex format?
-// Icons don't need color, but it's simpler to just have one format for now.
-struct Vertex {
-    float x, y, z;
-    float u, v;
-    u8 r, g, b, a;
-};
-
-struct Color {
-    u8 r, g, b, a;
-};
-
-struct App {
-    Arena *app_arena;  // Lives for duration of application
-    SDL_Window *window;
-
-    SDL_Keycode prev_keys;
-    // TODO: float-based scrolling on NDC could mess with pixel-perfect alignment
-    f32 scroll;
-    f32 scale;  // `scale + 1.0f` is actual scale
-
-    Arena *session_arena;
-    Session *session;  // Nullable
-
-    SDL_GPUDevice *device;
-
-    // Shaders
-    SDL_GPUShader *vert_shader;
-    SDL_GPUShader *icon_frag_shader;
-    SDL_GPUShader *glyph_frag_shader;
-
-    // Pipelines
-    SDL_GPUGraphicsPipeline *icon_pipeline;
-    SDL_GPUGraphicsPipeline *glyph_pipeline;
-
-    // Geometry buffers
-    SDL_GPUTransferBuffer *vertex_transfer_buffer;
-    SDL_GPUBuffer *vertex_buffer;
-    SDL_GPUBuffer *index_buffer;
-
-    // Textures
-    Atlas *icon_atlas;
-    Atlas *glyph_atlas;
-
-    // Text stuff
-    FT_Library freetype;
-};
-
-SDL_HitTestResult hittest_callback(SDL_Window *window, const SDL_Point *point, void *data) {
-    // Would expand the resize radius if I could, but doesn't appear to work on macOS
-    return SDL_HITTEST_DRAGGABLE;
-}
-
-void init_window(ErrorContext *err, App *app) {
-    err_scope(err, "Initialize window");
-
-    try_sdl(err, SDL_SetAppMetadata("Blitter", "0.0.1", nullptr));
-
-    SDL_WindowFlags window_flags =
-        SDL_WINDOW_BORDERLESS | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
-    app->window = try_sdl(err, SDL_CreateWindow("Blitter", DEFAULT_WINDOW_SIZE.w,
-                                                DEFAULT_WINDOW_SIZE.h, window_flags));
-    try_sdl(err, SDL_SetWindowMinimumSize(app->window, MIN_WINDOW_SIZE.w, MIN_WINDOW_SIZE.h));
-    try_sdl(err, SDL_SetWindowHitTest(app->window, hittest_callback, nullptr));
-}
-
-Session *make_session(ErrorContext *err, Arena *arena, App *app, Str path) {
-    Session *session = arena_push<Session>(arena);
-    load_livesplit_lss(arena, err, path, &session->file);
-    return session;
-}
-
-void re_init(ErrorContext *err, App *app);
-void re_render(App *app);
-
-App *init_app(ErrorContext *err) {
-    if (g_argv.count < 2) {
-        log_fatal("Usage: blitter <path-to-splits-file>");
-    }
-    Str path = str_from_c(g_argv[1]);
-
-    Arena *root_arena = arena_acquire();
-    App *app = arena_push<App>(root_arena);
-    app->app_arena = root_arena;
-
-    init_window(err, app);
-    // init_text(err, app);
-
-    app->session_arena = arena_acquire();
-    app->session = make_session(err, app->session_arena, app, path);
-    if (err_occurred(err)) {
-        return app;
-    }
-
-    re_init(err, app);
-
-    return app;
-}
-
-SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
-    thread_init(argc, argv);
-
-    ErrorContext err_base = {.arena = arena_acquire()};
-    ErrorContext *err = &err_base;
-    defer(arena_release(err_base.arena));
-
-    App *app = init_app(err);
-    if (err_occurred(err)) {
-        err_log(err);
-        return SDL_APP_FAILURE;
-    }
-    *appstate = app;
-
-    return SDL_APP_CONTINUE;
-}
-
-void try_load_new_session(App *app, Str lss_path) {
-    ErrorContext err_base = {.arena = arena_acquire()};
-    ErrorContext *err = &err_base;
-    defer(arena_release(err_base.arena));
-
-    Arena *session_arena = arena_acquire();
-    Session *session = make_session(err, session_arena, app, lss_path);
-    if (err_occurred(err)) {
-        err_log(err);
-        arena_release(session_arena);
-        return;
-    }
-
-    if (app->session_arena != nullptr) {
-        arena_release(app->session_arena);
-    }
-    app->session_arena = session_arena;
-    app->session = session;
-}
-
-SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
-    App *app = (App *)appstate;
-
-    // TODO: this is potentially not the OS timestamp of the keypress, sadly, so
-    // not amazingly accurate
-    Instant t = instant_from_sdl_nanos(event->common.timestamp);
-
-    if (event->common.type == SDL_EVENT_QUIT) {
-        return SDL_APP_SUCCESS;
-    }
-    if (event->common.type == SDL_EVENT_KEY_DOWN && (app->prev_keys & event->key.key) == 0) {
-        app->prev_keys |= event->key.key;
-
-        switch (event->key.key) {
-        case SDLK_Q: {
-            return SDL_APP_SUCCESS;
-        }
-        case SDLK_SPACE:
-        case SDLK_DOWN: {
-            timer_apply_action(app->app_arena, app->session, TimerAction::Split, t);
-            break;
-        }
-        case SDLK_UP: {
-            timer_apply_action(app->app_arena, app->session, TimerAction::UndoSplit, t);
-            break;
-        }
-        case SDLK_D: {
-            timer_apply_action(app->app_arena, app->session, TimerAction::DeleteSplit, t);
-            break;
-        }
-        case SDLK_P: {
-            timer_apply_action(app->app_arena, app->session, TimerAction::Pause, t);
-            break;
-        }
-        case SDLK_BACKSPACE: {
-            timer_apply_action(app->app_arena, app->session, TimerAction::ResetAndSave, t);
-            break;
-        }
-        }
-    }
-
-    if (event->common.type == SDL_EVENT_KEY_UP) {
-        app->prev_keys &= ~event->key.key;
-    }
-
-    if (event->common.type == SDL_EVENT_MOUSE_BUTTON_DOWN &&
-        event->button.button == SDL_BUTTON_RIGHT) {
-        if (SDL_HasClipboardText()) {
-            char *clipboard_cstr = SDL_GetClipboardText();
-            defer(SDL_free(clipboard_cstr));
-            Str clipboard = str_trim(str_from_c(clipboard_cstr));
-            if (!str_is_empty(clipboard)) {  // Empty iff SDL failed to allocate it
-                try_load_new_session(app, clipboard);
-            }
-        }
-    }
-
-    if (event->common.type == SDL_EVENT_MOUSE_WHEEL) {
-        app->scroll += event->wheel.y;
-    }
-
-    return SDL_APP_CONTINUE;
-}
-
-void SDL_AppQuit(void *appstate, SDL_AppResult result) {
-    // Just let OS clean up everything
-}
-
-//
 // MARK:UI
 //
-
-enum class BoxType {
-    Empty,
-    Text,
-    Texture,
-    SolidColor,
-    TopToBottomStack,
-    LeftToRightStack,
-    BackToFrontStack,
-};
-
-// Try some fat struct stuff?
-struct Box {
-    BoxType type;
-    Opt<PxSize> bbox;
-    u64 texture_idx;
-    SDL_FColor color;
-    Vec<Box *> children;
-};
 
 Box *make_text_box(Arena *arena, Str content, SDL_FColor color) {
     Box *box = arena_push<Box>(arena);
@@ -1039,11 +927,6 @@ Box *prerender(Arena *arena, Session *session, PxSize window_size) {
     return timer;
 }
 
-struct Mesh {
-    Vec<Vertex> vertices;
-    Vec<u16> indices;
-};
-
 // TODO for pixel-perfect rendering, need to understand rounding/UV mapping
 // w.r.t. pixel center better
 void window_to_ndc(Vertex *vertex, PxSize window_size) {
@@ -1193,40 +1076,117 @@ u64 make_icon_mesh(Arena *arena, PxSize window_size, Session *session, Atlas *at
     return (end_vertex_count - start_vertex_count) / 4;
 }
 
-void render(App *app) {
-    // Frame arena
-    Arena *frame_arena = arena_acquire();
-    defer(arena_release(frame_arena));
+//
+// MARK:Text rendering
+//
+
+Arr<ShapedGlyph> simple_shape(Arena *arena, Str text) {
+    kbts_shape_context *context = kbts_CreateShapeContext(0, 0);
+    defer(kbts_DestroyShapeContext(context));
+    kbts_ShapePushFontFromFile(context, "data/Roboto-Medium.ttf", 0);
+
+    kbts_ShapeBegin(context, KBTS_DIRECTION_DONT_KNOW, KBTS_LANGUAGE_DONT_KNOW);
+    kbts_ShapeUtf8(context, (char *)text.ptr, (i32)text.count,
+                   KBTS_USER_ID_GENERATION_MODE_CODEPOINT_INDEX);
+    kbts_ShapeEnd(context);
+
+    // Layout runs naively left to right.
+    kbts_run Run = {};
+    i32 cursor_x = 0, cursor_y = 0;
+    // u32 run_idx = 0;
+    Vec<ShapedGlyph> output = {};
+    vec_prealloc(arena, &output, text.count);
+    while (kbts_ShapeRun(context, &Run)) {
+        kbts_glyph *glyph = nullptr;
+        while (kbts_GlyphIteratorNext(&Run.Glyphs, &glyph)) {
+            i32 glyph_x = cursor_x + glyph->OffsetX;
+            i32 glyph_y = cursor_y + glyph->OffsetY;
+
+            cursor_x += glyph->AdvanceX;
+            cursor_y += glyph->AdvanceY;
+
+            ShapedGlyph *g = vec_push_zero(arena, &output);
+            g->glyph_idx = glyph->Id;
+            g->glyph_x = glyph_x;
+            g->glyph_y = glyph_y;
+        }
+        // run_idx++;
+    }
+
+    return vec_arr(&output);
 }
 
-SDL_AppResult SDL_AppIterate(void *appstate) {
-    App *app = (App *)appstate;
-    re_render(app);
-    return SDL_APP_CONTINUE;
+Atlas *make_and_upload_atlas(ErrorContext *err, Arena *arena, App *app,
+                             SDL_GPUCommandBuffer *command_buffer, Str name,
+                             Arr<CPUTexture> textures, PxSize atlas_size, TextureFilterType filter);
+
+void make_and_upload_glyph_atlas(ErrorContext *err, App *app,
+                                 SDL_GPUCommandBuffer *command_buffer) {
+    err_scope(err, "Initialize text rendering");
+
+    Arena *scratch = arena_acquire();
+    defer(arena_release(scratch));
+
+    try_ft(err, FT_Init_FreeType(&app->freetype));
+
+    Arr<u8> font_contents = fs_load_file(err, scratch, S("data/Roboto-Medium.ttf"));
+    // Arr<u8> font_contents = fs_load_file(err, scratch,
+    // S("data/NotoSansJP-VariableFont_wght.ttf"));
+    if (err_occurred(err)) return;
+
+    FT_Face face = {};
+    try_ft(err, FT_New_Memory_Face(app->freetype, font_contents.ptr, (long)font_contents.count, 0,
+                                   &face));
+    defer(FT_Done_Face(face));
+
+    try_ft(err, FT_Set_Pixel_Sizes(face, 0, 64));
+
+    Arr<CPUTexture> textures = arena_push_arr<CPUTexture>(scratch, (u64)face->num_glyphs);
+
+    for (u64 glyph_idx = 0; glyph_idx < face->num_glyphs; glyph_idx++) {
+        try_ft(err, FT_Load_Glyph(face, (u32)glyph_idx, 0));
+        // if (face->glyph->format == FT_GLYPH_FORMAT_BITMAP) {
+        //     bail(err, "TODO: handle bitmap glyph");
+        // }
+        try_ft(err, FT_Render_Glyph(face->glyph, FT_RENDER_MODE_NORMAL));
+
+        FT_Bitmap bitmap = face->glyph->bitmap;
+        CPUTexture *texture = &textures[glyph_idx];
+        Arr<u8> tmp_buffer = {.ptr = bitmap.buffer, .count = bitmap.width * bitmap.rows};
+        texture->format = SDL_GPU_TEXTUREFORMAT_R8_UNORM;
+        texture->buffer = arr_clone(scratch, tmp_buffer);
+        texture->dims = {.w = (u16)bitmap.width, .h = (u16)bitmap.rows};
+    }
+
+    PxSize font_atlas_size = {.w = 2048, .h = 2048};
+    app->glyph_atlas =
+        make_and_upload_atlas(err, app->app_arena, app, command_buffer, S("Glyph atlas"), textures,
+                              font_atlas_size, TextureFilterType::Nearest);
+
+    // FT_Vector advance = app->font_face->glyph->advance;
+    // u32 width = app->font_face->glyph->bitmap.width;
+    // u32 height = app->font_face->glyph->bitmap.rows;
+}
+
+u64 make_glyph_mesh(Arena *arena, PxSize window_size, Atlas *atlas, Mesh *mesh) {
+    u64 start_vertex_count = mesh->vertices.count;
+
+    Str text = S("Hello, world!");
+    Arr<ShapedGlyph> glyphs = simple_shape(arena, text);
+    for (u64 i = 0; i < glyphs.count; i++) {
+        PxRect src = atlas->placements[glyphs[i].glyph_idx];
+        PxRect dst = {.x = (u16)(200 + i * 40), .y = 200, .w = src.w, .h = src.h};
+        Color color = {.r = 255, .g = 255, .b = 255, .a = 255};
+        push_atlas_quad(arena, window_size, atlas, mesh, src, dst, color);
+    }
+
+    u64 end_vertex_count = mesh->vertices.count;
+    return (end_vertex_count - start_vertex_count) / 4;
 }
 
 //
-// MARK:Renderer
+// :Rendering
 //
-
-// CPU texture
-struct TextureBuffer {
-    SDL_GPUTextureFormat format;
-    Arr<u8> buffer;
-    PxSize dims;
-};
-
-enum class BlendType {
-    None,
-    Over,
-};
-
-enum class TextureFilterType {
-    Nearest,
-    Linear,
-};
-
-u64 sdl_surface_size(SDL_Surface *surface) { return (u64)surface->h * (u64)surface->pitch; }
 
 SDL_GPUGraphicsPipeline *make_render_pipeline(ErrorContext *err, SDL_GPUDevice *device,
                                               SDL_Window *window, SDL_GPUShader *vert_shader,
@@ -1320,7 +1280,7 @@ void clear_texture(ErrorContext *err, App *app, SDL_GPUCommandBuffer *command_bu
 
 Atlas *make_and_upload_atlas(ErrorContext *err, Arena *arena, App *app,
                              SDL_GPUCommandBuffer *command_buffer, Str name,
-                             Arr<TextureBuffer> textures, PxSize atlas_size,
+                             Arr<CPUTexture> textures, PxSize atlas_size,
                              TextureFilterType filter) {
     Arena *scratch = arena_acquire();
     defer(arena_release(scratch));
@@ -1496,19 +1456,6 @@ Atlas *make_and_upload_atlas(ErrorContext *err, Arena *arena, App *app,
     return atlas;
 }
 
-// TODO toggle through build system or something
-constexpr bool RENDERER_DEBUG_MODE = true;
-
-// TODO define these in a more principled way
-constexpr u64 MAX_QUAD_COUNT = 512;
-constexpr u64 MAX_VERTEX_COUNT = MAX_QUAD_COUNT * 4;
-constexpr u64 MAX_INDEX_COUNT = MAX_QUAD_COUNT * 6;
-
-enum class ShaderType {
-    Vertex,
-    Fragment,
-};
-
 SDL_GPUShader *load_shader(ErrorContext *err, SDL_GPUDevice *device, Str path, ShaderType type) {
     err_scope(err, "Load shader '%.*s'", SF(path));
 
@@ -1576,14 +1523,14 @@ void re_init_vertex_buffers(ErrorContext *err, App *app) {
         try_sdl(err, SDL_CreateGPUTransferBuffer(app->device, &transfer_buffer_info));
 }
 
-void make_and_upload_text_atlas(ErrorContext *err, App *app, SDL_GPUCommandBuffer *command_buffer);
+u64 sdl_surface_size(SDL_Surface *surface) { return (u64)surface->h * (u64)surface->pitch; }
 
 void make_and_upload_icon_atlas(ErrorContext *err, App *app, SDL_GPUCommandBuffer *command_buffer) {
     Arena *scratch = arena_acquire();
     defer(arena_release(scratch));
 
     Arr<SDL_Surface *> icon_surfaces = app->session->file.icons;
-    Arr<TextureBuffer> icon_textures = arena_push_arr<TextureBuffer>(scratch, icon_surfaces.count);
+    Arr<CPUTexture> icon_textures = arena_push_arr<CPUTexture>(scratch, icon_surfaces.count);
     for (u64 i = 0; i < icon_textures.count; i++) {
         icon_textures[i].format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM_SRGB;
         icon_textures[i].buffer = Arr<u8>{.ptr = (u8 *)icon_surfaces[i]->pixels,
@@ -1632,21 +1579,19 @@ void init_render_buffers(ErrorContext *err, App *app) {
     if (err_occurred(err)) return;
 
     make_and_upload_icon_atlas(err, app, command_buffer);
-    make_and_upload_text_atlas(err, app, command_buffer);
+    make_and_upload_glyph_atlas(err, app, command_buffer);
 }
 
 void re_init(ErrorContext *err, App *app) {
     err_scope(err, "Initialize renderer");
 
-    app->device =
-        try_sdl(err, SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_MSL, RENDERER_DEBUG_MODE, nullptr));
+    app->device = try_sdl(
+        err, SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_MSL, RENDERER_DEBUG_MODE_ENABLED, nullptr));
     try_sdl(err, SDL_ClaimWindowForGPUDevice(app->device, app->window));
 
     init_render_pipelines(err, app);
     init_render_buffers(err, app);
 }
-
-u64 make_glyph_mesh(Arena *arena, PxSize window_size, Atlas *atlas, Mesh *mesh);
 
 void do_geometry_upload_pass(App *app, SDL_GPUCommandBuffer *command_buffer, Mesh *mesh) {
     log_assert(mesh->vertices.count <= MAX_VERTEX_COUNT);
@@ -1782,110 +1727,164 @@ void re_render(App *app) {
 }
 
 //
-// MARK:Text rendering
+// MARK:Main
 //
 
-struct ShapedGlyph {
-    u32 glyph_idx;
-    i32 glyph_x;
-    i32 glyph_y;
-};
+SDL_HitTestResult hittest_callback(SDL_Window *window, const SDL_Point *point, void *data) {
+    // Would expand the resize radius if I could, but doesn't appear to work on macOS
+    return SDL_HITTEST_DRAGGABLE;
+}
 
-Arr<ShapedGlyph> simple_shape(Arena *arena, Str text) {
-    kbts_shape_context *context = kbts_CreateShapeContext(0, 0);
-    defer(kbts_DestroyShapeContext(context));
-    kbts_ShapePushFontFromFile(context, "data/Roboto-Medium.ttf", 0);
+void init_window(ErrorContext *err, App *app) {
+    err_scope(err, "Initialize window");
 
-    kbts_ShapeBegin(context, KBTS_DIRECTION_DONT_KNOW, KBTS_LANGUAGE_DONT_KNOW);
-    kbts_ShapeUtf8(context, (char *)text.ptr, (i32)text.count,
-                   KBTS_USER_ID_GENERATION_MODE_CODEPOINT_INDEX);
-    kbts_ShapeEnd(context);
+    try_sdl(err, SDL_SetAppMetadata("Blitter", "0.0.1", nullptr));
 
-    // Layout runs naively left to right.
-    kbts_run Run = {};
-    i32 cursor_x = 0, cursor_y = 0;
-    // u32 run_idx = 0;
-    Vec<ShapedGlyph> output = {};
-    vec_prealloc(arena, &output, text.count);
-    while (kbts_ShapeRun(context, &Run)) {
-        kbts_glyph *glyph = nullptr;
-        while (kbts_GlyphIteratorNext(&Run.Glyphs, &glyph)) {
-            i32 glyph_x = cursor_x + glyph->OffsetX;
-            i32 glyph_y = cursor_y + glyph->OffsetY;
+    SDL_WindowFlags window_flags =
+        SDL_WINDOW_BORDERLESS | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
+    app->window = try_sdl(err, SDL_CreateWindow("Blitter", DEFAULT_WINDOW_SIZE.w,
+                                                DEFAULT_WINDOW_SIZE.h, window_flags));
+    try_sdl(err, SDL_SetWindowMinimumSize(app->window, MIN_WINDOW_SIZE.w, MIN_WINDOW_SIZE.h));
+    try_sdl(err, SDL_SetWindowHitTest(app->window, hittest_callback, nullptr));
+}
 
-            cursor_x += glyph->AdvanceX;
-            cursor_y += glyph->AdvanceY;
+Session *make_session(ErrorContext *err, Arena *arena, App *app, Str path) {
+    Session *session = arena_push<Session>(arena);
+    load_livesplit_lss(arena, err, path, &session->file);
+    return session;
+}
 
-            ShapedGlyph *g = vec_push_zero(arena, &output);
-            g->glyph_idx = glyph->Id;
-            g->glyph_x = glyph_x;
-            g->glyph_y = glyph_y;
+App *init_app(ErrorContext *err) {
+    if (g_argv.count < 2) {
+        log_fatal("Usage: blitter <path-to-splits-file>");
+    }
+    Str path = str_from_c(g_argv[1]);
+
+    Arena *root_arena = arena_acquire();
+    App *app = arena_push<App>(root_arena);
+    app->app_arena = root_arena;
+
+    init_window(err, app);
+    // init_text(err, app);
+
+    app->session_arena = arena_acquire();
+    app->session = make_session(err, app->session_arena, app, path);
+    if (err_occurred(err)) {
+        return app;
+    }
+
+    re_init(err, app);
+
+    return app;
+}
+
+SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
+    thread_init(argc, argv);
+
+    ErrorContext err_base = {.arena = arena_acquire()};
+    ErrorContext *err = &err_base;
+    defer(arena_release(err_base.arena));
+
+    App *app = init_app(err);
+    if (err_occurred(err)) {
+        err_log(err);
+        return SDL_APP_FAILURE;
+    }
+    *appstate = app;
+
+    return SDL_APP_CONTINUE;
+}
+
+void try_load_new_session(App *app, Str lss_path) {
+    ErrorContext err_base = {.arena = arena_acquire()};
+    ErrorContext *err = &err_base;
+    defer(arena_release(err_base.arena));
+
+    Arena *session_arena = arena_acquire();
+    Session *session = make_session(err, session_arena, app, lss_path);
+    if (err_occurred(err)) {
+        err_log(err);
+        arena_release(session_arena);
+        return;
+    }
+
+    if (app->session_arena != nullptr) {
+        arena_release(app->session_arena);
+    }
+    app->session_arena = session_arena;
+    app->session = session;
+}
+
+SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
+    App *app = (App *)appstate;
+
+    // TODO: this is potentially not the OS timestamp of the keypress, sadly, so
+    // not amazingly accurate
+    Instant t = instant_from_sdl_nanos(event->common.timestamp);
+
+    if (event->common.type == SDL_EVENT_QUIT) {
+        return SDL_APP_SUCCESS;
+    }
+    if (event->common.type == SDL_EVENT_KEY_DOWN && (app->prev_keys & event->key.key) == 0) {
+        app->prev_keys |= event->key.key;
+
+        switch (event->key.key) {
+        case SDLK_Q: {
+            return SDL_APP_SUCCESS;
         }
-        // run_idx++;
+        case SDLK_SPACE:
+        case SDLK_DOWN: {
+            timer_apply_action(app->app_arena, app->session, TimerAction::Split, t);
+            break;
+        }
+        case SDLK_UP: {
+            timer_apply_action(app->app_arena, app->session, TimerAction::UndoSplit, t);
+            break;
+        }
+        case SDLK_D: {
+            timer_apply_action(app->app_arena, app->session, TimerAction::DeleteSplit, t);
+            break;
+        }
+        case SDLK_P: {
+            timer_apply_action(app->app_arena, app->session, TimerAction::Pause, t);
+            break;
+        }
+        case SDLK_BACKSPACE: {
+            timer_apply_action(app->app_arena, app->session, TimerAction::ResetAndSave, t);
+            break;
+        }
+        }
     }
 
-    return vec_arr(&output);
+    if (event->common.type == SDL_EVENT_KEY_UP) {
+        app->prev_keys &= ~event->key.key;
+    }
+
+    if (event->common.type == SDL_EVENT_MOUSE_BUTTON_DOWN &&
+        event->button.button == SDL_BUTTON_RIGHT) {
+        if (SDL_HasClipboardText()) {
+            char *clipboard_cstr = SDL_GetClipboardText();
+            defer(SDL_free(clipboard_cstr));
+            Str clipboard = str_trim(str_from_c(clipboard_cstr));
+            if (!str_is_empty(clipboard)) {  // Empty iff SDL failed to allocate it
+                try_load_new_session(app, clipboard);
+            }
+        }
+    }
+
+    if (event->common.type == SDL_EVENT_MOUSE_WHEEL) {
+        app->scroll += event->wheel.y;
+    }
+
+    return SDL_APP_CONTINUE;
 }
 
-void make_and_upload_text_atlas(ErrorContext *err, App *app, SDL_GPUCommandBuffer *command_buffer) {
-    err_scope(err, "Initialize text rendering");
-
-    Arena *scratch = arena_acquire();
-    defer(arena_release(scratch));
-
-    try_ft(err, FT_Init_FreeType(&app->freetype));
-
-    Arr<u8> font_contents = fs_load_file(err, scratch, S("data/Roboto-Medium.ttf"));
-    // Arr<u8> font_contents = fs_load_file(err, scratch,
-    // S("data/NotoSansJP-VariableFont_wght.ttf"));
-    if (err_occurred(err)) return;
-
-    FT_Face face = {};
-    try_ft(err, FT_New_Memory_Face(app->freetype, font_contents.ptr, (long)font_contents.count, 0,
-                                   &face));
-    defer(FT_Done_Face(face));
-
-    try_ft(err, FT_Set_Pixel_Sizes(face, 0, 64));
-
-    Arr<TextureBuffer> textures = arena_push_arr<TextureBuffer>(scratch, (u64)face->num_glyphs);
-
-    for (u64 glyph_idx = 0; glyph_idx < face->num_glyphs; glyph_idx++) {
-        try_ft(err, FT_Load_Glyph(face, (u32)glyph_idx, 0));
-        // if (face->glyph->format == FT_GLYPH_FORMAT_BITMAP) {
-        //     bail(err, "TODO: handle bitmap glyph");
-        // }
-        try_ft(err, FT_Render_Glyph(face->glyph, FT_RENDER_MODE_NORMAL));
-
-        FT_Bitmap bitmap = face->glyph->bitmap;
-        TextureBuffer *texture = &textures[glyph_idx];
-        Arr<u8> tmp_buffer = {.ptr = bitmap.buffer, .count = bitmap.width * bitmap.rows};
-        texture->format = SDL_GPU_TEXTUREFORMAT_R8_UNORM;
-        texture->buffer = arr_clone(scratch, tmp_buffer);
-        texture->dims = {.w = (u16)bitmap.width, .h = (u16)bitmap.rows};
-    }
-
-    PxSize font_atlas_size = {.w = 2048, .h = 2048};
-    app->glyph_atlas =
-        make_and_upload_atlas(err, app->app_arena, app, command_buffer, S("Glyph atlas"), textures,
-                              font_atlas_size, TextureFilterType::Nearest);
-
-    // FT_Vector advance = app->font_face->glyph->advance;
-    // u32 width = app->font_face->glyph->bitmap.width;
-    // u32 height = app->font_face->glyph->bitmap.rows;
+SDL_AppResult SDL_AppIterate(void *appstate) {
+    App *app = (App *)appstate;
+    re_render(app);
+    return SDL_APP_CONTINUE;
 }
 
-u64 make_glyph_mesh(Arena *arena, PxSize window_size, Atlas *atlas, Mesh *mesh) {
-    u64 start_vertex_count = mesh->vertices.count;
-
-    Str text = S("Hello, world!");
-    Arr<ShapedGlyph> glyphs = simple_shape(arena, text);
-    for (u64 i = 0; i < glyphs.count; i++) {
-        PxRect src = atlas->placements[glyphs[i].glyph_idx];
-        PxRect dst = {.x = (u16)(200 + i * 40), .y = 200, .w = src.w, .h = src.h};
-        Color color = {.r = 255, .g = 255, .b = 255, .a = 255};
-        push_atlas_quad(arena, window_size, atlas, mesh, src, dst, color);
-    }
-
-    u64 end_vertex_count = mesh->vertices.count;
-    return (end_vertex_count - start_vertex_count) / 4;
+void SDL_AppQuit(void *appstate, SDL_AppResult result) {
+    // Just let OS clean up everything
 }
