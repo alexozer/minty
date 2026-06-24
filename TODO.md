@@ -56,6 +56,9 @@ Font outlines
 Latency reduction
     Is vsync necessary on macos?
     If presenting immediately, what's the best way to best-effort sync to display?
+Improve font rendering
+    Sub-pixel positioning (Chrome maybe uses four subpixel positions?)
+    Sub-pixel antialiasing (maybe not on macos?)
 
 ## Low Prio
 

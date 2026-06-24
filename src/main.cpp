@@ -43,7 +43,10 @@ constexpr PxSize DEFAULT_WINDOW_SIZE = {.w = 360, .h = 600};
 constexpr PxSize MIN_WINDOW_SIZE = {.w = 200, .h = 100};
 
 // TODO thread through program properly
-Str FONT_PATH = S("data/Roboto-Medium.ttf");
+// Str FONT_PATH = S("data/Roboto-Medium.ttf");
+// Str FONT_PATH = S("data/NotoSans-Regular.ttf");
+Str FONT_PATH = S("data/NotoSans-Bold.ttf");
+constexpr u32 FONT_SIZE_PX = 40;
 
 //
 // MARK:Types
@@ -1438,24 +1441,29 @@ Atlas* make_and_upload_atlas(ErrorContext* err,
     // Pack textures into transfer buffer
     //
 
-    // TODO reuse transfer buffer and/or destroy?
-    u32 texel_size = SDL_GPUTextureFormatTexelBlockSize(texture_format);
+    // Compute transfer buffer size
+    Arr<u32> offsets = arena_push_arr<u32>(scratch, textures.count);
+    for (u64 i = 0; i < textures.count; i++) {
+        if (i > 0) {
+            u32 prev_offset = offsets[i - 1];
+            u32 prev_size = (u32)textures[i - 1].buffer.count;
+            offsets[i] = align_to(prev_offset + prev_size, (u32)512);
+        }
+    }
+    u32 transfer_buffer_size =
+        offsets[offsets.count - 1] + (u32)textures[textures.count - 1].buffer.count;
+
     SDL_GPUTransferBufferCreateInfo transfer_buffer_info = {
         .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-        .size = atlas_size.w * atlas_size.h * texel_size,
+        .size = transfer_buffer_size,
     };
     SDL_GPUTransferBuffer* transfer_buffer =
         SDL_CreateGPUTransferBuffer(device, &transfer_buffer_info);
 
     void* buf = SDL_MapGPUTransferBuffer(device, transfer_buffer, false);
-    u64 offset = 0;
     for (u64 i = 0; i < textures.count; i++) {
-        if (i > 0) {
-            u64 prev_size = textures[i - 1].buffer.count;
-            offset = align_to(offset + prev_size, 512);
-        }
         u64 size = textures[i].buffer.count;
-        SDL_memcpy((u8*)buf + offset, textures[i].buffer.ptr, size);
+        SDL_memcpy((u8*)buf + offsets[i], textures[i].buffer.ptr, size);
     }
     SDL_UnmapGPUTransferBuffer(device, transfer_buffer);
 
@@ -1466,17 +1474,11 @@ Atlas* make_and_upload_atlas(ErrorContext* err,
     // TODO coalesce atlas-related copy and render passes
     SDL_GPUCopyPass* copy_pass = SDL_BeginGPUCopyPass(command_buffer);
 
-    offset = 0;
     for (u64 i = 0; i < textures.count; i++) {
-        if (i > 0) {
-            u64 prev_size = textures[i - 1].buffer.count;
-            offset = align_to(offset + prev_size, 512);
-        }
-
         if (textures[i].dims.w > 0 && textures[i].dims.h > 0) {
             SDL_GPUTextureTransferInfo src = {
                 .transfer_buffer = transfer_buffer,
-                .offset = (u32)offset,
+                .offset = offsets[i],
             };
             SDL_GPUTextureRegion dest = {
                 .texture = texture,
@@ -1676,10 +1678,9 @@ void init_render_buffers(ErrorContext* err, App* app) {
     make_and_upload_icon_atlas(err, app, command_buffer);
     if (err_occurred(err)) return;
 
-    u16 face_size_px = 64;
     app->glyph_atlas = make_and_upload_glyph_atlas(err, app->app_arena, app->device, command_buffer,
                                                    app->clear_glyph_pipeline, app->freetype,
-                                                   app->font_file, face_size_px);
+                                                   app->font_file, FONT_SIZE_PX);
 }
 
 void init_renderer(ErrorContext* err, App* app) {

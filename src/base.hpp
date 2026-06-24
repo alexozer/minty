@@ -43,7 +43,8 @@ constexpr u64 kilobytes(u64 n) {
 constexpr u64 megabytes(u64 n) {
     return kilobytes(n) * 1024LL;
 }
-constexpr u64 align_to(u64 n, u64 a) {
+template <typename T>
+constexpr T align_to(T n, T a) {
     return ((n) + (a - 1)) & ~(a - 1);
 }
 
@@ -87,8 +88,7 @@ constexpr u64 next_pow2(u64 x) {
 
 [[noreturn]] void log__assert(const char* cond, const char* file, int line);
 #define log_assert(cond) \
-    if ((cond) == false) \
-    log__assert(#cond, __FILE_NAME__, __LINE__)
+    if ((cond) == false) log__assert(#cond, __FILE_NAME__, __LINE__)
 #define unreachable() log__assert("unreachable", __FILE_NAME__, __LINE__)
 
 //
@@ -285,8 +285,7 @@ constexpr u64 MIN_VEC_CAPACITY = 8;
 template <typename T>
 void vec__grow(Arena* arena, Vec<T>* vec, u64 new_cap) {
     // Fast path?
-    if (new_cap <= vec->cap)
-        return;
+    if (new_cap <= vec->cap) return;
 
     new_cap = next_pow2(max(new_cap, MIN_VEC_CAPACITY));
 
