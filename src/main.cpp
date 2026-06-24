@@ -1190,7 +1190,9 @@ GlyphAtlas make_and_upload_glyph_atlas(ErrorContext* err,
     Arr<GlyphMetrics> metrics = arena_push_arr<GlyphMetrics>(arena, (u64)face->num_glyphs);
 
     for (u64 glyph_idx = 0; glyph_idx < face->num_glyphs; glyph_idx++) {
-        try_ft(err, {}, FT_Load_Glyph(face, (u32)glyph_idx, 0));
+        // TODO re-enable hinting once we can account for spacing discrepancies
+        // Also maybe disable on macos for more native look?
+        try_ft(err, {}, FT_Load_Glyph(face, (u32)glyph_idx, FT_LOAD_NO_HINTING));
         // if (face->glyph->format == FT_GLYPH_FORMAT_BITMAP) {
         //     bail(err, "TODO: handle bitmap glyph");
         // }
@@ -1204,8 +1206,8 @@ GlyphAtlas make_and_upload_glyph_atlas(ErrorContext* err,
         texture->dims = {.w = (u16)bitmap.width, .h = (u16)bitmap.rows};
 
         // Convert from 26.6 fixed point pixels to f32 pixels
-        metrics[glyph_idx].bearing_px_x = (f32)face->glyph->metrics.horiBearingX / 64.f;
-        metrics[glyph_idx].bearing_px_y = (f32)face->glyph->metrics.horiBearingY / 64.f;
+        metrics[glyph_idx].bearing_px_x = (f32)face->glyph->bitmap_left;
+        metrics[glyph_idx].bearing_px_y = (f32)face->glyph->bitmap_top;
     }
 
     PxSize font_atlas_size = {.w = 2048, .h = 2048};

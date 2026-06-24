@@ -53,6 +53,9 @@ Font gradients
     Vertex colors picked out by fragment shader, interpolated in good colorspace on CPU
 Font outlines
     SDFs would probably be helpful here...
+Latency reduction
+    Is vsync necessary on macos?
+    If presenting immediately, what's the best way to best-effort sync to display?
 
 ## Low Prio
 
