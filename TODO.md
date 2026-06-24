@@ -5,6 +5,9 @@
 <!-- Put all glyph bitmaps for font in atlas -->
     <!-- Continue using arrays for now, make packer eat empty textures -->
 <!-- Fix glyph color bug -->
+Layout research
+    Start with Ryan's simple layout system
+    Next goal: render basic timer view?
 
 ## Prototyping
 
@@ -35,8 +38,8 @@ Test on Windows
 <!-- kb_text_shape shaping/segmentation -->
 <!-- GPU font rendering (slug) -->
 <!-- Modern rendering APIs (webgpu, sdl gpu) -->
-Pixel-perfect rendering
-    Idea: preserve pixel coordinates until shader execution?
+<!-- Pixel-perfect rendering -->
+<!--     Idea: preserve pixel coordinates until shader execution? -->
 Settings UI
 Layout
 Smooth resize
@@ -59,6 +62,8 @@ Latency reduction
 Improve font rendering
     Sub-pixel positioning (Chrome maybe uses four subpixel positions?)
     Sub-pixel antialiasing (maybe not on macos?)
+    Look into FreeType outline support?
+Generally consistent/correct hidpi scaling factors
 
 ## Low Prio
 

@@ -42,10 +42,11 @@ constexpr PxSize DEFAULT_WINDOW_SIZE = {.w = 360, .h = 600};
 constexpr PxSize MIN_WINDOW_SIZE = {.w = 200, .h = 100};
 
 // TODO thread through program properly
-Str FONT_PATH = S("data/Roboto-Medium.ttf");
+// Str FONT_PATH = S("data/Roboto-Medium.ttf");
 // Str FONT_PATH = S("data/NotoSans-Regular.ttf");
 // Str FONT_PATH = S("data/NotoSans-Bold.ttf");
-constexpr u32 FONT_SIZE_PX = 40;
+Str FONT_PATH = S("data/KosugiMaru-Regular.otf");
+constexpr u32 FONT_SIZE_PX = 20;
 
 //
 // MARK:Types
@@ -1238,6 +1239,8 @@ u64 make_glyph_mesh(Arena* arena,
     if (text.count == 0) {
         return 0;
     }
+
+    text = S("人類社会のすべての構成員の固有の尊厳と平等で譲ることので");
 
     u64 start_vertex_count = mesh->vertices.count;
 
