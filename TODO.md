@@ -64,6 +64,8 @@ Improve font rendering
     Sub-pixel antialiasing (maybe not on macos?)
     Look into FreeType outline support?
 Generally consistent/correct hidpi scaling factors
+Cross-platform smooth scrolling (again, how does Ghostty do it?)
+    Do I have to make a whole-ass Swift application shell just to get smooth scrolling?
 
 ## Low Prio
 
