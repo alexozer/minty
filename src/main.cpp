@@ -1,4 +1,3 @@
-#include "SDL3/SDL_keyboard.h"
 #include "base.hpp"
 
 #include <stdarg.h>
@@ -43,9 +42,9 @@ constexpr PxSize DEFAULT_WINDOW_SIZE = {.w = 360, .h = 600};
 constexpr PxSize MIN_WINDOW_SIZE = {.w = 200, .h = 100};
 
 // TODO thread through program properly
-// Str FONT_PATH = S("data/Roboto-Medium.ttf");
+Str FONT_PATH = S("data/Roboto-Medium.ttf");
 // Str FONT_PATH = S("data/NotoSans-Regular.ttf");
-Str FONT_PATH = S("data/NotoSans-Bold.ttf");
+// Str FONT_PATH = S("data/NotoSans-Bold.ttf");
 constexpr u32 FONT_SIZE_PX = 40;
 
 //
@@ -855,7 +854,7 @@ Box* align_box_center_vert(Arena* arena, Box* box, u16 height) {
 
 Box* prerender_segment(Arena* arena, Session* session, u16 width, u64 idx) {
     constexpr u16 ICON_INNER_PX = 80;
-    constexpr u16 ICON_OUTER_PX = 100;
+    constexpr u16 ICON_OUTER_PX = 90;
     Box* icon = nullptr;
 
     // TODO handle empty icons
