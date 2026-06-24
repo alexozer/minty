@@ -59,7 +59,8 @@ struct SplitRecord {
 
 struct SegmentDef {
     Str name;
-    Arr<u8> icon;  // Icon in PNG format
+    Arr<u8> icon_png;           // Icon in PNG format
+    SDL_Surface* icon_surface;  // Unfortunately uses malloc/free
 };
 
 struct FileDef {
@@ -70,7 +71,6 @@ struct FileDef {
     Arr<SegmentDef> segments;
     SplitRecord personal_best;
     Arr<Opt<Duration>> golds;
-    Arr<SDL_Surface*> icons;
 };
 
 enum class TimerMode {
@@ -125,8 +125,8 @@ enum class ShaderType {
 
 // Icons don't need color, but it's simpler to just have one format for now
 struct Vertex {
-    float x, y, z;
-    float u, v;
+    f32 x, y, z;
+    f32 u, v;
     u8 r, g, b, a;
 };
 
@@ -576,33 +576,16 @@ Arr<SegmentDef> parse_livesplit_segments(Arena* arena,
                 err_scope(err, "Decode icon for segment '%.*s'", SF(seg->name));
                 Str base64 = xml_inner(r, attr_tag);
                 if (!str_is_empty(base64)) {
-                    seg->icon = decode_icon_base64_to_png(arena, err, base64);
+                    seg->icon_png = decode_icon_base64_to_png(arena, err, base64);
+                    SDL_IOStream* png_stream =
+                        try_sdl(err, {}, SDL_IOFromMem(seg->icon_png.ptr, seg->icon_png.count));
+                    defer(SDL_CloseIO(png_stream));
+                    seg->icon_surface = try_sdl(err, {}, SDL_LoadPNG_IO(png_stream, false));
                 }
             }
         }
     }
     return vec_arr(&segments);
-}
-
-// TODO avoid leaking stuff on error
-void load_timer_textures(ErrorContext* err, Arena* arena, FileDef* file) {
-    err_scope(err, "Load segment icon textures");
-
-    Arr<SDL_Surface*> icons = arena_push_arr<SDL_Surface*>(arena, file->segments.count);
-    for (u64 i = 0; i < file->segments.count; i++) {
-        if (arr_is_empty(file->segments[i].icon)) {
-            continue;
-        }
-
-        err_scope(err, "Load icon texture for segment '%.*s'", SF(file->segments[i].name));
-
-        SDL_IOStream* png_stream =
-            try_sdl(err, SDL_IOFromMem(file->segments[i].icon.ptr, file->segments[i].icon.count));
-        defer(SDL_CloseIO(png_stream));
-
-        icons[i] = try_sdl(err, SDL_LoadPNG_IO(png_stream, false));
-    }
-    file->icons = icons;
 }
 
 void parse_livesplit_lss(ErrorContext* err, Arena* arena, FileDef* file, Arr<u8> xml) {
@@ -662,7 +645,6 @@ void load_livesplit_lss(Arena* arena, ErrorContext* err, Str lss_path, FileDef* 
     if (err_occurred(err)) return;
 
     parse_livesplit_lss(err, arena, file, xml);
-    load_timer_textures(err, arena, file);
 }
 
 //
@@ -909,10 +891,8 @@ Box* prerender_contents(Arena* arena, Session* session, PxSize size) {
     vec_push(arena, &top->children, cat_name_centered);
 
     for (u64 i = 0; i < session->file.segments.count; i++) {
-        if (!str_starts_with(session->file.segments[i].name, S("-"))) {
-            Box* segment = prerender_segment(arena, session, size.w, i);
-            vec_push(arena, &top->children, segment);
-        }
+        Box* segment = prerender_segment(arena, session, size.w, i);
+        vec_push(arena, &top->children, segment);
     }
 
     Box* bottom = arena_push<Box>(arena);
@@ -1614,21 +1594,21 @@ void init_vertex_buffers(ErrorContext* err, App* app) {
         try_sdl(err, SDL_CreateGPUTransferBuffer(app->device, &transfer_buffer_info));
 }
 
-u64 sdl_surface_size(SDL_Surface* surface) {
-    return (u64)surface->h * (u64)surface->pitch;
-}
-
 void make_and_upload_icon_atlas(ErrorContext* err, App* app, SDL_GPUCommandBuffer* command_buffer) {
     Arena* scratch = arena_acquire();
     defer(arena_release(scratch));
 
-    Arr<SDL_Surface*> icon_surfaces = app->session->file.icons;
-    Arr<CPUTexture> icon_textures = arena_push_arr<CPUTexture>(scratch, icon_surfaces.count);
+    FileDef* file = &app->session->file;
+    Arr<CPUTexture> icon_textures = arena_push_arr<CPUTexture>(scratch, file->segments.count);
     for (u64 i = 0; i < icon_textures.count; i++) {
         icon_textures[i].format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM_SRGB;
-        icon_textures[i].buffer = Arr<u8>{.ptr = (u8*)icon_surfaces[i]->pixels,
-                                          .count = sdl_surface_size(icon_surfaces[i])};
-        icon_textures[i].dims = {.w = (u16)icon_surfaces[i]->w, .h = (u16)icon_surfaces[i]->h};
+
+        SDL_Surface* surface = file->segments[i].icon_surface;
+        if (surface != nullptr) {
+            u64 buf_size = (u64)(surface->w * surface->pitch);
+            icon_textures[i].buffer = Arr<u8>{.ptr = (u8*)surface->pixels, .count = buf_size};
+            icon_textures[i].dims = {.w = (u16)surface->w, .h = (u16)surface->h};
+        }
     }
     app->icon_atlas = make_and_upload_atlas(
         err, app->session_arena, app->device, command_buffer, app->clear_icon_pipeline,
