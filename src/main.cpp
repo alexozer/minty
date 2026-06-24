@@ -1,3 +1,4 @@
+#include "SDL3/SDL_keyboard.h"
 #include "base.hpp"
 
 #include <stdarg.h>
@@ -40,6 +41,9 @@ struct PxSize {
 
 constexpr PxSize DEFAULT_WINDOW_SIZE = {.w = 360, .h = 600};
 constexpr PxSize MIN_WINDOW_SIZE = {.w = 200, .h = 100};
+
+// TODO thread through program properly
+Str FONT_PATH = S("data/Roboto-Medium.ttf");
 
 //
 // MARK:Types
@@ -216,6 +220,8 @@ struct App {
     // TODO: float-based scrolling on NDC could mess with pixel-perfect alignment
     f32 scroll;
     f32 scale;  // `scale + 1.0f` is actual scale
+    bool insert_mode_enabled;
+    Vec<u8> typed_text;
 
     Arena* session_arena;
     Session* session;  // Nullable
@@ -244,6 +250,7 @@ struct App {
 
     // Text stuff
     FT_Library freetype;
+    Arr<u8> font_file;
 };
 
 //
@@ -1108,10 +1115,13 @@ u64 make_icon_mesh(Arena* arena, PxSize window_size, Session* session, Atlas* at
 // MARK:Text rendering
 //
 
-Arr<ShapedGlyph> simple_shape(Arena* arena, Str text) {
+// TODO cache shaping context
+// TODO arena allocate kbts stuff
+// TODO handling style/direction/face runs etc.
+Arr<ShapedGlyph> shape_text_naive(Arena* arena, Arr<u8> font, Str text) {
     kbts_shape_context* context = kbts_CreateShapeContext(0, 0);
     defer(kbts_DestroyShapeContext(context));
-    kbts_ShapePushFontFromFile(context, "data/Roboto-Medium.ttf", 0);
+    kbts_ShapePushFontFromMemory(context, font.ptr, (int)font.count, 0);
 
     kbts_ShapeBegin(context, KBTS_DIRECTION_DONT_KNOW, KBTS_LANGUAGE_DONT_KNOW);
     kbts_ShapeUtf8(context, (char*)text.ptr, (i32)text.count,
@@ -1160,7 +1170,7 @@ GlyphAtlas make_and_upload_glyph_atlas(ErrorContext* err,
                                        SDL_GPUCommandBuffer* command_buffer,
                                        SDL_GPUGraphicsPipeline* clear_texture_pipeline,
                                        FT_Library freetype_handle,
-                                       Str face_path,
+                                       Arr<u8> font_file,
                                        u16 face_size_px) {
     err_scope(err, "Initialize text rendering");
 
@@ -1169,13 +1179,9 @@ GlyphAtlas make_and_upload_glyph_atlas(ErrorContext* err,
     Arena* scratch = arena_acquire();
     defer(arena_release(scratch));
 
-    Arr<u8> font_contents = fs_load_file(err, scratch, face_path);
-    if (err_occurred(err)) return {};
-
     FT_Face face = {};
     try_ft(err, {},
-           FT_New_Memory_Face(freetype_handle, font_contents.ptr, (long)font_contents.count, 0,
-                              &face));
+           FT_New_Memory_Face(freetype_handle, font_file.ptr, (long)font_file.count, 0, &face));
     defer(FT_Done_Face(face));
 
     try_ft(err, {}, FT_Set_Pixel_Sizes(face, face_size_px, 0));
@@ -1216,11 +1222,22 @@ GlyphAtlas make_and_upload_glyph_atlas(ErrorContext* err,
     };
 }
 
-u64 make_glyph_mesh(Arena* arena, PxSize window_size, GlyphAtlas* atlas, Mesh* mesh) {
+u64 make_glyph_mesh(Arena* arena,
+                    PxSize window_size,
+                    Arr<u8> font_file,
+                    GlyphAtlas* atlas,
+                    Str text,
+                    Mesh* mesh) {
+    Arena* scratch = arena_acquire();
+    defer(arena_release(scratch));
+
+    if (text.count == 0) {
+        return 0;
+    }
+
     u64 start_vertex_count = mesh->vertices.count;
 
-    Str text = S("Hello, world!");
-    Arr<ShapedGlyph> shaped_glyphs = simple_shape(arena, text);
+    Arr<ShapedGlyph> shaped_glyphs = shape_text_naive(scratch, font_file, text);
     for (u64 i = 0; i < shaped_glyphs.count; i++) {
         u32 glyph_id = shaped_glyphs[i].glyph_id;
 
@@ -1232,7 +1249,7 @@ u64 make_glyph_mesh(Arena* arena, PxSize window_size, GlyphAtlas* atlas, Mesh* m
         f32 bitmap_px_x = glyph_px_x + atlas->metrics[glyph_id].bearing_px_x;
         f32 bitmap_px_y = glyph_px_y + atlas->metrics[glyph_id].bearing_px_y;
 
-        // TODO suspicious of off-by-pixel for Y here
+        // Convert/round to window space pixel coord
         u16 dest_px_x = (u16)SDL_lroundf(200.f + bitmap_px_x);
         u16 dest_px_y = (u16)SDL_lroundf(200.f - bitmap_px_y);
 
@@ -1658,16 +1675,17 @@ void init_render_buffers(ErrorContext* err, App* app) {
     if (err_occurred(err)) return;
 
     u16 face_size_px = 64;
-    Str face_path = S("data/Roboto-Medium.ttf");
     app->glyph_atlas = make_and_upload_glyph_atlas(err, app->app_arena, app->device, command_buffer,
                                                    app->clear_glyph_pipeline, app->freetype,
-                                                   face_path, face_size_px);
+                                                   app->font_file, face_size_px);
 }
 
 void init_renderer(ErrorContext* err, App* app) {
     err_scope(err, "Initialize renderer");
 
     try_ft(err, FT_Init_FreeType(&app->freetype));
+    app->font_file = fs_load_file(err, app->app_arena, FONT_PATH);
+    if (err_occurred(err)) return;
 
     app->device = try_sdl(
         err, SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_MSL, RENDERER_DEBUG_MODE_ENABLED, nullptr));
@@ -1800,7 +1818,8 @@ void render(App* app) {
 
     u64 icon_quad_count =
         make_icon_mesh(frame_arena, window_size, app->session, app->icon_atlas, &mesh);
-    u64 glyph_quad_count = make_glyph_mesh(frame_arena, window_size, &app->glyph_atlas, &mesh);
+    u64 glyph_quad_count = make_glyph_mesh(frame_arena, window_size, app->font_file,
+                                           &app->glyph_atlas, vec_arr(&app->typed_text), &mesh);
     for (u64 i = 0; i < mesh.vertices.count; i++) {
         mesh.vertices[i].y -= app->scroll * 0.1f;
     }
@@ -1937,7 +1956,24 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
             break;
         }
         case SDLK_BACKSPACE: {
-            timer_apply_action(app->app_arena, app->session, TimerAction::ResetAndSave, t);
+            if (app->insert_mode_enabled) {
+                if (app->typed_text.count > 0) {
+                    vec_pop(&app->typed_text);
+                }
+            } else {
+                timer_apply_action(app->app_arena, app->session, TimerAction::ResetAndSave, t);
+            }
+            break;
+        }
+        case SDLK_I: {
+            SDL_StartTextInput(app->window);
+            app->insert_mode_enabled = true;
+            break;
+        }
+        case SDLK_ESCAPE: {
+            SDL_StopTextInput(app->window);
+            app->insert_mode_enabled = false;
+            vec_reset(&app->typed_text);
             break;
         }
         }
@@ -1961,6 +1997,11 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
 
     if (event->common.type == SDL_EVENT_MOUSE_WHEEL) {
         app->scroll += event->wheel.y;
+    }
+
+    if (event->common.type == SDL_EVENT_TEXT_INPUT) {
+        Str text = str_from_c(event->text.text);
+        vec_extend(app->app_arena, &app->typed_text, text);
     }
 
     return SDL_APP_CONTINUE;
