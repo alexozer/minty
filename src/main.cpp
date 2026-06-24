@@ -149,10 +149,16 @@ struct Atlas {
     Arr<stbrp_rect> packer_rects;
 };
 
+struct GlyphMetrics {
+    f32 bearing_px_x;  // Distance from left start to glyph start
+    f32 bearing_px_y;  // Distance from baseline to top of glyph
+};
+
 struct GlyphAtlas {
     Atlas* atlas;
     u16 px_per_em;  // AKA the face size in pixels
     u16 units_per_em;
+    Arr<GlyphMetrics> metrics;
 };
 
 struct Mesh {
@@ -168,9 +174,9 @@ struct CPUTexture {
 };
 
 struct ShapedGlyph {
-    u32 glyph_idx;
-    i32 glyph_x;
-    i32 glyph_y;
+    u32 glyph_id;
+    i32 glyph_x_fu;  // fu = font unit
+    i32 glyph_y_fu;
 };
 
 enum class BlendType {
@@ -1128,9 +1134,9 @@ Arr<ShapedGlyph> simple_shape(Arena* arena, Str text) {
             cursor_y += glyph->AdvanceY;
 
             ShapedGlyph* g = vec_push_zero(arena, &output);
-            g->glyph_idx = glyph->Id;
-            g->glyph_x = glyph_x;
-            g->glyph_y = glyph_y;
+            g->glyph_id = glyph->Id;
+            g->glyph_x_fu = glyph_x;
+            g->glyph_y_fu = glyph_y;
         }
         // run_idx++;
     }
@@ -1175,6 +1181,7 @@ GlyphAtlas make_and_upload_glyph_atlas(ErrorContext* err,
     try_ft(err, {}, FT_Set_Pixel_Sizes(face, face_size_px, 0));
 
     Arr<CPUTexture> textures = arena_push_arr<CPUTexture>(scratch, (u64)face->num_glyphs);
+    Arr<GlyphMetrics> metrics = arena_push_arr<GlyphMetrics>(arena, (u64)face->num_glyphs);
 
     for (u64 glyph_idx = 0; glyph_idx < face->num_glyphs; glyph_idx++) {
         try_ft(err, {}, FT_Load_Glyph(face, (u32)glyph_idx, 0));
@@ -1189,6 +1196,10 @@ GlyphAtlas make_and_upload_glyph_atlas(ErrorContext* err,
         texture->format = SDL_GPU_TEXTUREFORMAT_R8_UNORM;
         texture->buffer = arr_clone(scratch, tmp_buffer);
         texture->dims = {.w = (u16)bitmap.width, .h = (u16)bitmap.rows};
+
+        // Convert from 26.6 fixed point pixels to f32 pixels
+        metrics[glyph_idx].bearing_px_x = (f32)face->glyph->metrics.horiBearingX / 64.f;
+        metrics[glyph_idx].bearing_px_y = (f32)face->glyph->metrics.horiBearingY / 64.f;
     }
 
     PxSize font_atlas_size = {.w = 2048, .h = 2048};
@@ -1201,6 +1212,7 @@ GlyphAtlas make_and_upload_glyph_atlas(ErrorContext* err,
         .atlas = atlas,
         .px_per_em = face_size_px,
         .units_per_em = face->units_per_EM,
+        .metrics = metrics,
     };
 }
 
@@ -1208,12 +1220,24 @@ u64 make_glyph_mesh(Arena* arena, PxSize window_size, GlyphAtlas* atlas, Mesh* m
     u64 start_vertex_count = mesh->vertices.count;
 
     Str text = S("Hello, world!");
-    Arr<ShapedGlyph> glyphs = simple_shape(arena, text);
-    for (u64 i = 0; i < glyphs.count; i++) {
-        PxRect src = atlas->atlas->placements[glyphs[i].glyph_idx];
-        u16 dest_x = (u16)(200 + glyphs[i].glyph_x / 64);
-        u16 dest_y = (u16)(200 - glyphs[i].glyph_y / 64);
-        PxRect dst = {.x = dest_x, .y = dest_y, .w = src.w, .h = src.h};
+    Arr<ShapedGlyph> shaped_glyphs = simple_shape(arena, text);
+    for (u64 i = 0; i < shaped_glyphs.count; i++) {
+        u32 glyph_id = shaped_glyphs[i].glyph_id;
+
+        // Shaping position of glyph
+        f32 glyph_px_x = (f32)shaped_glyphs[i].glyph_x_fu * atlas->px_per_em / atlas->units_per_em;
+        f32 glyph_px_y = (f32)shaped_glyphs[i].glyph_y_fu * atlas->px_per_em / atlas->units_per_em;
+
+        // Position of glyph bitmap
+        f32 bitmap_px_x = glyph_px_x + atlas->metrics[glyph_id].bearing_px_x;
+        f32 bitmap_px_y = glyph_px_y + atlas->metrics[glyph_id].bearing_px_y;
+
+        // TODO suspicious of off-by-pixel for Y here
+        u16 dest_px_x = (u16)SDL_lroundf(200.f + bitmap_px_x);
+        u16 dest_px_y = (u16)SDL_lroundf(200.f - bitmap_px_y);
+
+        PxRect src = atlas->atlas->placements[shaped_glyphs[i].glyph_id];
+        PxRect dst = {.x = dest_px_x, .y = dest_px_y, .w = src.w, .h = src.h};
         Color color = {.r = 255, .g = 255, .b = 255, .a = 255};
         push_atlas_quad(arena, window_size, atlas->atlas, mesh, src, dst, color);
     }
