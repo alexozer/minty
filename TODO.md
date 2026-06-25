@@ -27,8 +27,8 @@ Layout research
 <!-- Either handle SDL errors or assert their absence -->
 Draw split/segment times
 Generate header files with function forward declarations
-Test on Windows
-    Port shaders to HLSL I suppose?
+<!-- Test on Windows -->
+<!--     Port shaders to HLSL I suppose? -->
 
 ## Research
 
@@ -157,8 +157,9 @@ Baby steps.
 # Font shaping
 
 <!-- Figure out how these silly font coordinate systems work -->
-Figure out how I'm supposed to position glyphs w.r.t. shaping results
-    Read refpad
+<!-- Figure out how I'm supposed to position glyphs w.r.t. shaping results -->
+    <!-- Read refpad -->
+Subpixel positioning
 
 # Texture caching
 
@@ -183,8 +184,8 @@ Eventually got shader cross-compilation working with `shadercross`
 Had to assign textures/samplers to Vulkan descriptor sets, still not sure what that even means
 
 Issues:
-- Flickering on Windows when typing
-    - Occasionally appears on Mac too
+<!-- - Flickering on Windows when typing -->
+<!--     - Occasionally appears on Mac too -->
 - Window not resizable
 - Window size seems to be measured in real pixels on Linux and Windows, even in hidpi mode, unlike macos
 - Shoulnd't be able to maximize on Windows
