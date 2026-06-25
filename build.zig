@@ -89,27 +89,6 @@ pub fn build(b: *std.Build) !void {
     try cdb_targets.append(b.allocator, simdutf);
 
     //
-    // refpad demo
-    //
-    const refpad = b.addExecutable(.{
-        .name = "refpad",
-        .root_module = b.createModule(.{
-            .target = target,
-            .optimize = optimize,
-            .strip = false,
-            .link_libc = true,
-            .link_libcpp = false,
-        }),
-    });
-    refpad.root_module.addCSourceFiles(.{
-        .files = &.{"3rdparty/refpad/refpad_sdl3.c"},
-        .flags = c_flags,
-        .language = .c,
-    });
-    refpad.root_module.linkLibrary(sdl.artifact("SDL3"));
-    b.installArtifact(refpad);
-
-    //
     // blitter
     //
 

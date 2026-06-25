@@ -1,4 +1,5 @@
 #include "base.hpp"
+#include "platform.hpp"
 
 #include <stdarg.h>
 
@@ -1547,13 +1548,15 @@ Atlas* make_and_upload_atlas(ErrorContext* err,
     return atlas;
 }
 
-SDL_GPUShader* load_shader(ErrorContext* err, SDL_GPUDevice* device, Str path, ShaderType type) {
-    err_scope(err, "Load shader '%.*s'", SF(path));
+SDL_GPUShader* load_shader(ErrorContext* err, SDL_GPUDevice* device, Str name, ShaderType type) {
+    err_scope(err, "Load shader '%.*s'", SF(name));
 
     Arena* scratch = arena_acquire();
     defer(arena_release(scratch));
 
-    Arr<u8> source = fs_load_file(err, scratch, path);
+    Str shader_path = str_format(scratch, "data/%.*s.%.*s", SF(name), SF(OS_SHADER_EXTENSION));
+
+    Arr<u8> source = fs_load_file(err, scratch, shader_path);
     if (err_occurred(err)) return nullptr;
 
     SDL_GPUShaderCreateInfo info = {};
@@ -1562,7 +1565,7 @@ SDL_GPUShader* load_shader(ErrorContext* err, SDL_GPUDevice* device, Str path, S
         info = {
             .code_size = source.count,
             .code = (u8*)source.ptr,
-            .format = SDL_GPU_SHADERFORMAT_MSL,
+            .format = OS_SHADER_FORMAT,
             .stage = SDL_GPU_SHADERSTAGE_VERTEX,
             .num_samplers = 0,
             .num_storage_textures = 0,
@@ -1576,7 +1579,7 @@ SDL_GPUShader* load_shader(ErrorContext* err, SDL_GPUDevice* device, Str path, S
         info = {
             .code_size = source.count,
             .code = (u8*)source.ptr,
-            .format = SDL_GPU_SHADERFORMAT_MSL,
+            .format = OS_SHADER_FORMAT,
             .stage = SDL_GPU_SHADERSTAGE_FRAGMENT,
             .num_samplers = 1,
             .num_storage_textures = 0,
