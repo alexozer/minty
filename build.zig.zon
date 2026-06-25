@@ -7,7 +7,7 @@
             .hash = "zig_compile_commands-0.0.1-OZg5-e_JAAAGg1WHAePtq4l4Uvjs34BexnFFCZk63EaG",
         },
         .sdl = .{
-            .url = "https://github.com/allyourcodebase/SDL3/archive/refs/heads/main.zip",
+            .url = "https://github.com/allyourcodebase/SDL3/archive/refs/tags/1.0.0+3.4.4.tar.gz",
             .hash = "sdl-1.0.1+3.4.4-i4QD0YqSqQCOOwj21rl1blvhDjBh_EDvOcnzfPbBa6lw",
         },
         .freetype = .{
