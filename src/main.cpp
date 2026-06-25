@@ -42,15 +42,21 @@ constexpr PxSize DEFAULT_WINDOW_SIZE = {.w = 360, .h = 600};
 constexpr PxSize MIN_WINDOW_SIZE = {.w = 200, .h = 100};
 
 // TODO thread through program properly
-// Str FONT_PATH = S("data/Roboto-Medium.ttf");
+Str FONT_PATH = S("data/Roboto-Medium.ttf");
 // Str FONT_PATH = S("data/NotoSans-Regular.ttf");
 // Str FONT_PATH = S("data/NotoSans-Bold.ttf");
-Str FONT_PATH = S("data/KosugiMaru-Regular.otf");
+// Str FONT_PATH = S("data/KosugiMaru-Regular.otf");
 constexpr u32 FONT_SIZE_PX = 20;
 
 //
 // MARK:Types
 //
+
+struct CPUTexture {
+    SDL_GPUTextureFormat format;
+    Arr<u8> buffer;
+    PxSize dims;
+};
 
 struct SplitRecord {
     u64 attempt_num;
@@ -59,8 +65,8 @@ struct SplitRecord {
 
 struct SegmentDef {
     Str name;
-    Arr<u8> icon_png;           // Icon in PNG format
-    SDL_Surface* icon_surface;  // Unfortunately uses malloc/free
+    Arr<u8> icon_png;  // Icon in PNG format
+    CPUTexture icon_texture;
 };
 
 struct FileDef {
@@ -173,13 +179,6 @@ struct Mesh {
     Vec<u16> indices;
 };
 
-// CPU texture
-struct CPUTexture {
-    SDL_GPUTextureFormat format;
-    Arr<u8> buffer;
-    PxSize dims;
-};
-
 struct ShapedGlyph {
     u32 glyph_id;
     i32 glyph_x_fu;  // fu = font unit
@@ -259,6 +258,24 @@ struct App {
 //
 // MARK:Timer
 //
+
+CPUTexture convert_srgb_surface_to_rgba(Arena* arena, SDL_Surface* surface) {
+    u64 dest_size = (u64)(surface->w * surface->h * 4);
+    Arr<u8> buffer = {
+        // TODO don't use "private" arena API for alignment
+        .ptr = (u8*)arena__push_bytes<8>(arena, dest_size),
+        .count = dest_size,
+    };
+    CPUTexture texture = {
+        .format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM_SRGB,
+        .buffer = buffer,
+        .dims = {.w = (u16)surface->w, .h = (u16)surface->h},
+    };
+    log_assert(SDL_ConvertPixels(surface->w, surface->h, surface->format, surface->pixels,
+                                 surface->pitch, SDL_PIXELFORMAT_RGBA32, texture.buffer.ptr,
+                                 surface->w * 4));
+    return texture;
+}
 
 Opt<Duration> operator+(const Opt<Duration>& d1, const Opt<Duration>& d2) {
     return {
@@ -577,10 +594,15 @@ Arr<SegmentDef> parse_livesplit_segments(Arena* arena,
                 Str base64 = xml_inner(r, attr_tag);
                 if (!str_is_empty(base64)) {
                     seg->icon_png = decode_icon_base64_to_png(arena, err, base64);
+
                     SDL_IOStream* png_stream =
                         try_sdl(err, {}, SDL_IOFromMem(seg->icon_png.ptr, seg->icon_png.count));
                     defer(SDL_CloseIO(png_stream));
-                    seg->icon_surface = try_sdl(err, {}, SDL_LoadPNG_IO(png_stream, false));
+
+                    SDL_Surface* surface = try_sdl(err, {}, SDL_LoadPNG_IO(png_stream, false));
+                    defer(SDL_DestroySurface(surface));
+
+                    seg->icon_texture = convert_srgb_surface_to_rgba(arena, surface);
                 }
             }
         }
@@ -1220,8 +1242,6 @@ u64 make_glyph_mesh(Arena* arena,
         return 0;
     }
 
-    text = S("人類社会のすべての構成員の固有の尊厳と平等で譲ることので");
-
     u64 start_vertex_count = mesh->vertices.count;
 
     Arr<ShapedGlyph> shaped_glyphs = shape_text_naive(scratch, font_file, text);
@@ -1600,15 +1620,8 @@ void make_and_upload_icon_atlas(ErrorContext* err, App* app, SDL_GPUCommandBuffe
 
     FileDef* file = &app->session->file;
     Arr<CPUTexture> icon_textures = arena_push_arr<CPUTexture>(scratch, file->segments.count);
-    for (u64 i = 0; i < icon_textures.count; i++) {
-        icon_textures[i].format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM_SRGB;
-
-        SDL_Surface* surface = file->segments[i].icon_surface;
-        if (surface != nullptr) {
-            u64 buf_size = (u64)(surface->w * surface->pitch);
-            icon_textures[i].buffer = Arr<u8>{.ptr = (u8*)surface->pixels, .count = buf_size};
-            icon_textures[i].dims = {.w = (u16)surface->w, .h = (u16)surface->h};
-        }
+    for (u64 i = 0; i < file->segments.count; i++) {
+        icon_textures[i] = file->segments[i].icon_texture;
     }
     app->icon_atlas = make_and_upload_atlas(
         err, app->session_arena, app->device, command_buffer, app->clear_icon_pipeline,
