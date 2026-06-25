@@ -196,14 +196,18 @@ bool arr_eq(Arr<T> a, Arr<T> b) {
 template <typename T>
 void arr_copy(Arr<T> dest, Arr<T> source) {
     log_assert(dest.count == source.count);
-    SDL_memcpy(dest.ptr, source.ptr, dest.count * sizeof(T));
+    if (dest.count > 0) {
+        SDL_memcpy(dest.ptr, source.ptr, dest.count * sizeof(T));
+    }
 }
 
 // For potentially overlapping arrays
 template <typename T>
 void arr_move(Arr<T> dest, Arr<T> source) {
     log_assert(dest.count == source.count);
-    SDL_memmove(dest.ptr, source.ptr, dest.count * sizeof(T));
+    if (dest.count > 0) {
+        SDL_memmove(dest.ptr, source.ptr, dest.count * sizeof(T));
+    }
 }
 
 template <typename T>
