@@ -176,3 +176,15 @@ You could imagine doing this for other state too, like parsing split files
 
 Text cache API could wrap the atlas cache API, instead taking e.g. font, glyph ID, pixel size,
 subpixel position, next lower/higher size?
+
+# Cross-platform testing notes
+
+Eventually got shader cross-compilation working with `shadercross`
+Had to assign textures/samplers to Vulkan descriptor sets, still not sure what that even means
+
+Issues:
+- Flickering on Windows when typing
+    - Occasionally appears on Mac too
+- Window not resizable
+- Window size seems to be measured in real pixels on Linux and Windows, even in hidpi mode, unlike macos
+- Shoulnd't be able to maximize on Windows

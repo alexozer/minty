@@ -1703,7 +1703,7 @@ void do_geometry_upload_pass(App* app, SDL_GPUCommandBuffer* command_buffer, Mes
     u64 index_data_size = mesh->indices.count * sizeof(mesh->indices[0]);
 
     void* transfer_data =
-        (Vertex*)SDL_MapGPUTransferBuffer(app->device, app->vertex_transfer_buffer, false);
+        (Vertex*)SDL_MapGPUTransferBuffer(app->device, app->vertex_transfer_buffer, true);
 
     SDL_memcpy(transfer_data, mesh->vertices.ptr, vertex_data_size);
     SDL_memcpy((u8*)transfer_data + vertex_data_size, mesh->indices.ptr, index_data_size);
@@ -1720,7 +1720,7 @@ void do_geometry_upload_pass(App* app, SDL_GPUCommandBuffer* command_buffer, Mes
         .offset = 0,
         .size = (u32)vertex_data_size,
     };
-    SDL_UploadToGPUBuffer(pass, &vert_src, &vert_dest, false);
+    SDL_UploadToGPUBuffer(pass, &vert_src, &vert_dest, true);
 
     // Upload index data
     SDL_GPUTransferBufferLocation index_src = {
@@ -1732,7 +1732,7 @@ void do_geometry_upload_pass(App* app, SDL_GPUCommandBuffer* command_buffer, Mes
         .offset = 0,
         .size = (u32)index_data_size,
     };
-    SDL_UploadToGPUBuffer(pass, &index_src, &index_dest, false);
+    SDL_UploadToGPUBuffer(pass, &index_src, &index_dest, true);
 
     SDL_EndGPUCopyPass(pass);
 }
