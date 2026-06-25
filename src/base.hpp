@@ -562,13 +562,6 @@ bool err_occurred(ErrorContext* ctx);
 Str path_join(Arena* arena, Str left_path, Str right_path);
 
 //
-// Subprocesses
-//
-
-extern Arr<char*> g_argv;
-extern Arr<char*> g_envp;
-
-//
 // Time
 //
 
@@ -681,7 +674,7 @@ Str base64_encode(Arena* arena, Arr<u8> a);
 // Idk
 //
 
-void thread_init(int argc, char** argv);
+void thread_init();
 
 //
 // FS

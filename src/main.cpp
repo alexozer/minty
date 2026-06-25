@@ -1860,12 +1860,7 @@ Session* make_session(ErrorContext* err, Arena* arena, App* app, Str path) {
     return session;
 }
 
-App* init_app(ErrorContext* err) {
-    if (g_argv.count < 2) {
-        log_fatal("Usage: blitter <path-to-splits-file>");
-    }
-    Str path = str_from_c(g_argv[1]);
-
+App* init_app(ErrorContext* err, Str path) {
     Arena* root_arena = arena_acquire();
     App* app = arena_push<App>(root_arena);
     app->app_arena = root_arena;
@@ -1885,13 +1880,18 @@ App* init_app(ErrorContext* err) {
 }
 
 SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
-    thread_init(argc, argv);
+    thread_init();
+
+    if (argc < 2) {
+        log_info("Usage: blitter <path-to-splits-file>");
+        return SDL_APP_FAILURE;
+    }
 
     ErrorContext err_base = {.arena = arena_acquire()};
     ErrorContext* err = &err_base;
     defer(arena_release(err_base.arena));
 
-    App* app = init_app(err);
+    App* app = init_app(err, str_from_c(argv[1]));
     if (err_occurred(err)) {
         err_log(err);
         return SDL_APP_FAILURE;

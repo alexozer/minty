@@ -233,26 +233,6 @@ Str path_join(Arena* arena, Str left_path, Str right_path) {
 }
 
 //
-// Subprocesses
-//
-
-Arr<char*> g_argv;
-Arr<char*> g_envp;
-
-Str env_get(Str key) {
-    for (u64 i = 0; i < g_envp.count; i++) {
-        Str env_pair = str_from_c(g_envp[i]);
-        if (str_starts_with(env_pair, key)) {
-            if (env_pair.count > key.count && env_pair[key.count] == C('=')) {
-                return arr_slice(env_pair, key.count + 1, env_pair.count);
-            }
-        }
-    }
-
-    return {};
-}
-
-//
 // Logging
 //
 
@@ -330,8 +310,7 @@ Instant get_current_monotonic_time() {
 // Idk
 //
 
-void thread_init(int argc, char** argv) {
-    g_argv = {.ptr = argv, .count = (u64)argc};
+void thread_init() {
     arena_pool_init();
 }
 
