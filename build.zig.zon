@@ -7,8 +7,8 @@
             .hash = "zig_compile_commands-0.0.1-OZg5-e_JAAAGg1WHAePtq4l4Uvjs34BexnFFCZk63EaG",
         },
         .sdl = .{
-            .url = "https://github.com/allyourcodebase/SDL3/archive/refs/tags/1.0.0+3.4.4.tar.gz",
-            .hash = "sdl-1.0.1+3.4.4-i4QD0YqSqQCOOwj21rl1blvhDjBh_EDvOcnzfPbBa6lw",
+            .url = "git+https://github.com/allyourcodebase/SDL3#2112c226de02434111c8a7337fb83d5e5a270d76",
+            .hash = "sdl-1.0.1+3.4.4-i4QD0YeSqQCDkGoyRgfZH6_05GyutM6wfeECig3-STNj",
         },
         .freetype = .{
             .url = "git+https://code.hexops.org/hexops/freetype#1d0f0f11162275d67d3db2cb4905ed5c659b8a41",
