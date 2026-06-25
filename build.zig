@@ -55,8 +55,8 @@ pub fn build(b: *std.Build) !void {
     var cdb_targets: std.ArrayList(*std.Build.Step.Compile) = .empty;
 
     const blitter_sources_plat = switch (target.result.os.tag) {
-        .macos => blitter_sources ++ .{"src/platform_posix.cpp"},
-        .linux => blitter_sources ++ .{"src/platform_posix.cpp"},
+        .macos => blitter_sources ++ .{ "src/platform_posix.cpp", "src/platform_macos.cpp" },
+        .linux => blitter_sources ++ .{ "src/platform_posix.cpp", "src/platform_linux.cpp" },
         .windows => blitter_sources ++ .{"src/platform_windows.cpp"},
         else => @panic("Unsupported OS"),
     };

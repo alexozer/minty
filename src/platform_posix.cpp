@@ -16,6 +16,3 @@ void* os_alloc(u64 size) {
 void os_free(void* buf, u64 size) {
     munmap(buf, (size_t)size);
 }
-
-const SDL_GPUShaderFormat OS_SHADER_FORMAT = SDL_GPU_SHADERFORMAT_MSL;
-const Str OS_SHADER_EXTENSION = S("msl");
