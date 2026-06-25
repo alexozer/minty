@@ -46,7 +46,7 @@ Str FONT_PATH = S("data/Roboto-Medium.ttf");
 // Str FONT_PATH = S("data/NotoSans-Regular.ttf");
 // Str FONT_PATH = S("data/NotoSans-Bold.ttf");
 // Str FONT_PATH = S("data/KosugiMaru-Regular.otf");
-constexpr u32 FONT_SIZE_PX = 20;
+constexpr u32 FONT_SIZE_PX = 40;
 
 //
 // MARK:Types
