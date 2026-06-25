@@ -1554,7 +1554,8 @@ SDL_GPUShader* load_shader(ErrorContext* err, SDL_GPUDevice* device, Str name, S
     Arena* scratch = arena_acquire();
     defer(arena_release(scratch));
 
-    Str shader_path = str_format(scratch, "data/%.*s.%.*s", SF(name), SF(OS_SHADER_EXTENSION));
+    Str shader_path =
+        str_format(scratch, "src/shaders/%.*s.%.*s", SF(name), SF(OS_SHADER_EXTENSION));
 
     Arr<u8> source = fs_load_file(err, scratch, shader_path);
     if (err_occurred(err)) return nullptr;
@@ -1633,11 +1634,9 @@ void make_and_upload_icon_atlas(ErrorContext* err, App* app, SDL_GPUCommandBuffe
 
 void init_render_pipelines(ErrorContext* err, App* app) {
     // Load shaders
-    app->vert_shader = load_shader(err, app->device, S("src/shaders/vert.msl"), ShaderType::Vertex);
-    app->icon_frag_shader =
-        load_shader(err, app->device, S("src/shaders/frag_icon.msl"), ShaderType::Fragment);
-    app->glyph_frag_shader =
-        load_shader(err, app->device, S("src/shaders/frag_glyph.msl"), ShaderType::Fragment);
+    app->vert_shader = load_shader(err, app->device, S("vert"), ShaderType::Vertex);
+    app->icon_frag_shader = load_shader(err, app->device, S("frag_icon"), ShaderType::Fragment);
+    app->glyph_frag_shader = load_shader(err, app->device, S("frag_glyph"), ShaderType::Fragment);
     if (err_occurred(err)) return;
 
     if (SDL_WindowSupportsGPUPresentMode(app->device, app->window, SDL_GPU_PRESENTMODE_MAILBOX)) {
@@ -1688,8 +1687,8 @@ void init_renderer(ErrorContext* err, App* app) {
     app->font_file = fs_load_file(err, app->app_arena, FONT_PATH);
     if (err_occurred(err)) return;
 
-    app->device = try_sdl(
-        err, SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_MSL, RENDERER_DEBUG_MODE_ENABLED, nullptr));
+    app->device =
+        try_sdl(err, SDL_CreateGPUDevice(OS_SHADER_FORMAT, RENDERER_DEBUG_MODE_ENABLED, nullptr));
     try_sdl(err, SDL_ClaimWindowForGPUDevice(app->device, app->window));
 
     init_render_pipelines(err, app);
