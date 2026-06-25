@@ -9,7 +9,9 @@ struct Input
     float4 color    : TEXCOORD1;
 };
 
+[[vk::binding(0, 2)]]
 Texture2D    Texture : register(t0);
+[[vk::binding(0, 2)]]
 SamplerState Sampler : register(s0);
 
 Output main(Input input)
