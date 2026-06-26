@@ -1,5 +1,6 @@
-#include "base.hpp"
-#include "platform.hpp"
+#include "base.h"
+#include "platform.h"
+#include "template_types.h"
 
 #include <stdarg.h>
 
@@ -16,11 +17,9 @@
 #include <ft2build.h>
 #include FT_FREETYPE_H
 
-extern "C" {
-#include <xao.h>
-}
 #include <kb_text_shape.h>
 #include <stb_rect_pack.h>
+#include <xao.h>
 #include <yyjson.h>
 
 //
@@ -55,18 +54,18 @@ constexpr u32 FONT_SIZE_PX = 40;
 
 struct CPUTexture {
     SDL_GPUTextureFormat format;
-    Arr<u8> buffer;
+    Arr_u8 buffer;
     PxSize dims;
 };
 
 struct SplitRecord {
     u64 attempt_num;
-    Arr<Opt<Duration>> splits;
+    Arr_Opt_Duration splits;
 };
 
 struct SegmentDef {
     Str name;
-    Arr<u8> icon_png;  // Icon in PNG format
+    Arr_u8 icon_png;  // Icon in PNG format
     CPUTexture icon_texture;
 };
 
@@ -75,21 +74,29 @@ struct FileDef {
     Str category_name;
     u64 total_attempts;
     u64 completed_attempts;
-    Arr<SegmentDef> segments;
+    Arr_SegmentDef segments;
     SplitRecord personal_best;
-    Arr<Opt<Duration>> golds;
+    Arr_Opt_Duration golds;
 };
 
-enum class TimerMode {
-    Init,
-    Running,
-    Paused,
-    Finished,
+enum TimerMode {
+    TimerMode_Init,
+    TimerMode_Running,
+    TimerMode_Paused,
+    TimerMode_Finished,
 };
+
+// enum class TimerMode {
+//     Init,
+//     Running,
+//     Paused,
+//     Finished,
+// };
 
 struct Timer {
     TimerMode mode;
-    Vec<Opt<Duration>> live_splits;
+    Vec_Opt_Duration live_splits;
+    CPUTexture CPUTexture;
     Instant start_time;
     Instant paused_time;
     Duration total_paused_duration;
@@ -101,33 +108,33 @@ struct Session {
 };
 
 struct SegSummary {
-    Opt<Duration> live_split;
-    Opt<Duration> live_seg;
+    Opt_Duration live_split;
+    Opt_Duration live_seg;
 
     // How far ahead/behind this split is compared to PB
-    Opt<Duration> live_delta;
+    Opt_Duration live_delta;
 
     // Duration gained or lost this split relative to PB
-    Opt<Duration> gained;
+    Opt_Duration gained;
 
-    Opt<Duration> pb_split;
-    Opt<Duration> pb_seg;
+    Opt_Duration pb_split;
+    Opt_Duration pb_seg;
 
     bool is_new_gold;
 };
 
-enum class TimerAction {
-    Split,
-    UndoSplit,
-    DeleteSplit,
-    ResetAndSave,
-    ResetAndDelete,
-    Pause,
+enum TimerAction {
+    TimerAction_Split,
+    TimerAction_UndoSplit,
+    TimerAction_DeleteSplit,
+    TimerAction_ResetAndSave,
+    TimerAction_ResetAndDelete,
+    TimerAction_Pause,
 };
 
-enum class ShaderType {
-    Vertex,
-    Fragment,
+enum ShaderType {
+    ShaderType_Vertex,
+    ShaderType_Fragment,
 };
 
 // Icons don't need color, but it's simpler to just have one format for now
@@ -152,15 +159,15 @@ struct PxRect {
 
 struct Atlas {
     PxSize size;
-    SDL_GPUTexture* texture;
-    SDL_GPUSampler* sampler;
-    Arr<PxRect> placements;
+    SDL_GPUTexture *texture;
+    SDL_GPUSampler *sampler;
+    Arr_PxRect placements;
     // Not sure if it's ever worth coalescing transfer buffers
-    SDL_GPUTransferBuffer* transfer_buffer;
+    SDL_GPUTransferBuffer *transfer_buffer;
 
     // Rect packer state, useful for online repacking
-    Arr<stbrp_node> packer_nodes;
-    Arr<stbrp_rect> packer_rects;
+    Arr_stbrp_rect packer_nodes;
+    Arr_stbrp_rect packer_rects;
 };
 
 struct GlyphMetrics {
@@ -169,7 +176,7 @@ struct GlyphMetrics {
 };
 
 struct GlyphAtlas {
-    Atlas* atlas;
+    Atlas *atlas;
     u16 px_per_em;  // AKA the face size in pixels
     u16 units_per_em;
     Arr<GlyphMetrics> metrics;
@@ -212,12 +219,12 @@ struct Box {
     Opt<PxSize> bbox;
     u64 texture_idx;
     Color color;
-    Vec<Box*> children;
+    Vec<Box *> children;
 };
 
 struct App {
-    Arena* app_arena;  // Lives for duration of application
-    SDL_Window* window;
+    Arena *app_arena;  // Lives for duration of application
+    SDL_Window *window;
 
     SDL_Keycode prev_keys;
     // TODO: float-based scrolling on NDC could mess with pixel-perfect alignment
@@ -226,29 +233,29 @@ struct App {
     bool insert_mode_enabled;
     Vec<u8> typed_text;
 
-    Arena* session_arena;
-    Session* session;  // Nullable
+    Arena *session_arena;
+    Session *session;  // Nullable
 
-    SDL_GPUDevice* device;
+    SDL_GPUDevice *device;
 
     // Shaders
-    SDL_GPUShader* vert_shader;
-    SDL_GPUShader* icon_frag_shader;
-    SDL_GPUShader* glyph_frag_shader;
+    SDL_GPUShader *vert_shader;
+    SDL_GPUShader *icon_frag_shader;
+    SDL_GPUShader *glyph_frag_shader;
 
     // Pipelines
-    SDL_GPUGraphicsPipeline* icon_pipeline;
-    SDL_GPUGraphicsPipeline* glyph_pipeline;
-    SDL_GPUGraphicsPipeline* clear_icon_pipeline;
-    SDL_GPUGraphicsPipeline* clear_glyph_pipeline;
+    SDL_GPUGraphicsPipeline *icon_pipeline;
+    SDL_GPUGraphicsPipeline *glyph_pipeline;
+    SDL_GPUGraphicsPipeline *clear_icon_pipeline;
+    SDL_GPUGraphicsPipeline *clear_glyph_pipeline;
 
     // Geometry buffers
-    SDL_GPUTransferBuffer* vertex_transfer_buffer;
-    SDL_GPUBuffer* vertex_buffer;
-    SDL_GPUBuffer* index_buffer;
+    SDL_GPUTransferBuffer *vertex_transfer_buffer;
+    SDL_GPUBuffer *vertex_buffer;
+    SDL_GPUBuffer *index_buffer;
 
     // Textures
-    Atlas* icon_atlas;
+    Atlas *icon_atlas;
     GlyphAtlas glyph_atlas;
 
     // Text stuff
@@ -260,11 +267,11 @@ struct App {
 // MARK:Timer
 //
 
-CPUTexture convert_srgb_surface_to_rgba(Arena* arena, SDL_Surface* surface) {
+CPUTexture convert_srgb_surface_to_rgba(Arena *arena, SDL_Surface *surface) {
     u64 dest_size = (u64)(surface->w * surface->h * 4);
     Arr<u8> buffer = {
         // TODO don't use "private" arena API for alignment
-        .ptr = (u8*)arena__push_bytes<8>(arena, dest_size),
+        .ptr = (u8 *)arena__push_bytes<8>(arena, dest_size),
         .count = dest_size,
     };
     CPUTexture texture = {
@@ -278,23 +285,23 @@ CPUTexture convert_srgb_surface_to_rgba(Arena* arena, SDL_Surface* surface) {
     return texture;
 }
 
-Opt<Duration> operator+(const Opt<Duration>& d1, const Opt<Duration>& d2) {
+Opt<Duration> operator + (const Opt<Duration> &d1, const Opt<Duration> &d2) {
     return {
         .present = d1.present && d2.present,
         .opt = d1.opt + d2.opt,
     };
 }
 
-Opt<Duration> operator-(const Opt<Duration>& d1, const Opt<Duration>& d2) {
+Opt<Duration> operator - (const Opt<Duration> &d1, const Opt<Duration> &d2) {
     return {
         .present = d1.present && d2.present,
         .opt = d1.opt - d2.opt,
     };
 }
 
-Arr<SegSummary> calc_seg_summary(Arena* arena, Session* session) {
-    Timer* timer = &session->timer;
-    FileDef* file = &session->file;
+Arr<SegSummary> calc_seg_summary(Arena *arena, Session *session) {
+    Timer *timer = &session->timer;
+    FileDef *file = &session->file;
 
     Arr<SegSummary> summary = arena_push_arr<SegSummary>(arena, timer->live_splits.count);
 
@@ -346,7 +353,7 @@ Arr<SegSummary> calc_seg_summary(Arena* arena, Session* session) {
     return summary;
 }
 
-Str format_duration(Arena* arena, Duration duration, u32 ms_digits, bool show_plus_prefix) {
+Str format_duration(Arena *arena, Duration duration, u32 ms_digits, bool show_plus_prefix) {
     log_assert(ms_digits <= 3);
 
     Str sign_str = show_plus_prefix ? S("+") : S("");
@@ -387,12 +394,12 @@ Str format_duration(Arena* arena, Duration duration, u32 ms_digits, bool show_pl
     return arr_slice(result, 0, result.count - (3 - ms_digits));
 }
 
-void timer_reset(Timer* timer) {
+void timer_reset(Timer *timer) {
     timer->mode = TimerMode::Init;
     vec_reset(&timer->live_splits);
 }
 
-Duration timer_get_elapsed(Timer* timer, Instant event_time) {
+Duration timer_get_elapsed(Timer *timer, Instant event_time) {
     switch (timer->mode) {
     case TimerMode::Init: {
         return DURATION_ZERO;
@@ -409,7 +416,7 @@ Duration timer_get_elapsed(Timer* timer, Instant event_time) {
     }
 }
 
-void timer_apply_action_init(Arena* arena, Session* session, TimerAction action, Instant t) {
+void timer_apply_action_init(Arena *arena, Session *session, TimerAction action, Instant t) {
     switch (action) {
     case TimerAction::Split: {
         session->timer.mode = TimerMode::Running;
@@ -421,9 +428,9 @@ void timer_apply_action_init(Arena* arena, Session* session, TimerAction action,
     }
 }
 
-void timer_apply_action_running(Arena* arena, Session* session, TimerAction action, Instant t) {
-    Timer* timer = &session->timer;
-    FileDef* file = &session->file;
+void timer_apply_action_running(Arena *arena, Session *session, TimerAction action, Instant t) {
+    Timer *timer = &session->timer;
+    FileDef *file = &session->file;
 
     switch (action) {
     case TimerAction::Split: {
@@ -467,9 +474,9 @@ void timer_apply_action_running(Arena* arena, Session* session, TimerAction acti
     }
 }
 
-void timer_apply_action_paused(Arena* arena, Session* session, TimerAction action, Instant t) {
-    Timer* timer = &session->timer;
-    FileDef* file = &session->file;
+void timer_apply_action_paused(Arena *arena, Session *session, TimerAction action, Instant t) {
+    Timer *timer = &session->timer;
+    FileDef *file = &session->file;
 
     switch (action) {
     case TimerAction::Pause: {
@@ -494,9 +501,9 @@ void timer_apply_action_paused(Arena* arena, Session* session, TimerAction actio
     }
 }
 
-void timer_apply_action_finished(Arena* arena, Session* session, TimerAction action, Instant t) {
-    Timer* timer = &session->timer;
-    FileDef* file = &session->file;
+void timer_apply_action_finished(Arena *arena, Session *session, TimerAction action, Instant t) {
+    Timer *timer = &session->timer;
+    FileDef *file = &session->file;
 
     switch (action) {
     case TimerAction::UndoSplit: {
@@ -521,7 +528,7 @@ void timer_apply_action_finished(Arena* arena, Session* session, TimerAction act
     }
 }
 
-void timer_apply_action(Arena* arena, Session* session, TimerAction action, Instant t) {
+void timer_apply_action(Arena *arena, Session *session, TimerAction action, Instant t) {
     switch (session->timer.mode) {
     case TimerMode::Init: {
         timer_apply_action_init(arena, session, action, t);
@@ -542,16 +549,16 @@ void timer_apply_action(Arena* arena, Session* session, TimerAction action, Inst
     }
 }
 
-bool eq(xao_Value v, const char* s) {
+bool eq(xao_Value v, const char *s) {
     u64 size = (u64)v.end - (u64)v.start;
     return size == SDL_strlen(s) && SDL_memcmp(v.start, s, size) == 0;
 }
 
 Str xml_str(xao_Value v) {
-    return {.ptr = (u8*)v.start, .count = (u64)v.end - (u64)v.start};
+    return {.ptr = (u8 *)v.start, .count = (u64)v.end - (u64)v.start};
 }
 
-Str xml_inner(xao_Reader* r, xao_Value outer) {
+Str xml_inner(xao_Reader *r, xao_Value outer) {
     xao_Value inner = {};
     xao_iter_content(r, outer, &inner);
     return xml_str(inner);
@@ -561,7 +568,7 @@ Str xml_inner(xao_Reader* r, xao_Value outer) {
 // should be const
 u8 PNG_HEADER[] = {0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a};
 
-Arr<u8> decode_icon_base64_to_png(Arena* arena, ErrorContext* err, Str icon_base64) {
+Arr<u8> decode_icon_base64_to_png(Arena *arena, ErrorContext *err, Str icon_base64) {
     err_scope(err, "Decode icon base64 to PNG");
 
     Arr<u8> icon_bin = base64_decode(arena, err, icon_base64);
@@ -573,16 +580,16 @@ Arr<u8> decode_icon_base64_to_png(Arena* arena, ErrorContext* err, Str icon_base
     return arr_slice(icon_bin, png_idx.opt, icon_bin.count);
 }
 
-Arr<SegmentDef> parse_livesplit_segments(Arena* arena,
-                                         ErrorContext* err,
-                                         xao_Reader* r,
+Arr<SegmentDef> parse_livesplit_segments(Arena *arena,
+                                         ErrorContext *err,
+                                         xao_Reader *r,
                                          xao_Value segments_tag) {
     err_scope(err, "Parse LiveSplit LSS segments");
 
     Vec<SegmentDef> segments = {};
     xao_Value seg_tag = {};
     while (xao_iter_tags(r, segments_tag, &seg_tag)) {
-        SegmentDef* seg = vec_push_zero(arena, &segments);
+        SegmentDef *seg = vec_push_zero(arena, &segments);
         xao_Value attr_tag = {};
         while (xao_iter_tags(r, seg_tag, &attr_tag)) {
             if (eq(attr_tag, "Name")) {
@@ -596,11 +603,11 @@ Arr<SegmentDef> parse_livesplit_segments(Arena* arena,
                 if (!str_is_empty(base64)) {
                     seg->icon_png = decode_icon_base64_to_png(arena, err, base64);
 
-                    SDL_IOStream* png_stream =
+                    SDL_IOStream *png_stream =
                         try_sdl(err, {}, SDL_IOFromMem(seg->icon_png.ptr, seg->icon_png.count));
                     defer(SDL_CloseIO(png_stream));
 
-                    SDL_Surface* surface = try_sdl(err, {}, SDL_LoadPNG_IO(png_stream, false));
+                    SDL_Surface *surface = try_sdl(err, {}, SDL_LoadPNG_IO(png_stream, false));
                     defer(SDL_DestroySurface(surface));
 
                     seg->icon_texture = convert_srgb_surface_to_rgba(arena, surface);
@@ -611,14 +618,14 @@ Arr<SegmentDef> parse_livesplit_segments(Arena* arena,
     return vec_arr(&segments);
 }
 
-void parse_livesplit_lss(ErrorContext* err, Arena* arena, FileDef* file, Arr<u8> xml) {
+void parse_livesplit_lss(ErrorContext *err, Arena *arena, FileDef *file, Arr<u8> xml) {
     err_scope(err, "Parse LiveSplit LSS");
 
     if (!str_is_valid_utf8(xml)) {
         bail(err, "Invalid UTF-8");
     }
 
-    xao_Reader r = xao_reader((char*)xml.ptr, xml.count);
+    xao_Reader r = xao_reader((char *)xml.ptr, xml.count);
     xao_Value root = {};
     xao_Value root_tag = {};
     while (xao_iter_tags(&r, root, &root_tag)) {
@@ -658,10 +665,10 @@ void parse_livesplit_lss(ErrorContext* err, Arena* arena, FileDef* file, Arr<u8>
     }
 }
 
-void load_livesplit_lss(Arena* arena, ErrorContext* err, Str lss_path, FileDef* file) {
+void load_livesplit_lss(Arena *arena, ErrorContext *err, Str lss_path, FileDef *file) {
     err_scope(err, "Load LiveSplit LSS file '%.*s'", SF(lss_path));
 
-    Arena* scratch = arena_acquire();
+    Arena *scratch = arena_acquire();
     defer(arena_release(scratch));
 
     Arr<u8> xml = fs_load_file(err, scratch, lss_path);
@@ -674,8 +681,8 @@ void load_livesplit_lss(Arena* arena, ErrorContext* err, Str lss_path, FileDef* 
 // MARK:UI
 //
 
-Box* make_text_box(Arena* arena, Str content, Color color) {
-    Box* box = arena_push<Box>(arena);
+Box *make_text_box(Arena *arena, Str content, Color color) {
+    Box *box = arena_push<Box>(arena);
 
     box->type = BoxType::Text;
     // const char *content_cstr = str_is_empty(content) ? "" : (const char
@@ -686,32 +693,32 @@ Box* make_text_box(Arena* arena, Str content, Color color) {
     return box;
 }
 
-Box* make_empty_box(Arena* arena, PxSize size) {
-    Box* box = arena_push<Box>(arena);
+Box *make_empty_box(Arena *arena, PxSize size) {
+    Box *box = arena_push<Box>(arena);
     box->type = BoxType::Empty;
     box->bbox = some(size);
     return box;
 }
 
-Box* make_texture_box(Arena* arena, u64 texture_idx, PxSize size) {
-    Box* box = arena_push<Box>(arena);
+Box *make_texture_box(Arena *arena, u64 texture_idx, PxSize size) {
+    Box *box = arena_push<Box>(arena);
     box->type = BoxType::Texture;
     box->bbox = some(size);
     box->texture_idx = texture_idx;
     return box;
 }
 
-Box* make_solid_color_box(Arena* arena, Color color, PxSize size) {
-    Box* box = arena_push<Box>(arena);
+Box *make_solid_color_box(Arena *arena, Color color, PxSize size) {
+    Box *box = arena_push<Box>(arena);
     box->type = BoxType::SolidColor;
     box->bbox = some(size);
     box->color = color;
     return box;
 }
 
-PxSize compute_box_bbox(Box* box);
+PxSize compute_box_bbox(Box *box);
 
-PxSize compute_box_bbox_uncached(Box* box) {
+PxSize compute_box_bbox_uncached(Box *box) {
     switch (box->type) {
     case BoxType::Empty:
     case BoxType::SolidColor: {
@@ -765,7 +772,7 @@ PxSize compute_box_bbox_uncached(Box* box) {
     }
 }
 
-PxSize compute_box_bbox(Box* box) {
+PxSize compute_box_bbox(Box *box) {
     if (box->bbox.present) {
         return box->bbox.opt;
     }
@@ -774,11 +781,11 @@ PxSize compute_box_bbox(Box* box) {
     return bbox;
 }
 
-Box* pad_box_left(Arena* arena, Box* box, u16 pad) {
+Box *pad_box_left(Arena *arena, Box *box, u16 pad) {
     PxSize bbox = compute_box_bbox(box);
-    Box* pad_box = make_empty_box(arena, {.w = pad, .h = bbox.h});
+    Box *pad_box = make_empty_box(arena, {.w = pad, .h = bbox.h});
 
-    Box* parent_box = arena_push<Box>(arena);
+    Box *parent_box = arena_push<Box>(arena);
     parent_box->type = BoxType::LeftToRightStack;
     vec_push(arena, &parent_box->children, pad_box);
     vec_push(arena, &parent_box->children, box);
@@ -786,11 +793,11 @@ Box* pad_box_left(Arena* arena, Box* box, u16 pad) {
     return parent_box;
 }
 
-Box* pad_box_right(Arena* arena, Box* box, u16 pad) {
+Box *pad_box_right(Arena *arena, Box *box, u16 pad) {
     PxSize bbox = compute_box_bbox(box);
-    Box* pad_box = make_empty_box(arena, {.w = pad, .h = bbox.h});
+    Box *pad_box = make_empty_box(arena, {.w = pad, .h = bbox.h});
 
-    Box* parent_box = arena_push<Box>(arena);
+    Box *parent_box = arena_push<Box>(arena);
     parent_box->type = BoxType::LeftToRightStack;
     vec_push(arena, &parent_box->children, box);
     vec_push(arena, &parent_box->children, pad_box);
@@ -798,11 +805,11 @@ Box* pad_box_right(Arena* arena, Box* box, u16 pad) {
     return parent_box;
 }
 
-Box* pad_box_top(Arena* arena, Box* box, u16 pad) {
+Box *pad_box_top(Arena *arena, Box *box, u16 pad) {
     PxSize bbox = compute_box_bbox(box);
-    Box* pad_box = make_empty_box(arena, {.w = bbox.w, .h = pad});
+    Box *pad_box = make_empty_box(arena, {.w = bbox.w, .h = pad});
 
-    Box* parent_box = arena_push<Box>(arena);
+    Box *parent_box = arena_push<Box>(arena);
     parent_box->type = BoxType::TopToBottomStack;
     vec_push(arena, &parent_box->children, pad_box);
     vec_push(arena, &parent_box->children, box);
@@ -810,11 +817,11 @@ Box* pad_box_top(Arena* arena, Box* box, u16 pad) {
     return parent_box;
 }
 
-Box* pad_box_bottom(Arena* arena, Box* box, u16 pad) {
+Box *pad_box_bottom(Arena *arena, Box *box, u16 pad) {
     PxSize bbox = compute_box_bbox(box);
-    Box* pad_box = make_empty_box(arena, {.w = bbox.w, .h = pad});
+    Box *pad_box = make_empty_box(arena, {.w = bbox.w, .h = pad});
 
-    Box* parent_box = arena_push<Box>(arena);
+    Box *parent_box = arena_push<Box>(arena);
     parent_box->type = BoxType::TopToBottomStack;
     vec_push(arena, &parent_box->children, box);
     vec_push(arena, &parent_box->children, pad_box);
@@ -822,16 +829,16 @@ Box* pad_box_bottom(Arena* arena, Box* box, u16 pad) {
     return parent_box;
 }
 
-Box* align_box_center_horiz(Arena* arena, Box* box, u16 width) {
+Box *align_box_center_horiz(Arena *arena, Box *box, u16 width) {
     PxSize bbox = compute_box_bbox(box);
     width = max(width, bbox.w);
     u16 left_pad = (width - bbox.w) / 2;
     u16 right_pad = width - bbox.w - left_pad;
 
-    Box* left_pad_box = make_empty_box(arena, {left_pad, bbox.h});
-    Box* right_pad_box = make_empty_box(arena, {right_pad, bbox.h});
+    Box *left_pad_box = make_empty_box(arena, {left_pad, bbox.h});
+    Box *right_pad_box = make_empty_box(arena, {right_pad, bbox.h});
 
-    Box* parent = arena_push<Box>(arena);
+    Box *parent = arena_push<Box>(arena);
     parent->type = BoxType::LeftToRightStack;
     vec_push(arena, &parent->children, left_pad_box);
     vec_push(arena, &parent->children, box);
@@ -840,16 +847,16 @@ Box* align_box_center_horiz(Arena* arena, Box* box, u16 width) {
     return parent;
 }
 
-Box* align_box_center_vert(Arena* arena, Box* box, u16 height) {
+Box *align_box_center_vert(Arena *arena, Box *box, u16 height) {
     PxSize bbox = compute_box_bbox(box);
     height = max(height, bbox.h);
     u16 top_pad = (height - bbox.h) / 2;
     u16 bottom_pad = height - bbox.h - top_pad;
 
-    Box* top_pad_box = make_empty_box(arena, {bbox.w, top_pad});
-    Box* bottom_pad_box = make_empty_box(arena, {bbox.w, bottom_pad});
+    Box *top_pad_box = make_empty_box(arena, {bbox.w, top_pad});
+    Box *bottom_pad_box = make_empty_box(arena, {bbox.w, bottom_pad});
 
-    Box* parent = arena_push<Box>(arena);
+    Box *parent = arena_push<Box>(arena);
     parent->type = BoxType::TopToBottomStack;
     vec_push(arena, &parent->children, top_pad_box);
     vec_push(arena, &parent->children, box);
@@ -858,10 +865,10 @@ Box* align_box_center_vert(Arena* arena, Box* box, u16 height) {
     return parent;
 }
 
-Box* prerender_segment(Arena* arena, Session* session, u16 width, u64 idx) {
+Box *prerender_segment(Arena *arena, Session *session, u16 width, u64 idx) {
     constexpr u16 ICON_INNER_PX = 80;
     constexpr u16 ICON_OUTER_PX = 90;
-    Box* icon = nullptr;
+    Box *icon = nullptr;
 
     // TODO handle empty icons
     icon = make_texture_box(arena, idx, {.w = ICON_INNER_PX, .h = ICON_INNER_PX});
@@ -872,11 +879,11 @@ Box* prerender_segment(Arena* arena, Session* session, u16 width, u64 idx) {
     icon = align_box_center_vert(arena, icon, ICON_OUTER_PX);
 
     Color text_color = {.r = 255, .g = 255, .b = 255, .a = 255};
-    Box* pad = make_empty_box(arena, {.w = 10, .h = 0});
-    Box* title = make_text_box(arena, session->file.segments[idx].name, text_color);
-    Box* title_centered = align_box_center_vert(arena, title, ICON_OUTER_PX);
+    Box *pad = make_empty_box(arena, {.w = 10, .h = 0});
+    Box *title = make_text_box(arena, session->file.segments[idx].name, text_color);
+    Box *title_centered = align_box_center_vert(arena, title, ICON_OUTER_PX);
 
-    Box* row_front = arena_push<Box>(arena);
+    Box *row_front = arena_push<Box>(arena);
     row_front->type = BoxType::LeftToRightStack;
     vec_push(arena, &row_front->children, icon);
     vec_push(arena, &row_front->children, pad);
@@ -886,9 +893,9 @@ Box* prerender_segment(Arena* arena, Session* session, u16 width, u64 idx) {
         PxSize row_front_bbox = compute_box_bbox(row_front);
         Color bg_color = {.r = 0, .g = 0, .b = 0, .a = 255};
         PxSize row_back_size = {.w = width, .h = row_front_bbox.h};
-        Box* row_back = make_solid_color_box(arena, bg_color, row_back_size);
+        Box *row_back = make_solid_color_box(arena, bg_color, row_back_size);
 
-        Box* row = arena_push<Box>(arena);
+        Box *row = arena_push<Box>(arena);
         row->type = BoxType::BackToFrontStack;
         vec_push(arena, &row->children, row_back);
         vec_push(arena, &row->children, row_front);
@@ -899,33 +906,33 @@ Box* prerender_segment(Arena* arena, Session* session, u16 width, u64 idx) {
     return row_front;
 }
 
-Box* prerender_contents(Arena* arena, Session* session, PxSize size) {
+Box *prerender_contents(Arena *arena, Session *session, PxSize size) {
     Color color = {.r = 255, .g = 255, .b = 255, .a = 255};
 
-    Box* game_name = make_text_box(arena, session->file.game_name, color);
-    Box* cat_name = make_text_box(arena, session->file.category_name, color);
+    Box *game_name = make_text_box(arena, session->file.game_name, color);
+    Box *cat_name = make_text_box(arena, session->file.category_name, color);
 
-    Box* game_name_centered = align_box_center_horiz(arena, game_name, size.w);
-    Box* cat_name_centered = align_box_center_horiz(arena, cat_name, size.w);
+    Box *game_name_centered = align_box_center_horiz(arena, game_name, size.w);
+    Box *cat_name_centered = align_box_center_horiz(arena, cat_name, size.w);
 
-    Box* top = arena_push<Box>(arena);
+    Box *top = arena_push<Box>(arena);
     top->type = BoxType::TopToBottomStack;
     vec_push(arena, &top->children, game_name_centered);
     vec_push(arena, &top->children, cat_name_centered);
 
     for (u64 i = 0; i < session->file.segments.count; i++) {
-        Box* segment = prerender_segment(arena, session, size.w, i);
+        Box *segment = prerender_segment(arena, session, size.w, i);
         vec_push(arena, &top->children, segment);
     }
 
-    Box* bottom = arena_push<Box>(arena);
+    Box *bottom = arena_push<Box>(arena);
     bottom->type = BoxType::TopToBottomStack;
 
     Duration t = timer_get_elapsed(&session->timer, get_current_monotonic_time());
     Str t_str = format_duration(arena, t, 2, false);
-    Box* curr_time = make_text_box(arena, t_str, color);
+    Box *curr_time = make_text_box(arena, t_str, color);
     PxSize curr_time_bbox = compute_box_bbox(curr_time);
-    Box* curr_time_aligned = pad_box_left(arena, curr_time, size.w - curr_time_bbox.w);
+    Box *curr_time_aligned = pad_box_left(arena, curr_time, size.w - curr_time_bbox.w);
 
     vec_push(arena, &bottom->children, curr_time_aligned);
 
@@ -933,9 +940,9 @@ Box* prerender_contents(Arena* arena, Session* session, PxSize size) {
     PxSize top_bbox = compute_box_bbox(top);
     PxSize bottom_bbox = compute_box_bbox(bottom);
     PxSize vsep_size = {.w = 0, .h = (u16)(size.h - top_bbox.h - bottom_bbox.h)};
-    Box* vsep = make_empty_box(arena, vsep_size);
+    Box *vsep = make_empty_box(arena, vsep_size);
 
-    Box* root = arena_push<Box>(arena);
+    Box *root = arena_push<Box>(arena);
     root->type = BoxType::TopToBottomStack;
     vec_push(arena, &root->children, top);
     vec_push(arena, &root->children, vsep);
@@ -944,13 +951,13 @@ Box* prerender_contents(Arena* arena, Session* session, PxSize size) {
     return root;
 }
 
-Box* prerender(Arena* arena, Session* session, PxSize window_size) {
+Box *prerender(Arena *arena, Session *session, PxSize window_size) {
     constexpr u16 PADDING = 10;
     PxSize content_size = {
         .w = (u16)(window_size.w - PADDING * 2),
         .h = (u16)(window_size.h - PADDING * 2),
     };
-    Box* timer = prerender_contents(arena, session, content_size);
+    Box *timer = prerender_contents(arena, session, content_size);
     timer = pad_box_left(arena, timer, PADDING);
     timer = pad_box_right(arena, timer, PADDING);
     timer = pad_box_top(arena, timer, PADDING);
@@ -960,15 +967,15 @@ Box* prerender(Arena* arena, Session* session, PxSize window_size) {
 
 // TODO for pixel-perfect rendering, need to understand rounding/UV mapping
 // w.r.t. pixel center better
-void window_to_ndc(Vertex* vertex, PxSize window_size) {
+void window_to_ndc(Vertex *vertex, PxSize window_size) {
     vertex->x = (vertex->x / (f32)window_size.w) * 2.f - 1.f;
     vertex->y = -((vertex->y / (f32)window_size.h) * 2.f - 1.f);
 }
 
-void push_atlas_quad(Arena* arena,
+void push_atlas_quad(Arena *arena,
                      PxSize window_size,
-                     Atlas* atlas,
-                     Mesh* mesh,
+                     Atlas *atlas,
+                     Mesh *mesh,
                      PxRect src,
                      PxRect dst,
                      Color color) {
@@ -1037,12 +1044,12 @@ void push_atlas_quad(Arena* arena,
     window_to_ndc(&vertices[3], window_size);
 }
 
-void make_icon_mesh_inner(Arena* arena,
+void make_icon_mesh_inner(Arena *arena,
                           PxSize window_size,
-                          Box* box,
+                          Box *box,
                           PxPos where,
-                          Atlas* atlas,
-                          Mesh* mesh) {
+                          Atlas *atlas,
+                          Mesh *mesh) {
     switch (box->type) {
     case BoxType::Empty: {
         break;
@@ -1108,8 +1115,8 @@ void make_icon_mesh_inner(Arena* arena,
     }
 }
 
-u64 make_icon_mesh(Arena* arena, PxSize window_size, Session* session, Atlas* atlas, Mesh* mesh) {
-    Box* box = prerender(arena, session, window_size);
+u64 make_icon_mesh(Arena *arena, PxSize window_size, Session *session, Atlas *atlas, Mesh *mesh) {
+    Box *box = prerender(arena, session, window_size);
     u64 start_vertex_count = mesh->vertices.count;
     PxPos where = {.x = 0, .y = 0};
     make_icon_mesh_inner(arena, window_size, box, where, atlas, mesh);
@@ -1124,13 +1131,13 @@ u64 make_icon_mesh(Arena* arena, PxSize window_size, Session* session, Atlas* at
 // TODO cache shaping context
 // TODO arena allocate kbts stuff
 // TODO handling style/direction/face runs etc.
-Arr<ShapedGlyph> shape_text_naive(Arena* arena, Arr<u8> font, Str text) {
-    kbts_shape_context* context = kbts_CreateShapeContext(0, 0);
+Arr<ShapedGlyph> shape_text_naive(Arena *arena, Arr<u8> font, Str text) {
+    kbts_shape_context *context = kbts_CreateShapeContext(0, 0);
     defer(kbts_DestroyShapeContext(context));
     kbts_ShapePushFontFromMemory(context, font.ptr, (int)font.count, 0);
 
     kbts_ShapeBegin(context, KBTS_DIRECTION_DONT_KNOW, KBTS_LANGUAGE_DONT_KNOW);
-    kbts_ShapeUtf8(context, (char*)text.ptr, (i32)text.count,
+    kbts_ShapeUtf8(context, (char *)text.ptr, (i32)text.count,
                    KBTS_USER_ID_GENERATION_MODE_CODEPOINT_INDEX);
     kbts_ShapeEnd(context);
 
@@ -1141,7 +1148,7 @@ Arr<ShapedGlyph> shape_text_naive(Arena* arena, Arr<u8> font, Str text) {
     Vec<ShapedGlyph> output = {};
     vec_prealloc(arena, &output, text.count);
     while (kbts_ShapeRun(context, &Run)) {
-        kbts_glyph* glyph = nullptr;
+        kbts_glyph *glyph = nullptr;
         while (kbts_GlyphIteratorNext(&Run.Glyphs, &glyph)) {
             i32 glyph_x = cursor_x + glyph->OffsetX;
             i32 glyph_y = cursor_y + glyph->OffsetY;
@@ -1149,7 +1156,7 @@ Arr<ShapedGlyph> shape_text_naive(Arena* arena, Arr<u8> font, Str text) {
             cursor_x += glyph->AdvanceX;
             cursor_y += glyph->AdvanceY;
 
-            ShapedGlyph* g = vec_push_zero(arena, &output);
+            ShapedGlyph *g = vec_push_zero(arena, &output);
             g->glyph_id = glyph->Id;
             g->glyph_x_fu = glyph_x;
             g->glyph_y_fu = glyph_y;
@@ -1160,21 +1167,21 @@ Arr<ShapedGlyph> shape_text_naive(Arena* arena, Arr<u8> font, Str text) {
     return vec_arr(&output);
 }
 
-Atlas* make_and_upload_atlas(ErrorContext* err,
-                             Arena* arena,
-                             SDL_GPUDevice* device,
-                             SDL_GPUCommandBuffer* command_buffer,
-                             SDL_GPUGraphicsPipeline* clear_texture_pipeline,
+Atlas *make_and_upload_atlas(ErrorContext *err,
+                             Arena *arena,
+                             SDL_GPUDevice *device,
+                             SDL_GPUCommandBuffer *command_buffer,
+                             SDL_GPUGraphicsPipeline *clear_texture_pipeline,
                              Str name,
                              Arr<CPUTexture> textures,
                              PxSize atlas_size,
                              TextureFilterType filter);
 
-GlyphAtlas make_and_upload_glyph_atlas(ErrorContext* err,
-                                       Arena* arena,
-                                       SDL_GPUDevice* device,
-                                       SDL_GPUCommandBuffer* command_buffer,
-                                       SDL_GPUGraphicsPipeline* clear_texture_pipeline,
+GlyphAtlas make_and_upload_glyph_atlas(ErrorContext *err,
+                                       Arena *arena,
+                                       SDL_GPUDevice *device,
+                                       SDL_GPUCommandBuffer *command_buffer,
+                                       SDL_GPUGraphicsPipeline *clear_texture_pipeline,
                                        FT_Library freetype_handle,
                                        Arr<u8> font_file,
                                        u16 face_size_px) {
@@ -1182,7 +1189,7 @@ GlyphAtlas make_and_upload_glyph_atlas(ErrorContext* err,
 
     log_assert(face_size_px > 0);
 
-    Arena* scratch = arena_acquire();
+    Arena *scratch = arena_acquire();
     defer(arena_release(scratch));
 
     FT_Face face = {};
@@ -1205,7 +1212,7 @@ GlyphAtlas make_and_upload_glyph_atlas(ErrorContext* err,
         try_ft(err, {}, FT_Render_Glyph(face->glyph, FT_RENDER_MODE_NORMAL));
 
         FT_Bitmap bitmap = face->glyph->bitmap;
-        CPUTexture* texture = &textures[glyph_idx];
+        CPUTexture *texture = &textures[glyph_idx];
         Arr<u8> tmp_buffer = {.ptr = bitmap.buffer, .count = bitmap.width * bitmap.rows};
         texture->format = SDL_GPU_TEXTUREFORMAT_R8_UNORM;
         texture->buffer = arr_clone(scratch, tmp_buffer);
@@ -1219,7 +1226,7 @@ GlyphAtlas make_and_upload_glyph_atlas(ErrorContext* err,
     PxSize font_atlas_size = {.w = 2048, .h = 2048};
     Str texture_name = str_format(scratch, "Glyph atlas: family = '%s', style = '%s', size = %dpx",
                                   face->family_name, face->style_name, face_size_px);
-    Atlas* atlas =
+    Atlas *atlas =
         make_and_upload_atlas(err, arena, device, command_buffer, clear_texture_pipeline,
                               texture_name, textures, font_atlas_size, TextureFilterType::Nearest);
     return {
@@ -1230,13 +1237,13 @@ GlyphAtlas make_and_upload_glyph_atlas(ErrorContext* err,
     };
 }
 
-u64 make_glyph_mesh(Arena* arena,
+u64 make_glyph_mesh(Arena *arena,
                     PxSize window_size,
                     Arr<u8> font_file,
-                    GlyphAtlas* atlas,
+                    GlyphAtlas *atlas,
                     Str text,
-                    Mesh* mesh) {
-    Arena* scratch = arena_acquire();
+                    Mesh *mesh) {
+    Arena *scratch = arena_acquire();
     defer(arena_release(scratch));
 
     if (text.count == 0) {
@@ -1275,11 +1282,11 @@ u64 make_glyph_mesh(Arena* arena,
 // MARK:Rendering
 //
 
-SDL_GPUGraphicsPipeline* make_render_pipeline(ErrorContext* err,
-                                              SDL_GPUDevice* device,
-                                              SDL_Window* window,
-                                              SDL_GPUShader* vert_shader,
-                                              SDL_GPUShader* frag_shader,
+SDL_GPUGraphicsPipeline *make_render_pipeline(ErrorContext *err,
+                                              SDL_GPUDevice *device,
+                                              SDL_Window *window,
+                                              SDL_GPUShader *vert_shader,
+                                              SDL_GPUShader *frag_shader,
                                               SDL_GPUTextureFormat target_texture_format,
                                               BlendType blend_type) {
     err_scope(err, "Init render pipeline");
@@ -1350,32 +1357,32 @@ SDL_GPUGraphicsPipeline* make_render_pipeline(ErrorContext* err,
     return try_sdl(err, nullptr, SDL_CreateGPUGraphicsPipeline(device, &pipeline_create_info));
 }
 
-void clear_texture(ErrorContext* err,
-                   SDL_GPUCommandBuffer* command_buffer,
-                   SDL_GPUGraphicsPipeline* pipeline,
-                   SDL_GPUTexture* texture) {
+void clear_texture(ErrorContext *err,
+                   SDL_GPUCommandBuffer *command_buffer,
+                   SDL_GPUGraphicsPipeline *pipeline,
+                   SDL_GPUTexture *texture) {
     SDL_GPUColorTargetInfo color_target_infos[] = {{
         .texture = texture,
         .clear_color = {0.f, 0.f, 0.f, 1.f},
         .load_op = SDL_GPU_LOADOP_CLEAR,
         .store_op = SDL_GPU_STOREOP_STORE,
     }};
-    SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(command_buffer, color_target_infos,
+    SDL_GPURenderPass *pass = SDL_BeginGPURenderPass(command_buffer, color_target_infos,
                                                      c_arr_count(color_target_infos), nullptr);
     SDL_BindGPUGraphicsPipeline(pass, pipeline);
     SDL_EndGPURenderPass(pass);
 }
 
-Atlas* make_and_upload_atlas(ErrorContext* err,
-                             Arena* arena,
-                             SDL_GPUDevice* device,
-                             SDL_GPUCommandBuffer* command_buffer,
-                             SDL_GPUGraphicsPipeline* clear_texture_pipeline,
+Atlas *make_and_upload_atlas(ErrorContext *err,
+                             Arena *arena,
+                             SDL_GPUDevice *device,
+                             SDL_GPUCommandBuffer *command_buffer,
+                             SDL_GPUGraphicsPipeline *clear_texture_pipeline,
                              Str name,
                              Arr<CPUTexture> textures,
                              PxSize atlas_size,
                              TextureFilterType filter) {
-    Arena* scratch = arena_acquire();
+    Arena *scratch = arena_acquire();
     defer(arena_release(scratch));
 
     // Texture formats must be equal
@@ -1405,8 +1412,8 @@ Atlas* make_and_upload_atlas(ErrorContext* err,
         .layer_count_or_depth = 1,
         .num_levels = 1,
     };
-    SDL_GPUTexture* texture = SDL_CreateGPUTexture(device, &gpu_texture_info);
-    char* name_cstr = str_to_c(scratch, name);
+    SDL_GPUTexture *texture = SDL_CreateGPUTexture(device, &gpu_texture_info);
+    char *name_cstr = str_to_c(scratch, name);
     SDL_SetGPUTextureName(device, texture, name_cstr);
     clear_texture(err, command_buffer, clear_texture_pipeline, texture);
 
@@ -1460,13 +1467,13 @@ Atlas* make_and_upload_atlas(ErrorContext* err,
         .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
         .size = transfer_buffer_size,
     };
-    SDL_GPUTransferBuffer* transfer_buffer =
+    SDL_GPUTransferBuffer *transfer_buffer =
         SDL_CreateGPUTransferBuffer(device, &transfer_buffer_info);
 
-    void* buf = SDL_MapGPUTransferBuffer(device, transfer_buffer, false);
+    void *buf = SDL_MapGPUTransferBuffer(device, transfer_buffer, false);
     for (u64 i = 0; i < textures.count; i++) {
         u64 size = textures[i].buffer.count;
-        SDL_memcpy((u8*)buf + offsets[i], textures[i].buffer.ptr, size);
+        SDL_memcpy((u8 *)buf + offsets[i], textures[i].buffer.ptr, size);
     }
     SDL_UnmapGPUTransferBuffer(device, transfer_buffer);
 
@@ -1475,7 +1482,7 @@ Atlas* make_and_upload_atlas(ErrorContext* err,
     //
 
     // TODO coalesce atlas-related copy and render passes
-    SDL_GPUCopyPass* copy_pass = SDL_BeginGPUCopyPass(command_buffer);
+    SDL_GPUCopyPass *copy_pass = SDL_BeginGPUCopyPass(command_buffer);
 
     for (u64 i = 0; i < textures.count; i++) {
         if (textures[i].dims.w > 0 && textures[i].dims.h > 0) {
@@ -1530,13 +1537,13 @@ Atlas* make_and_upload_atlas(ErrorContext* err,
     }
     }
 
-    SDL_GPUSampler* sampler = SDL_CreateGPUSampler(device, &sampler_info);
+    SDL_GPUSampler *sampler = SDL_CreateGPUSampler(device, &sampler_info);
 
     //
     // Return atlas descriptor
     //
 
-    Atlas* atlas = arena_push<Atlas>(arena);
+    Atlas *atlas = arena_push<Atlas>(arena);
     atlas->size = atlas_size;
     atlas->texture = texture;
     atlas->sampler = sampler;
@@ -1548,10 +1555,10 @@ Atlas* make_and_upload_atlas(ErrorContext* err,
     return atlas;
 }
 
-SDL_GPUShader* load_shader(ErrorContext* err, SDL_GPUDevice* device, Str name, ShaderType type) {
+SDL_GPUShader *load_shader(ErrorContext *err, SDL_GPUDevice *device, Str name, ShaderType type) {
     err_scope(err, "Load shader '%.*s'", SF(name));
 
-    Arena* scratch = arena_acquire();
+    Arena *scratch = arena_acquire();
     defer(arena_release(scratch));
 
     Str shader_path =
@@ -1565,7 +1572,7 @@ SDL_GPUShader* load_shader(ErrorContext* err, SDL_GPUDevice* device, Str name, S
     case ShaderType::Vertex: {
         info = {
             .code_size = source.count,
-            .code = (u8*)source.ptr,
+            .code = (u8 *)source.ptr,
             .format = OS_SHADER_FORMAT,
             .stage = SDL_GPU_SHADERSTAGE_VERTEX,
             .num_samplers = 0,
@@ -1579,7 +1586,7 @@ SDL_GPUShader* load_shader(ErrorContext* err, SDL_GPUDevice* device, Str name, S
     case ShaderType::Fragment: {
         info = {
             .code_size = source.count,
-            .code = (u8*)source.ptr,
+            .code = (u8 *)source.ptr,
             .format = OS_SHADER_FORMAT,
             .stage = SDL_GPU_SHADERSTAGE_FRAGMENT,
             .num_samplers = 1,
@@ -1594,7 +1601,7 @@ SDL_GPUShader* load_shader(ErrorContext* err, SDL_GPUDevice* device, Str name, S
     return try_sdl(err, nullptr, SDL_CreateGPUShader(device, &info));
 }
 
-void init_vertex_buffers(ErrorContext* err, App* app) {
+void init_vertex_buffers(ErrorContext *err, App *app) {
     err_scope(err, "Init vertex+index buffers");
 
     SDL_GPUBufferCreateInfo vert_info = {
@@ -1618,11 +1625,11 @@ void init_vertex_buffers(ErrorContext* err, App* app) {
         try_sdl(err, SDL_CreateGPUTransferBuffer(app->device, &transfer_buffer_info));
 }
 
-void make_and_upload_icon_atlas(ErrorContext* err, App* app, SDL_GPUCommandBuffer* command_buffer) {
-    Arena* scratch = arena_acquire();
+void make_and_upload_icon_atlas(ErrorContext *err, App *app, SDL_GPUCommandBuffer *command_buffer) {
+    Arena *scratch = arena_acquire();
     defer(arena_release(scratch));
 
-    FileDef* file = &app->session->file;
+    FileDef *file = &app->session->file;
     Arr<CPUTexture> icon_textures = arena_push_arr<CPUTexture>(scratch, file->segments.count);
     for (u64 i = 0; i < file->segments.count; i++) {
         icon_textures[i] = file->segments[i].icon_texture;
@@ -1632,7 +1639,7 @@ void make_and_upload_icon_atlas(ErrorContext* err, App* app, SDL_GPUCommandBuffe
         S("Icon atlas"), icon_textures, {.w = 1024, .h = 1024}, TextureFilterType::Linear);
 }
 
-void init_render_pipelines(ErrorContext* err, App* app) {
+void init_render_pipelines(ErrorContext *err, App *app) {
     // Load shaders
     app->vert_shader = load_shader(err, app->device, S("vert"), ShaderType::Vertex);
     app->icon_frag_shader = load_shader(err, app->device, S("frag_icon"), ShaderType::Fragment);
@@ -1665,8 +1672,8 @@ void init_render_pipelines(ErrorContext* err, App* app) {
     if (err_occurred(err)) return;
 }
 
-void init_render_buffers(ErrorContext* err, App* app) {
-    SDL_GPUCommandBuffer* command_buffer = try_sdl(err, SDL_AcquireGPUCommandBuffer(app->device));
+void init_render_buffers(ErrorContext *err, App *app) {
+    SDL_GPUCommandBuffer *command_buffer = try_sdl(err, SDL_AcquireGPUCommandBuffer(app->device));
     defer(SDL_SubmitGPUCommandBuffer(command_buffer));
 
     init_vertex_buffers(err, app);
@@ -1680,7 +1687,7 @@ void init_render_buffers(ErrorContext* err, App* app) {
                                                    app->font_file, FONT_SIZE_PX);
 }
 
-void init_renderer(ErrorContext* err, App* app) {
+void init_renderer(ErrorContext *err, App *app) {
     err_scope(err, "Initialize renderer");
 
     try_ft(err, FT_Init_FreeType(&app->freetype));
@@ -1695,22 +1702,22 @@ void init_renderer(ErrorContext* err, App* app) {
     init_render_buffers(err, app);
 }
 
-void do_geometry_upload_pass(App* app, SDL_GPUCommandBuffer* command_buffer, Mesh* mesh) {
+void do_geometry_upload_pass(App *app, SDL_GPUCommandBuffer *command_buffer, Mesh *mesh) {
     log_assert(mesh->vertices.count <= MAX_VERTEX_COUNT);
     log_assert(mesh->indices.count <= MAX_INDEX_COUNT);
 
     u64 vertex_data_size = mesh->vertices.count * sizeof(mesh->vertices[0]);
     u64 index_data_size = mesh->indices.count * sizeof(mesh->indices[0]);
 
-    void* transfer_data =
-        (Vertex*)SDL_MapGPUTransferBuffer(app->device, app->vertex_transfer_buffer, true);
+    void *transfer_data =
+        (Vertex *)SDL_MapGPUTransferBuffer(app->device, app->vertex_transfer_buffer, true);
 
     SDL_memcpy(transfer_data, mesh->vertices.ptr, vertex_data_size);
-    SDL_memcpy((u8*)transfer_data + vertex_data_size, mesh->indices.ptr, index_data_size);
+    SDL_memcpy((u8 *)transfer_data + vertex_data_size, mesh->indices.ptr, index_data_size);
 
     SDL_UnmapGPUTransferBuffer(app->device, app->vertex_transfer_buffer);
 
-    SDL_GPUCopyPass* pass = SDL_BeginGPUCopyPass(command_buffer);
+    SDL_GPUCopyPass *pass = SDL_BeginGPUCopyPass(command_buffer);
 
     // Upload vertex data
     SDL_GPUTransferBufferLocation vert_src = {.transfer_buffer = app->vertex_transfer_buffer,
@@ -1737,9 +1744,9 @@ void do_geometry_upload_pass(App* app, SDL_GPUCommandBuffer* command_buffer, Mes
     SDL_EndGPUCopyPass(pass);
 }
 
-void render_main_color_pass(App* app,
-                            SDL_GPUCommandBuffer* command_buffer,
-                            SDL_GPUTexture* swapchain_texture,
+void render_main_color_pass(App *app,
+                            SDL_GPUCommandBuffer *command_buffer,
+                            SDL_GPUTexture *swapchain_texture,
                             u64 icon_quad_count,
                             u64 glyph_quad_count) {
     SDL_GPUColorTargetInfo color_target_infos[] = {{
@@ -1748,7 +1755,7 @@ void render_main_color_pass(App* app,
         .load_op = SDL_GPU_LOADOP_CLEAR,
         .store_op = SDL_GPU_STOREOP_STORE,
     }};
-    SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(command_buffer, color_target_infos,
+    SDL_GPURenderPass *pass = SDL_BeginGPURenderPass(command_buffer, color_target_infos,
                                                      c_arr_count(color_target_infos), nullptr);
     SDL_GPUBufferBinding vertex_buffer_bindings[] = {{.buffer = app->vertex_buffer, .offset = 0}};
     SDL_GPUBufferBinding index_buffer_binding = {.buffer = app->index_buffer, .offset = 0};
@@ -1795,12 +1802,12 @@ void render_main_color_pass(App* app,
     SDL_EndGPURenderPass(pass);
 }
 
-void render(App* app) {
-    Arena* frame_arena = arena_acquire();
+void render(App *app) {
+    Arena *frame_arena = arena_acquire();
     defer(arena_release(frame_arena));
 
-    SDL_GPUCommandBuffer* command_buffer = SDL_AcquireGPUCommandBuffer(app->device);
-    SDL_GPUTexture* swapchain_texture = nullptr;
+    SDL_GPUCommandBuffer *command_buffer = SDL_AcquireGPUCommandBuffer(app->device);
+    SDL_GPUTexture *swapchain_texture = nullptr;
     u32 width = 0;
     u32 height = 0;
     SDL_WaitAndAcquireGPUSwapchainTexture(command_buffer, app->window, &swapchain_texture, &width,
@@ -1835,13 +1842,13 @@ void render(App* app) {
 // MARK:Main
 //
 
-SDL_HitTestResult hittest_callback(SDL_Window* window, const SDL_Point* point, void* data) {
+SDL_HitTestResult hittest_callback(SDL_Window *window, const SDL_Point *point, void *data) {
     // Would expand the resize radius if I could, but doesn't appear to work on
     // macOS
     return SDL_HITTEST_DRAGGABLE;
 }
 
-void init_window(ErrorContext* err, App* app) {
+void init_window(ErrorContext *err, App *app) {
     err_scope(err, "Initialize window");
 
     try_sdl(err, SDL_SetAppMetadata("Blitter", "0.0.1", nullptr));
@@ -1854,15 +1861,15 @@ void init_window(ErrorContext* err, App* app) {
     try_sdl(err, SDL_SetWindowHitTest(app->window, hittest_callback, nullptr));
 }
 
-Session* make_session(ErrorContext* err, Arena* arena, App* app, Str path) {
-    Session* session = arena_push<Session>(arena);
+Session *make_session(ErrorContext *err, Arena *arena, App *app, Str path) {
+    Session *session = arena_push<Session>(arena);
     load_livesplit_lss(arena, err, path, &session->file);
     return session;
 }
 
-App* init_app(ErrorContext* err, Str path) {
-    Arena* root_arena = arena_acquire();
-    App* app = arena_push<App>(root_arena);
+App *init_app(ErrorContext *err, Str path) {
+    Arena *root_arena = arena_acquire();
+    App *app = arena_push<App>(root_arena);
     app->app_arena = root_arena;
 
     init_window(err, app);
@@ -1879,7 +1886,7 @@ App* init_app(ErrorContext* err, Str path) {
     return app;
 }
 
-SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
+SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     thread_init();
 
     if (argc < 2) {
@@ -1888,10 +1895,10 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
     }
 
     ErrorContext err_base = {.arena = arena_acquire()};
-    ErrorContext* err = &err_base;
+    ErrorContext *err = &err_base;
     defer(arena_release(err_base.arena));
 
-    App* app = init_app(err, str_from_c(argv[1]));
+    App *app = init_app(err, str_from_c(argv[1]));
     if (err_occurred(err)) {
         err_log(err);
         return SDL_APP_FAILURE;
@@ -1901,13 +1908,13 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
     return SDL_APP_CONTINUE;
 }
 
-void try_load_new_session(App* app, Str lss_path) {
+void try_load_new_session(App *app, Str lss_path) {
     ErrorContext err_base = {.arena = arena_acquire()};
-    ErrorContext* err = &err_base;
+    ErrorContext *err = &err_base;
     defer(arena_release(err_base.arena));
 
-    Arena* session_arena = arena_acquire();
-    Session* session = make_session(err, session_arena, app, lss_path);
+    Arena *session_arena = arena_acquire();
+    Session *session = make_session(err, session_arena, app, lss_path);
     if (err_occurred(err)) {
         err_log(err);
         arena_release(session_arena);
@@ -1921,8 +1928,8 @@ void try_load_new_session(App* app, Str lss_path) {
     app->session = session;
 }
 
-SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
-    App* app = (App*)appstate;
+SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
+    App *app = (App *)appstate;
 
     // TODO: this is potentially not the OS timestamp of the keypress, sadly, so
     // not amazingly accurate
@@ -1986,7 +1993,7 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
     if (event->common.type == SDL_EVENT_MOUSE_BUTTON_DOWN &&
         event->button.button == SDL_BUTTON_RIGHT) {
         if (SDL_HasClipboardText()) {
-            char* clipboard_cstr = SDL_GetClipboardText();
+            char *clipboard_cstr = SDL_GetClipboardText();
             defer(SDL_free(clipboard_cstr));
             Str clipboard = str_trim(str_from_c(clipboard_cstr));
             if (!str_is_empty(clipboard)) {  // Empty iff SDL failed to allocate it
@@ -2007,12 +2014,12 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
     return SDL_APP_CONTINUE;
 }
 
-SDL_AppResult SDL_AppIterate(void* appstate) {
-    App* app = (App*)appstate;
+SDL_AppResult SDL_AppIterate(void *appstate) {
+    App *app = (App *)appstate;
     render(app);
     return SDL_APP_CONTINUE;
 }
 
-void SDL_AppQuit(void* appstate, SDL_AppResult result) {
+void SDL_AppQuit(void *appstate, SDL_AppResult result) {
     // Just let OS clean up everything
 }

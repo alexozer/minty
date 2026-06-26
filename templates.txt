@@ -1,0 +1,22 @@
+BEGIN_TEMPLATE_FUNCTION arr_eq
+bool arr_eq_[[0]](Arr_[[0]] a, Arr_[[0]] b) {
+    if (a.count != b.count) {
+        return false;
+    }
+    return SDL_memcmp(a.ptr, b.ptr, a.count * sizeof([[0]])) == 0;
+}
+END_TEMPLATE_FUNCTION
+
+BEGIN_TEMPLATE_STRUCT Arr
+struct Arr_[[0]] {
+    [[0]]* ptr;
+    u64 count;
+};
+END_TEMPLATE_STRUCT
+
+BEGIN_TEMPLATE_STRUCT Opt
+struct Opt_[[0]] {
+    bool present;
+    [[0]] opt;
+};
+END_TEMPLATE_STRUCT

@@ -2,18 +2,15 @@ const std = @import("std");
 const zcc = @import("compile_commands");
 
 const blitter_sources: []const []const u8 = &.{
-    "src/main.cpp",
-    "src/base.cpp",
+    "src/main.c",
+    "src/base.c",
 };
 
 const thirdparty_c_sources: []const []const u8 = &.{
     "3rdparty/xao.c",
-};
-
-const thirdparty_cpp_sources: []const []const u8 = &.{
-    "3rdparty/yyjson.cpp",
-    "3rdparty/kb_text_shape.cpp",
-    "3rdparty/stb_rect_pack.cpp",
+    "3rdparty/yyjson.c",
+    "3rdparty/kb_text_shape.c",
+    "3rdparty/stb_rect_pack.c",
 };
 
 // Build in separate library to (maybe?) avoid linking libcpp
@@ -39,7 +36,7 @@ const cxx_flags: []const []const u8 = &.{
 };
 
 const c_flags: []const []const u8 = .{
-    "-std=c11",
+    "-std=c23",
 } ++ cxx_flags;
 
 const cpp_flags: []const []const u8 = .{
@@ -55,12 +52,12 @@ pub fn build(b: *std.Build) !void {
     var cdb_targets: std.ArrayList(*std.Build.Step.Compile) = .empty;
 
     const blitter_sources_plat = switch (target.result.os.tag) {
-        .macos => blitter_sources ++ .{ "src/platform_posix.cpp", "src/platform_macos.cpp" },
-        .linux => blitter_sources ++ .{ "src/platform_posix.cpp", "src/platform_linux.cpp" },
-        .windows => blitter_sources ++ .{"src/platform_windows.cpp"},
+        .macos => blitter_sources ++ .{ "src/platform_posix.c", "src/platform_macos.c" },
+        .linux => blitter_sources ++ .{ "src/platform_posix.c", "src/platform_linux.c" },
+        .windows => blitter_sources ++ .{"src/platform_windows.c"},
         else => @panic("Unsupported OS"),
     };
-    const blitter_flags = cpp_flags ++ .{"-Werror"};
+    const blitter_flags = c_flags ++ .{"-Werror"};
 
     const sdl = b.dependency("sdl", .{ .optimize = optimize, .target = target });
     try cdb_targets.append(b.allocator, sdl.artifact("SDL3"));
@@ -105,24 +102,39 @@ pub fn build(b: *std.Build) !void {
     blitter.root_module.addCSourceFiles(.{
         .files = blitter_sources_plat,
         .flags = blitter_flags,
-        .language = .cpp,
+        .language = .c,
     });
     blitter.root_module.addCSourceFiles(.{
         .files = thirdparty_c_sources,
         .flags = c_flags,
         .language = .c,
     });
-    blitter.root_module.addCSourceFiles(.{
-        .files = thirdparty_cpp_sources,
-        .flags = cpp_flags,
-        .language = .cpp,
-    });
     blitter.root_module.linkLibrary(simdutf);
     blitter.root_module.linkLibrary(sdl.artifact("SDL3"));
     blitter.root_module.linkLibrary(freetype.artifact("freetype"));
     try cdb_targets.append(b.allocator, blitter);
-
     b.installArtifact(blitter);
+
+    // const codegen = b.addExecutable(.{
+    //     .name = "codegen",
+    //     .root_module = b.createModule(.{
+    //         .target = target,
+    //         .optimize = optimize,
+    //         .strip = false,
+    //         .link_libc = true,
+    //         .link_libcpp = false,
+    //     }),
+    // });
+    // codegen.root_module.addCSourceFiles(.{
+    //     .files = &.{ "src/tools/codegen.c", "src/base.c" },
+    //     .flags = c_flags ++ .{"-Werror"},
+    //     .language = .c,
+    // });
+    // codegen.root_module.linkLibrary(sdl.artifact("SDL3"));
+    // // blitter.root_module.linkLibrary(sdl.artifact("SDL3"));
+    // try cdb_targets.append(b.allocator, codegen);
+    // b.installArtifact(codegen);
+
     const run_blitter = b.addRunArtifact(blitter);
     if (b.args) |args| {
         run_blitter.addArgs(args);
