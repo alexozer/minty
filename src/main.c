@@ -690,7 +690,7 @@ void load_livesplit_lss(Arena *arena, ErrorContext *err, Str lss_path, FileDef *
 Box *make_text_box(Arena *arena, Str content, Color color) {
     Box *box = arena_push<Box>(arena);
 
-    box->type = BoxType::Text;
+    box->type = BoxType_Text;
     // const char *content_cstr = str_is_empty(content) ? "" : (const char
     // *)content.ptr; Zero length actually means "treat string as null terminated"
     // box->text_obj = TTF_CreateText(engine, font, content_cstr, content.count);
@@ -701,14 +701,14 @@ Box *make_text_box(Arena *arena, Str content, Color color) {
 
 Box *make_empty_box(Arena *arena, PxSize size) {
     Box *box = arena_push<Box>(arena);
-    box->type = BoxType::Empty;
+    box->type = BoxType_Empty;
     box->bbox = some(size);
     return box;
 }
 
 Box *make_texture_box(Arena *arena, u64 texture_idx, PxSize size) {
     Box *box = arena_push<Box>(arena);
-    box->type = BoxType::Texture;
+    box->type = BoxType_Texture;
     box->bbox = some(size);
     box->texture_idx = texture_idx;
     return box;
@@ -716,7 +716,7 @@ Box *make_texture_box(Arena *arena, u64 texture_idx, PxSize size) {
 
 Box *make_solid_color_box(Arena *arena, Color color, PxSize size) {
     Box *box = arena_push<Box>(arena);
-    box->type = BoxType::SolidColor;
+    box->type = BoxType_SolidColor;
     box->bbox = some(size);
     box->color = color;
     return box;
@@ -792,7 +792,7 @@ Box *pad_box_left(Arena *arena, Box *box, u16 pad) {
     Box *pad_box = make_empty_box(arena, {.w = pad, .h = bbox.h});
 
     Box *parent_box = arena_push<Box>(arena);
-    parent_box->type = BoxType::LeftToRightStack;
+    parent_box->type = BoxType_LeftToRightStack;
     vec_push(arena, &parent_box->children, pad_box);
     vec_push(arena, &parent_box->children, box);
 
@@ -804,7 +804,7 @@ Box *pad_box_right(Arena *arena, Box *box, u16 pad) {
     Box *pad_box = make_empty_box(arena, {.w = pad, .h = bbox.h});
 
     Box *parent_box = arena_push<Box>(arena);
-    parent_box->type = BoxType::LeftToRightStack;
+    parent_box->type = BoxType_LeftToRightStack;
     vec_push(arena, &parent_box->children, box);
     vec_push(arena, &parent_box->children, pad_box);
 
@@ -816,7 +816,7 @@ Box *pad_box_top(Arena *arena, Box *box, u16 pad) {
     Box *pad_box = make_empty_box(arena, {.w = bbox.w, .h = pad});
 
     Box *parent_box = arena_push<Box>(arena);
-    parent_box->type = BoxType::TopToBottomStack;
+    parent_box->type = BoxType_TopToBottomStack;
     vec_push(arena, &parent_box->children, pad_box);
     vec_push(arena, &parent_box->children, box);
 
@@ -828,7 +828,7 @@ Box *pad_box_bottom(Arena *arena, Box *box, u16 pad) {
     Box *pad_box = make_empty_box(arena, {.w = bbox.w, .h = pad});
 
     Box *parent_box = arena_push<Box>(arena);
-    parent_box->type = BoxType::TopToBottomStack;
+    parent_box->type = BoxType_TopToBottomStack;
     vec_push(arena, &parent_box->children, box);
     vec_push(arena, &parent_box->children, pad_box);
 
@@ -845,7 +845,7 @@ Box *align_box_center_horiz(Arena *arena, Box *box, u16 width) {
     Box *right_pad_box = make_empty_box(arena, {right_pad, bbox.h});
 
     Box *parent = arena_push<Box>(arena);
-    parent->type = BoxType::LeftToRightStack;
+    parent->type = BoxType_LeftToRightStack;
     vec_push(arena, &parent->children, left_pad_box);
     vec_push(arena, &parent->children, box);
     vec_push(arena, &parent->children, right_pad_box);
@@ -863,7 +863,7 @@ Box *align_box_center_vert(Arena *arena, Box *box, u16 height) {
     Box *bottom_pad_box = make_empty_box(arena, {bbox.w, bottom_pad});
 
     Box *parent = arena_push<Box>(arena);
-    parent->type = BoxType::TopToBottomStack;
+    parent->type = BoxType_TopToBottomStack;
     vec_push(arena, &parent->children, top_pad_box);
     vec_push(arena, &parent->children, box);
     vec_push(arena, &parent->children, bottom_pad_box);
@@ -890,19 +890,19 @@ Box *prerender_segment(Arena *arena, Session *session, u16 width, u64 idx) {
     Box *title_centered = align_box_center_vert(arena, title, ICON_OUTER_PX);
 
     Box *row_front = arena_push<Box>(arena);
-    row_front->type = BoxType::LeftToRightStack;
+    row_front->type = BoxType_LeftToRightStack;
     vec_push(arena, &row_front->children, icon);
     vec_push(arena, &row_front->children, pad);
     vec_push(arena, &row_front->children, title_centered);
 
-    if (session->timer.mode == TimerMode::Running && idx == session->timer.live_splits.count) {
+    if (session->timer.mode == TimerMode_Running && idx == session->timer.live_splits.count) {
         PxSize row_front_bbox = compute_box_bbox(row_front);
         Color bg_color = {.r = 0, .g = 0, .b = 0, .a = 255};
         PxSize row_back_size = {.w = width, .h = row_front_bbox.h};
         Box *row_back = make_solid_color_box(arena, bg_color, row_back_size);
 
         Box *row = arena_push<Box>(arena);
-        row->type = BoxType::BackToFrontStack;
+        row->type = BoxType_BackToFrontStack;
         vec_push(arena, &row->children, row_back);
         vec_push(arena, &row->children, row_front);
 
@@ -922,7 +922,7 @@ Box *prerender_contents(Arena *arena, Session *session, PxSize size) {
     Box *cat_name_centered = align_box_center_horiz(arena, cat_name, size.w);
 
     Box *top = arena_push<Box>(arena);
-    top->type = BoxType::TopToBottomStack;
+    top->type = BoxType_TopToBottomStack;
     vec_push(arena, &top->children, game_name_centered);
     vec_push(arena, &top->children, cat_name_centered);
 
@@ -932,7 +932,7 @@ Box *prerender_contents(Arena *arena, Session *session, PxSize size) {
     }
 
     Box *bottom = arena_push<Box>(arena);
-    bottom->type = BoxType::TopToBottomStack;
+    bottom->type = BoxType_TopToBottomStack;
 
     Duration t = timer_get_elapsed(&session->timer, get_current_monotonic_time());
     Str t_str = format_duration(arena, t, 2, false);
@@ -949,7 +949,7 @@ Box *prerender_contents(Arena *arena, Session *session, PxSize size) {
     Box *vsep = make_empty_box(arena, vsep_size);
 
     Box *root = arena_push<Box>(arena);
-    root->type = BoxType::TopToBottomStack;
+    root->type = BoxType_TopToBottomStack;
     vec_push(arena, &root->children, top);
     vec_push(arena, &root->children, vsep);
     vec_push(arena, &root->children, bottom);
@@ -1057,10 +1057,10 @@ void make_icon_mesh_inner(Arena *arena,
                           Atlas *atlas,
                           Mesh *mesh) {
     switch (box->type) {
-    case BoxType::Empty: {
+    case BoxType_Empty: {
         break;
     }
-    case BoxType::LeftToRightStack: {
+    case BoxType_LeftToRightStack: {
         for (u64 i = 0; i < box->children.count; i++) {
             PxSize child_bbox = compute_box_bbox(box->children[i]);
             make_icon_mesh_inner(arena, window_size, box->children[i], where, atlas, mesh);
@@ -1068,7 +1068,7 @@ void make_icon_mesh_inner(Arena *arena,
         }
         break;
     }
-    case BoxType::TopToBottomStack: {
+    case BoxType_TopToBottomStack: {
         for (u64 i = 0; i < box->children.count; i++) {
             PxSize child_bbox = compute_box_bbox(box->children[i]);
             make_icon_mesh_inner(arena, window_size, box->children[i], where, atlas, mesh);
@@ -1076,17 +1076,17 @@ void make_icon_mesh_inner(Arena *arena,
         }
         break;
     }
-    case BoxType::BackToFrontStack: {
+    case BoxType_BackToFrontStack: {
         for (u64 i = 0; i < box->children.count; i++) {
             make_icon_mesh_inner(arena, window_size, box->children[i], where, atlas, mesh);
         }
         break;
     }
-    case BoxType::Text: {
+    case BoxType_Text: {
         // TTF_DrawRendererText(box->text_obj, where.x, where.y);
         break;
     }
-    case BoxType::Texture: {
+    case BoxType_Texture: {
         PxRect src = atlas->placements[box->texture_idx];
 
         f32 src_ratio = (f32)src.w / (f32)src.h;
@@ -1111,7 +1111,7 @@ void make_icon_mesh_inner(Arena *arena,
         push_atlas_quad(arena, window_size, atlas, mesh, src, dest, color);
         break;
     }
-    case BoxType::SolidColor: {
+    case BoxType_SolidColor: {
         // SDL_SetRenderDrawColorFloat(app->renderer, box->color.r, box->color.g,
         // box->color.b, box->color.a); SDL_FRect r = { .x = where.x, .y =
         // where.y, .w = box->width, .h = box->height };
@@ -1234,7 +1234,7 @@ GlyphAtlas make_and_upload_glyph_atlas(ErrorContext *err,
                                   face->family_name, face->style_name, face_size_px);
     Atlas *atlas =
         make_and_upload_atlas(err, arena, device, command_buffer, clear_texture_pipeline,
-                              texture_name, textures, font_atlas_size, TextureFilterType::Nearest);
+                              texture_name, textures, font_atlas_size, TextureFilterType_Nearest);
     return {
         .atlas = atlas,
         .px_per_em = face_size_px,
@@ -1298,7 +1298,7 @@ SDL_GPUGraphicsPipeline *make_render_pipeline(ErrorContext *err,
     err_scope(err, "Init render pipeline");
 
     SDL_GPUColorTargetBlendState blend_state = {};
-    if (blend_type == BlendType::Over) {
+    if (blend_type == BlendType_Over) {
         blend_state = {
             .src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA,
             .dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
@@ -1519,7 +1519,7 @@ Atlas *make_and_upload_atlas(ErrorContext *err,
 
     SDL_GPUSamplerCreateInfo sampler_info = {};
     switch (filter) {
-    case TextureFilterType::Linear: {
+    case TextureFilterType_Linear: {
         sampler_info = {
             .min_filter = SDL_GPU_FILTER_LINEAR,
             .mag_filter = SDL_GPU_FILTER_LINEAR,
@@ -1530,7 +1530,7 @@ Atlas *make_and_upload_atlas(ErrorContext *err,
         };
         break;
     }
-    case TextureFilterType::Nearest: {
+    case TextureFilterType_Nearest: {
         sampler_info = {
             .min_filter = SDL_GPU_FILTER_NEAREST,
             .mag_filter = SDL_GPU_FILTER_NEAREST,
@@ -1575,7 +1575,7 @@ SDL_GPUShader *load_shader(ErrorContext *err, SDL_GPUDevice *device, Str name, S
 
     SDL_GPUShaderCreateInfo info = {};
     switch (type) {
-    case ShaderType::Vertex: {
+    case ShaderType_Vertex: {
         info = {
             .code_size = source.count,
             .code = (u8 *)source.ptr,
@@ -1589,7 +1589,7 @@ SDL_GPUShader *load_shader(ErrorContext *err, SDL_GPUDevice *device, Str name, S
         };
         break;
     }
-    case ShaderType::Fragment: {
+    case ShaderType_Fragment: {
         info = {
             .code_size = source.count,
             .code = (u8 *)source.ptr,
@@ -1642,14 +1642,14 @@ void make_and_upload_icon_atlas(ErrorContext *err, App *app, SDL_GPUCommandBuffe
     }
     app->icon_atlas = make_and_upload_atlas(
         err, app->session_arena, app->device, command_buffer, app->clear_icon_pipeline,
-        S("Icon atlas"), icon_textures, {.w = 1024, .h = 1024}, TextureFilterType::Linear);
+        S("Icon atlas"), icon_textures, {.w = 1024, .h = 1024}, TextureFilterType_Linear);
 }
 
 void init_render_pipelines(ErrorContext *err, App *app) {
     // Load shaders
-    app->vert_shader = load_shader(err, app->device, S("vert"), ShaderType::Vertex);
-    app->icon_frag_shader = load_shader(err, app->device, S("frag_icon"), ShaderType::Fragment);
-    app->glyph_frag_shader = load_shader(err, app->device, S("frag_glyph"), ShaderType::Fragment);
+    app->vert_shader = load_shader(err, app->device, S("vert"), ShaderType_Vertex);
+    app->icon_frag_shader = load_shader(err, app->device, S("frag_icon"), ShaderType_Fragment);
+    app->glyph_frag_shader = load_shader(err, app->device, S("frag_glyph"), ShaderType_Fragment);
     if (err_occurred(err)) return;
 
     if (SDL_WindowSupportsGPUPresentMode(app->device, app->window, SDL_GPU_PRESENTMODE_MAILBOX)) {
@@ -1665,16 +1665,16 @@ void init_render_pipelines(ErrorContext *err, App *app) {
         SDL_GetGPUSwapchainTextureFormat(app->device, app->window);
     app->icon_pipeline =
         make_render_pipeline(err, app->device, app->window, app->vert_shader, app->icon_frag_shader,
-                             swapchain_format, BlendType::Over);
+                             swapchain_format, BlendType_Over);
     app->glyph_pipeline =
         make_render_pipeline(err, app->device, app->window, app->vert_shader,
-                             app->glyph_frag_shader, swapchain_format, BlendType::Over);
+                             app->glyph_frag_shader, swapchain_format, BlendType_Over);
     app->clear_icon_pipeline =
         make_render_pipeline(err, app->device, app->window, app->vert_shader, app->icon_frag_shader,
-                             SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM_SRGB, BlendType::None);
+                             SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM_SRGB, BlendType_None);
     app->clear_glyph_pipeline =
         make_render_pipeline(err, app->device, app->window, app->vert_shader, app->icon_frag_shader,
-                             SDL_GPU_TEXTUREFORMAT_R8_UNORM, BlendType::None);
+                             SDL_GPU_TEXTUREFORMAT_R8_UNORM, BlendType_None);
     if (err_occurred(err)) return;
 }
 
@@ -1953,19 +1953,19 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
         }
         case SDLK_SPACE:
         case SDLK_DOWN: {
-            timer_apply_action(app->app_arena, app->session, TimerAction::Split, t);
+            timer_apply_action(app->app_arena, app->session, TimerAction_Split, t);
             break;
         }
         case SDLK_UP: {
-            timer_apply_action(app->app_arena, app->session, TimerAction::UndoSplit, t);
+            timer_apply_action(app->app_arena, app->session, TimerAction_UndoSplit, t);
             break;
         }
         case SDLK_D: {
-            timer_apply_action(app->app_arena, app->session, TimerAction::DeleteSplit, t);
+            timer_apply_action(app->app_arena, app->session, TimerAction_DeleteSplit, t);
             break;
         }
         case SDLK_P: {
-            timer_apply_action(app->app_arena, app->session, TimerAction::Pause, t);
+            timer_apply_action(app->app_arena, app->session, TimerAction_Pause, t);
             break;
         }
         case SDLK_BACKSPACE: {
@@ -1974,7 +1974,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
                     vec_pop(&app->typed_text);
                 }
             } else {
-                timer_apply_action(app->app_arena, app->session, TimerAction::ResetAndSave, t);
+                timer_apply_action(app->app_arena, app->session, TimerAction_ResetAndSave, t);
             }
             break;
         }
