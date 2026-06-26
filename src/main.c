@@ -179,12 +179,12 @@ struct GlyphAtlas {
     Atlas *atlas;
     u16 px_per_em;  // AKA the face size in pixels
     u16 units_per_em;
-    Arr<GlyphMetrics> metrics;
+    Arr_GlyphMetrics metrics;
 };
 
 struct Mesh {
-    Vec<Vertex> vertices;
-    Vec<u16> indices;
+    Vec_Vertex vertices;
+    Vec_u16 indices;
 };
 
 struct ShapedGlyph {
@@ -193,33 +193,33 @@ struct ShapedGlyph {
     i32 glyph_y_fu;
 };
 
-enum class BlendType {
-    None,
-    Over,
+enum BlendType {
+    BlendType_None,
+    BlendType_Over,
 };
 
-enum class TextureFilterType {
-    Nearest,
-    Linear,
+enum TextureFilterType {
+    TextureFilterType_Nearest,
+    TextureFilterType_Linear,
 };
 
-enum class BoxType {
-    Empty,
-    Text,
-    Texture,
-    SolidColor,
-    TopToBottomStack,
-    LeftToRightStack,
-    BackToFrontStack,
+enum BoxType {
+    BoxType_Empty,
+    BoxType_Text,
+    BoxType_Texture,
+    BoxType_SolidColor,
+    BoxType_TopToBottomStack,
+    BoxType_LeftToRightStack,
+    BoxType_BackToFrontStack,
 };
 
 // Try some fat struct stuff?
 struct Box {
     BoxType type;
-    Opt<PxSize> bbox;
+    Opt_PxSize bbox;
     u64 texture_idx;
     Color color;
-    Vec<Box *> children;
+    Vec_P_Box children;
 };
 
 struct App {
@@ -231,7 +231,7 @@ struct App {
     f32 scroll;
     f32 scale;  // `scale + 1.0f` is actual scale
     bool insert_mode_enabled;
-    Vec<u8> typed_text;
+    Vec_u8 typed_text;
 
     Arena *session_arena;
     Session *session;  // Nullable
@@ -260,7 +260,7 @@ struct App {
 
     // Text stuff
     FT_Library freetype;
-    Arr<u8> font_file;
+    Arr_u8 font_file;
 };
 
 //
@@ -269,9 +269,9 @@ struct App {
 
 CPUTexture convert_srgb_surface_to_rgba(Arena *arena, SDL_Surface *surface) {
     u64 dest_size = (u64)(surface->w * surface->h * 4);
-    Arr<u8> buffer = {
+    Arr_u8 buffer = {
         // TODO don't use "private" arena API for alignment
-        .ptr = (u8 *)arena__push_bytes<8>(arena, dest_size),
+        .ptr = (u8 *)arena__push_bytes(arena, dest_size, 8),
         .count = dest_size,
     };
     CPUTexture texture = {
@@ -285,68 +285,71 @@ CPUTexture convert_srgb_surface_to_rgba(Arena *arena, SDL_Surface *surface) {
     return texture;
 }
 
-Opt<Duration> operator + (const Opt<Duration> &d1, const Opt<Duration> &d2) {
-    return {
-        .present = d1.present && d2.present,
-        .opt = d1.opt + d2.opt,
-    };
-}
-
-Opt<Duration> operator - (const Opt<Duration> &d1, const Opt<Duration> &d2) {
-    return {
-        .present = d1.present && d2.present,
+Opt_Duration dur_sub(Opt_Duration d1, Opt_Duration d2) {
+    return (Opt_Duration){
         .opt = d1.opt - d2.opt,
+        .present = d1.present && d2.present,
     };
 }
 
-Arr<SegSummary> calc_seg_summary(Arena *arena, Session *session) {
+Arr_SegSummary calc_seg_summary(Arena *arena, Session *session) {
     Timer *timer = &session->timer;
     FileDef *file = &session->file;
 
-    Arr<SegSummary> summary = arena_push_arr<SegSummary>(arena, timer->live_splits.count);
+    // TODO fix
+    // Arr_SegSummary summary = arena_push_arr<SegSummary>(arena, timer->live_splits.count);
+    Arr_SegSummary summary = {};
 
     // Calc PB splits
-    Arr<Opt<Duration>> pb_splits = file->personal_best.splits;
+    Arr_Opt_Duration pb_splits = file->personal_best.splits;
     for (u64 i = 0; i < pb_splits.count; i++) {
-        summary[i].pb_split = pb_splits[i];
+        A(summary, i).pb_split = A(pb_splits, i);
     }
     for (u64 i = 0; i < pb_splits.count; i++) {
         if (i == 0) {
-            summary[i].pb_seg = summary[i].pb_split;
+            A(summary, i).pb_seg = A(summary, i).pb_split;
         } else {
-            summary[i].pb_seg = summary[i].pb_split - summary[i - 1].pb_split;
+            Opt_Duration curr = A(summary, i).pb_split;
+            Opt_Duration prev = A(summary, i - 1).pb_split;
+            A(summary, i).pb_seg = dur_sub(curr, prev);
         }
     }
 
     // Calc live splits
     for (u64 i = 0; i < summary.count; i++) {
-        summary[i].live_split = timer->live_splits[i];
+        A(summary, i).live_split = A(timer->live_splits, i);
     }
     for (u64 i = 0; i < summary.count; i++) {
         if (i == 0) {
-            summary[i].live_seg = summary[i].live_split;
+            A(summary, i).live_seg = A(summary, i).live_split;
         } else {
-            summary[i].live_seg = summary[i].live_split - summary[i - 1].live_split;
+            Opt_Duration curr = A(summary, i).live_split;
+            Opt_Duration prev = A(summary, i - 1).live_split;
+            A(summary, i).live_seg = dur_sub(curr, prev);
         }
     }
 
     // Calc live deltas
     for (u64 i = 0; i < summary.count; i++) {
-        summary[i].live_delta = summary[i].live_split - summary[i].pb_split;
+        Opt_Duration curr = A(summary, i).live_split;
+        Opt_Duration prev = A(summary, i - 1).live_split;
+        A(summary, i).live_delta = dur_sub(curr, prev);
     }
     for (u64 i = 0; i < summary.count; i++) {
         if (i == 0) {
-            summary[i].gained = summary[i].live_delta;
+            A(summary, i).gained = A(summary, i).live_delta;
         } else {
-            summary[i].gained = summary[i].live_delta - summary[i - 1].live_delta;
+            Opt_Duration curr = A(summary, i).live_delta;
+            Opt_Duration prev = A(summary, i - 1).live_delta;
+            A(summary, i).gained = dur_sub(curr, prev);
         }
     }
 
     // Calc golds
     for (u64 i = 0; i < summary.count; i++) {
-        Opt<Duration> prev_gold = file->golds[i];
-        Opt<Duration> live_seg = summary[i].live_seg;
-        summary[i].is_new_gold =
+        Opt_Duration prev_gold = A(file->golds, i);
+        Opt_Duration live_seg = A(summary, i).live_seg;
+        A(summary, i).is_new_gold =
             prev_gold.present && live_seg.present && live_seg.opt < prev_gold.opt;
     }
 
@@ -357,14 +360,16 @@ Str format_duration(Arena *arena, Duration duration, u32 ms_digits, bool show_pl
     log_assert(ms_digits <= 3);
 
     Str sign_str = show_plus_prefix ? S("+") : S("");
-    if (duration < DURATION_ZERO) {
+    if (duration < 0) {
         sign_str = S("-");
+        duration = -duration;
     }
 
     constexpr u64 DAY_SECS = 60 * 60 * 24;
     constexpr u64 HOUR_SECS = 60 * 60;
     constexpr u64 MINUTE_SECS = 60;
     constexpr u64 MILLISEC_NSECS = 1'000'000;
+    constexpr u64 SECOND_NSECS = 1'000'000;
 
     u64 total_seconds = duration_seconds(duration);
     u32 subsec_nanos = duration_subsec_nanos(duration);
@@ -391,35 +396,36 @@ Str format_duration(Arena *arena, Duration duration, u32 ms_digits, bool show_pl
                             SF(sign_str), days, hours, minutes, seconds, milliseconds);
     }
 
-    return arr_slice(result, 0, result.count - (3 - ms_digits));
+    return str_slice(result, 0, result.count - (3 - ms_digits));
 }
 
 void timer_reset(Timer *timer) {
-    timer->mode = TimerMode::Init;
+    timer->mode = TimerMode_Init;
     vec_reset(&timer->live_splits);
 }
 
 Duration timer_get_elapsed(Timer *timer, Instant event_time) {
     switch (timer->mode) {
-    case TimerMode::Init: {
-        return DURATION_ZERO;
+    case TimerMode_Init: {
+        return 0;
     }
-    case TimerMode::Finished: {
+    case TimerMode_Finished: {
         return timer->live_splits[timer->live_splits.count - 1].opt;
     }
-    case TimerMode::Running: {
+    case TimerMode_Running: {
         return (event_time - timer->start_time) - timer->total_paused_duration;
     }
-    case TimerMode::Paused: {
-        return (timer->paused_time - timer->start_time) - timer->total_paused_duration;
+    case TimerMode_Paused: {
+        Duration pause_duration = instant_sub(timer->paused_time, timer->start_time);
+        return pause_duration - timer->total_paused_duration;
     }
     }
 }
 
 void timer_apply_action_init(Arena *arena, Session *session, TimerAction action, Instant t) {
     switch (action) {
-    case TimerAction::Split: {
-        session->timer.mode = TimerMode::Running;
+    case TimerAction_Split: {
+        session->timer.mode = TimerMode_Running;
         session->timer.start_time = t;
         break;
     }
@@ -433,16 +439,16 @@ void timer_apply_action_running(Arena *arena, Session *session, TimerAction acti
     FileDef *file = &session->file;
 
     switch (action) {
-    case TimerAction::Split: {
+    case TimerAction_Split: {
         Duration elapsed = timer_get_elapsed(timer, t);
         vec_push(arena, &timer->live_splits, some(elapsed));
 
         if (timer->live_splits.count == file->segments.count) {
-            timer->mode = TimerMode::Finished;
+            timer->mode = TimerMode_Finished;
         }
         break;
     }
-    case TimerAction::UndoSplit: {
+    case TimerAction_UndoSplit: {
         if (timer->live_splits.count == 0) {
             timer_reset(timer);
         } else {
@@ -450,24 +456,24 @@ void timer_apply_action_running(Arena *arena, Session *session, TimerAction acti
         }
         break;
     }
-    case TimerAction::DeleteSplit: {
+    case TimerAction_DeleteSplit: {
         if (timer->live_splits.count > 0) {
-            timer->live_splits[timer->live_splits.count - 1] = {};
+            vec_last(timer->live_splits) = (Opt_Duration){};
         }
         break;
     }
-    case TimerAction::ResetAndSave: {
+    case TimerAction_ResetAndSave: {
         file->total_attempts++;
         // TODO save golds and rest of file (?)
         timer_reset(timer);
         break;
     }
-    case TimerAction::ResetAndDelete: {
+    case TimerAction_ResetAndDelete: {
         timer_reset(timer);
         break;
     }
-    case TimerAction::Pause: {
-        timer->mode = TimerMode::Paused;
+    case TimerAction_Pause: {
+        timer->mode = TimerMode_Paused;
         timer->paused_time = t;
         break;
     }
@@ -479,20 +485,20 @@ void timer_apply_action_paused(Arena *arena, Session *session, TimerAction actio
     FileDef *file = &session->file;
 
     switch (action) {
-    case TimerAction::Pause: {
+    case TimerAction_Pause: {
         // Unpause
         Duration pause_duration = t - timer->paused_time;
         timer->total_paused_duration += pause_duration;
-        timer->mode = TimerMode::Running;
+        timer->mode = TimerMode_Running;
         break;
     }
-    case TimerAction::ResetAndSave: {
+    case TimerAction_ResetAndSave: {
         file->total_attempts++;
         // TODO: Save golds?
         timer_reset(timer);
         break;
     }
-    case TimerAction::ResetAndDelete: {
+    case TimerAction_ResetAndDelete: {
         timer_reset(timer);
         break;
     }
@@ -506,12 +512,12 @@ void timer_apply_action_finished(Arena *arena, Session *session, TimerAction act
     FileDef *file = &session->file;
 
     switch (action) {
-    case TimerAction::UndoSplit: {
+    case TimerAction_UndoSplit: {
         vec_pop(&timer->live_splits);
-        timer->mode = TimerMode::Running;
+        timer->mode = TimerMode_Running;
         break;
     }
-    case TimerAction::ResetAndSave: {
+    case TimerAction_ResetAndSave: {
         file->total_attempts++;
         file->completed_attempts++;
         // save golds?
@@ -519,7 +525,7 @@ void timer_apply_action_finished(Arena *arena, Session *session, TimerAction act
         timer_reset(timer);
         break;
     }
-    case TimerAction::ResetAndDelete: {
+    case TimerAction_ResetAndDelete: {
         timer_reset(timer);
         break;
     }
@@ -530,19 +536,19 @@ void timer_apply_action_finished(Arena *arena, Session *session, TimerAction act
 
 void timer_apply_action(Arena *arena, Session *session, TimerAction action, Instant t) {
     switch (session->timer.mode) {
-    case TimerMode::Init: {
+    case TimerMode_Init: {
         timer_apply_action_init(arena, session, action, t);
         break;
     }
-    case TimerMode::Running: {
+    case TimerMode_Running: {
         timer_apply_action_running(arena, session, action, t);
         break;
     }
-    case TimerMode::Paused: {
+    case TimerMode_Paused: {
         timer_apply_action_paused(arena, session, action, t);
         break;
     }
-    case TimerMode::Finished: {
+    case TimerMode_Finished: {
         timer_apply_action_finished(arena, session, action, t);
         break;
     }
@@ -555,7 +561,7 @@ bool eq(xao_Value v, const char *s) {
 }
 
 Str xml_str(xao_Value v) {
-    return {.ptr = (u8 *)v.start, .count = (u64)v.end - (u64)v.start};
+    return (Str){.ptr = (u8 *)v.start, .count = (u64)v.end - (u64)v.start};
 }
 
 Str xml_inner(xao_Reader *r, xao_Value outer) {
@@ -568,25 +574,25 @@ Str xml_inner(xao_Reader *r, xao_Value outer) {
 // should be const
 u8 PNG_HEADER[] = {0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a};
 
-Arr<u8> decode_icon_base64_to_png(Arena *arena, ErrorContext *err, Str icon_base64) {
-    err_scope(err, "Decode icon base64 to PNG");
+// Arr_u8 decode_icon_base64_to_png(Arena *arena, ErrorContext *err, Str icon_base64) {
+//     // err_scope(err, "Decode icon base64 to PNG");
+//
+//     Arr_u8 icon_bin = base64_decode(arena, err, icon_base64);
+//     Opt_u64 png_idx = str_find(icon_bin, A(PNG_HEADER));
+//     if (!png_idx.present) {
+//         bail_v(err, {}, "PNG image not detected");
+//     }
+//
+//     return arr_slice(icon_bin, png_idx.opt, icon_bin.count);
+// }
 
-    Arr<u8> icon_bin = base64_decode(arena, err, icon_base64);
-    Opt<u64> png_idx = str_find(icon_bin, A(PNG_HEADER));
-    if (!png_idx.present) {
-        bail_v(err, {}, "PNG image not detected");
-    }
-
-    return arr_slice(icon_bin, png_idx.opt, icon_bin.count);
-}
-
-Arr<SegmentDef> parse_livesplit_segments(Arena *arena,
-                                         ErrorContext *err,
-                                         xao_Reader *r,
-                                         xao_Value segments_tag) {
+Arr_SegmentDef parse_livesplit_segments(Arena *arena,
+                                        ErrorContext *err,
+                                        xao_Reader *r,
+                                        xao_Value segments_tag) {
     err_scope(err, "Parse LiveSplit LSS segments");
 
-    Vec<SegmentDef> segments = {};
+    Vec_SegmentDef segments = {};
     xao_Value seg_tag = {};
     while (xao_iter_tags(r, segments_tag, &seg_tag)) {
         SegmentDef *seg = vec_push_zero(arena, &segments);
@@ -720,11 +726,11 @@ PxSize compute_box_bbox(Box *box);
 
 PxSize compute_box_bbox_uncached(Box *box) {
     switch (box->type) {
-    case BoxType::Empty:
-    case BoxType::SolidColor: {
+    case BoxType_Empty:
+    case BoxType_SolidColor: {
         return box->bbox.opt;
     }
-    case BoxType::LeftToRightStack: {
+    case BoxType_LeftToRightStack: {
         PxSize total = {};
         for (u64 i = 0; i < box->children.count; i++) {
             PxSize child_bbox = compute_box_bbox(box->children[i]);
@@ -737,7 +743,7 @@ PxSize compute_box_bbox_uncached(Box *box) {
         }
         return total;
     }
-    case BoxType::TopToBottomStack: {
+    case BoxType_TopToBottomStack: {
         PxSize total = {};
         for (u64 i = 0; i < box->children.count; i++) {
             PxSize child_bbox = compute_box_bbox(box->children[i]);
@@ -750,7 +756,7 @@ PxSize compute_box_bbox_uncached(Box *box) {
         }
         return total;
     }
-    case BoxType::BackToFrontStack: {
+    case BoxType_BackToFrontStack: {
         PxSize total = {};
         for (u64 i = 0; i < box->children.count; i++) {
             PxSize child_bbox = compute_box_bbox(box->children[i]);
@@ -763,10 +769,10 @@ PxSize compute_box_bbox_uncached(Box *box) {
         }
         return total;
     }
-    case BoxType::Text: {
+    case BoxType_Text: {
         return {.w = 0, .h = 0};
     }
-    case BoxType::Texture: {
+    case BoxType_Texture: {
         return box->bbox.opt;
     }
     }

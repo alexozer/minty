@@ -63,6 +63,8 @@ void arena_pool_init();
 Arena *arena_acquire();
 void arena_release(Arena *arena);
 
+#define arena_push_arr(arena, t, count) sizeof(*(t){}.ptr)
+
 //
 // Strings
 //
@@ -104,6 +106,7 @@ __attribute__((format(printf, 2, 3))) Str str_format(Arena *arena, const char *f
 Str str_format_v(Arena *arena, const char *format, va_list args);
 bool str_is_valid_utf8(Str s);
 bool str_find(Str haystack, Str needle, u64 *pos);
+Str str_slice(Str s, u64 start, u64 end);
 
 // Certainly possible to do this simply and w/o an iterator object, but just messin around
 typedef struct {
@@ -122,6 +125,8 @@ bool str_split2(Str base, u8 delim, Str *left, Str *right);
 
 #define arr_eq(a, b) \
     ((a).count == (b).count && SDL_memcmp((a).ptr, (b).ptr, (a).count * sizeof(*(a).ptr)) == 0)
+
+#define vec_last(v) A(v, (v).count - 1)
 
 //
 // Encoding/Decoding
@@ -145,3 +150,9 @@ typedef struct {
     // Monotonic nanoseconds starting at program start
     i64 time_nanoseconds;
 } Instant;
+inline static Duration instant_sub(Instant a, Instant b) {
+    return a.time_nanoseconds - b.time_nanoseconds;
+}
+
+// TODO memset?
+#define vec_reset(v) (v)->count = 0
