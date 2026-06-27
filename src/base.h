@@ -1,5 +1,7 @@
 #pragma once
 
+#include "template_types.h"
+
 #include <inttypes.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -11,17 +13,6 @@
 //
 // Basics
 //
-
-typedef uint8_t u8;
-typedef uint16_t u16;
-typedef uint32_t u32;
-typedef uint64_t u64;
-typedef int8_t i8;
-typedef int16_t i16;
-typedef int32_t i32;
-typedef int64_t i64;
-typedef float f32;
-typedef double f64;
 
 #define kilobytes(n) ((n) * 1024)
 #define megabytes(n) ((n) * kilobytes(n))
@@ -178,3 +169,35 @@ struct ErrorContext {
 };
 
 __attribute__((format(printf, 2, 3))) void err_push(ErrorContext *ctx, const char *format, ...);
+
+#define bail(err, format, ...)                           \
+    err_push((err), (format)__VA_OPT__(, ) __VA_ARGS__); \
+    goto end;
+
+#define try(func_call)                              \
+    ({                                              \
+        typeof(func_call) _child_ret = (func_call); \
+        if (!_child_ret) {                          \
+            goto end;                               \
+        }                                           \
+        _child_ret;                                 \
+    })
+
+#define try_sdl(err, func_call)                     \
+    ({                                              \
+        typeof(func_call) _child_ret = (func_call); \
+        if (!_child_ret) {                          \
+            bail(err, "%s", SDL_GetError());        \
+        }                                           \
+        _child_ret;                                 \
+    })
+
+#define try_ft(err, func_call)                        \
+    ({                                                \
+        FT_Error _err = (func_call);                  \
+        if (_err != FT_Err_Ok) {                      \
+            bail((err), "%s", FT_Error_String(_err)); \
+        }                                             \
+    })
+
+Arr_u8 fs_load_file_c(ErrorContext *err, Arena *arena, Str path);

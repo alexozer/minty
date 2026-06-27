@@ -1,6 +1,5 @@
 #include "base.h"
 #include "platform.h"
-#include "template_types.h"
 
 #include <stdarg.h>
 
@@ -574,42 +573,20 @@ Str xml_inner(xao_Reader *r, xao_Value outer) {
 // should be const
 u8 PNG_HEADER[] = {0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a};
 
-// Arr_u8 decode_icon_base64_to_png(Arena *arena, ErrorContext *err, Str icon_base64) {
-//     // err_scope(err, "Decode icon base64 to PNG");
-//
-//     Arr_u8 icon_bin = base64_decode(arena, err, icon_base64);
-//     Opt_u64 png_idx = str_find(icon_bin, A(PNG_HEADER));
-//     if (!png_idx.present) {
-//         bail_v(err, {}, "PNG image not detected");
-//     }
-//
-//     return arr_slice(icon_bin, png_idx.opt, icon_bin.count);
-// }
-
 CPUTexture decode_png_to_texture(ErrorContext *err, Arena *arena, Arr_u8 png) {
-    CPUTexture ret = {};
+    CPUTexture texture = {};
     SDL_IOStream *stream = nullptr;
     SDL_Surface *surface = nullptr;
 
-    stream = SDL_IOFromMem(png.ptr, png.count);
-    if (!stream) {
-        err_push(err, "%s", SDL_GetError());
-        goto end;
-    }
-
-    surface = SDL_LoadPNG_IO(stream, false);
-    if (!surface) {
-        err_push(err, "%s", SDL_GetError());
-        goto end;
-    }
-
-    ret = convert_srgb_surface_to_rgba(arena, surface);
+    stream = try_sdl(err, SDL_IOFromMem(png.ptr, png.count));
+    surface = try_sdl(err, SDL_LoadPNG_IO(stream, false));
+    texture = convert_srgb_surface_to_rgba(arena, surface);
 
 end:
     if (err->ctx_stack.count) err_push(err, "Decode PNG to texture");
     if (stream) SDL_CloseIO(stream);
     if (surface) SDL_DestroySurface(surface);
-    return ret;
+    return texture;
 }
 
 Arr_SegmentDef parse_livesplit_segments(ErrorContext *err,
@@ -1737,11 +1714,8 @@ void init_render_buffers(ErrorContext *err, App *app) {
 }
 
 void init_renderer(ErrorContext *err, App *app) {
-    err_scope(err, "Initialize renderer");
-
     try_ft(err, FT_Init_FreeType(&app->freetype));
-    app->font_file = fs_load_file(err, app->app_arena, FONT_PATH);
-    if (err_occurred(err)) return;
+    app->font_file = try(fs_load_file(err, app->app_arena, FONT_PATH));
 
     app->device =
         try_sdl(err, SDL_CreateGPUDevice(OS_SHADER_FORMAT, RENDERER_DEBUG_MODE_ENABLED, nullptr));
@@ -1749,6 +1723,9 @@ void init_renderer(ErrorContext *err, App *app) {
 
     init_render_pipelines(err, app);
     init_render_buffers(err, app);
+
+end:
+    if (err->ctx_stack.count) err_push(err, "Initialize renderer");
 }
 
 void do_geometry_upload_pass(App *app, SDL_GPUCommandBuffer *command_buffer, Mesh *mesh) {
