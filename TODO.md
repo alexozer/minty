@@ -29,6 +29,8 @@ Draw split/segment times
 Generate header files with function forward declarations
 <!-- Test on Windows -->
 <!--     Port shaders to HLSL I suppose? -->
+Evaluate using plain C
+    No practical advantage, it's mostly just a flex
 
 ## Research
 

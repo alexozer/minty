@@ -86,7 +86,7 @@ constexpr u64 next_pow2(u64 x) {
     SDL_LogCritical(SDL_LOG_CATEGORY_APPLICATION, __VA_ARGS__); \
     abort()
 
-[[noreturn]] void log__assert(const char* cond, const char* file, int line);
+[[noreturn]] void log__assert(const char *cond, const char *file, int line);
 #define log_assert(cond) \
     if ((cond) == false) log__assert(#cond, __FILE_NAME__, __LINE__)
 #define unreachable() log__assert("unreachable", __FILE_NAME__, __LINE__)
@@ -97,25 +97,25 @@ constexpr u64 next_pow2(u64 x) {
 
 template <typename T>
 struct Arr {
-    T* ptr;
+    T *ptr;
     u64 count;
 
-    T& operator[](u64 i) {
+    T &operator[](u64 i) {
         log_assert(i < count);
         return ptr[i];
     }
 };
 
 struct Arena {
-    void* data;
+    void *data;
     u64 reserved;
     u64 offset;
 };
 
 template <u64 ALIGNMENT>
-void* arena__push_bytes(Arena* arena, u64 size) {
+void *arena__push_bytes(Arena *arena, u64 size) {
     arena->offset = align_to(arena->offset, ALIGNMENT);
-    void* pos = (void*)((u64)arena->data + arena->offset);
+    void *pos = (void *)((u64)arena->data + arena->offset);
     arena->offset += align_to(size, ALIGNMENT);
     if (arena->offset > arena->reserved) {
         log_fatal("Arena over! offset = %" PRIu64 ", reserved = %" PRIu64, arena->offset,
@@ -125,19 +125,19 @@ void* arena__push_bytes(Arena* arena, u64 size) {
 }
 
 void arena_pool_init();
-Arena* arena_acquire();
-void arena_release(Arena* arena);
+Arena *arena_acquire();
+void arena_release(Arena *arena);
 
 template <typename T>
-T* arena_push(Arena* arena) {
-    return (T*)arena__push_bytes<8>(arena, sizeof(T));
+T *arena_push(Arena *arena) {
+    return (T *)arena__push_bytes<8>(arena, sizeof(T));
 }
 
 template <typename T>
-Arr<T> arena_push_arr(Arena* arena, u64 count) {
+Arr<T> arena_push_arr(Arena *arena, u64 count) {
     constexpr u64 ALIGN = min(next_pow2(sizeof(T)), (u64)8);
     return {
-        .ptr = (T*)arena__push_bytes<ALIGN>(arena, sizeof(T) * count),
+        .ptr = (T *)arena__push_bytes<ALIGN>(arena, sizeof(T) * count),
         .count = count,
     };
 }
@@ -152,11 +152,11 @@ struct remove_reference {
     using type = T;
 };
 template <typename T>
-struct remove_reference<T&> {
+struct remove_reference<T &> {
     using type = T;
 };
 template <typename T>
-struct remove_reference<T&&> {
+struct remove_reference<T &&> {
     using type = T;
 };
 
@@ -165,7 +165,7 @@ struct remove_reference<T&&> {
 #define arr_from_c(a) ((Arr<c_arr_elem_type(a)>){.ptr = (a), .count = c_arr_count(a)})
 
 template <typename T>
-Arr<T> arr_from_null_terminated(T* v) {
+Arr<T> arr_from_null_terminated(T *v) {
     u64 count = 0;
     while (v[count] != nullptr)
         count++;
@@ -216,7 +216,7 @@ bool arr_is_empty(Arr<T> arr) {
 }
 
 template <typename T>
-Arr<T> arr_clone(Arena* arena, Arr<T> arr) {
+Arr<T> arr_clone(Arena *arena, Arr<T> arr) {
     Arr<T> clone = arena_push_arr<T>(arena, arr.count);
     arr_copy(clone, arr);
     return clone;
@@ -235,22 +235,22 @@ struct Pair {
 
 using Str = Arr<u8>;
 
-#define S(s) ((Str){.ptr = (u8*)(s), .count = (sizeof(s)) - 1})
-#define SF(s) (int)(s).count, (char*)(s).ptr
+#define S(s) ((Str){.ptr = (u8 *)(s), .count = (sizeof(s)) - 1})
+#define SF(s) (int)(s).count, (char *)(s).ptr
 #define C(c) ((u8)(c))
 #define A(a) ((Arr<u8>){.ptr = (a), .count = sizeof((a)) / sizeof((a)[0])})
 
-char* str_to_c(Arena* arena, Str s);
-Str str_from_c(const char* cstr);
-Str str_from_c_len(const char* cstr);
+char *str_to_c(Arena *arena, Str s);
+Str str_from_c(const char *cstr);
+Str str_from_c_len(const char *cstr);
 Str str_from_bytes(Arr<u8> bytes);
 bool char_is_whitespace(u8 c);
 Str str_trim(Str s);
-Str str_clone(Arena* arena, Str s);
+Str str_clone(Arena *arena, Str s);
 bool str_eq(Str s1, Str s2);
 bool str_starts_with(Str s, Str prefix);
-__attribute__((format(printf, 2, 3))) Str str_format(Arena* arena, const char* format, ...);
-Str str_format_v(Arena* arena, const char* format, va_list args);
+__attribute__((format(printf, 2, 3))) Str str_format(Arena *arena, const char *format, ...);
+Str str_format_v(Arena *arena, const char *format, va_list args);
 bool str_is_valid_utf8(Str s);
 Opt<u64> str_find(Str haystack, Str needle);
 
@@ -261,7 +261,7 @@ struct StrLineIter {
 };
 
 StrLineIter str_lines(Str s);
-bool str_lines_next(StrLineIter* iter, Str* line);
+bool str_lines_next(StrLineIter *iter, Str *line);
 u64 str_count_lines(Str s);
 Pair<Str, Str> str_split2(Str base, u8 delim);
 constexpr bool str_is_empty(Str s) {
@@ -274,11 +274,11 @@ constexpr bool str_is_empty(Str s) {
 
 template <typename T>
 struct Vec {
-    T* ptr;
+    T *ptr;
     u64 count;  // Element count (not size in bytes)
     u64 cap;    // Element capacity (not size capacity in bytes)
 
-    T& operator[](u64 i) {
+    T &operator[](u64 i) {
         log_assert(i < count);
         return ptr[i];
     }
@@ -287,7 +287,7 @@ struct Vec {
 constexpr u64 MIN_VEC_CAPACITY = 8;
 
 template <typename T>
-void vec__grow(Arena* arena, Vec<T>* vec, u64 new_cap) {
+void vec__grow(Arena *arena, Vec<T> *vec, u64 new_cap) {
     // Fast path?
     if (new_cap <= vec->cap) return;
 
@@ -304,26 +304,26 @@ void vec__grow(Arena* arena, Vec<T>* vec, u64 new_cap) {
 }
 
 template <typename T>
-void vec_push(Arena* arena, Vec<T>* vec, T val) {
+void vec_push(Arena *arena, Vec<T> *vec, T val) {
     vec__grow(arena, vec, vec->count + 1);
     vec->ptr[vec->count] = val;
     vec->count++;
 }
 
 template <typename T>
-T* vec_push_zero(Arena* arena, Vec<T>* vec) {
+T *vec_push_zero(Arena *arena, Vec<T> *vec) {
     vec__grow(arena, vec, vec->count + 1);
     return &vec->ptr[vec->count++];
 }
 
 template <typename T>
-void vec_pop(Vec<T>* vec) {
+void vec_pop(Vec<T> *vec) {
     log_assert(vec->count > 0);
     vec->count--;
 }
 
 template <typename T>
-void vec_extend(Arena* arena, Vec<T>* vec, Arr<T> arr) {
+void vec_extend(Arena *arena, Vec<T> *vec, Arr<T> arr) {
     vec__grow(arena, vec, vec->count + arr.count);
 
     u64 start = vec->count;
@@ -333,7 +333,7 @@ void vec_extend(Arena* arena, Vec<T>* vec, Arr<T> arr) {
 }
 
 template <typename T>
-Arr<T> vec_extend_zero(Arena* arena, Vec<T>* vec, u64 count) {
+Arr<T> vec_extend_zero(Arena *arena, Vec<T> *vec, u64 count) {
     vec__grow(arena, vec, vec->count + count);
 
     u64 start = vec->count;
@@ -344,22 +344,22 @@ Arr<T> vec_extend_zero(Arena* arena, Vec<T>* vec, u64 count) {
 }
 
 template <typename T>
-void vec_prealloc(Arena* arena, Vec<T>* vec, u64 max_elems) {
+void vec_prealloc(Arena *arena, Vec<T> *vec, u64 max_elems) {
     vec__grow(arena, vec, max_elems);
 }
 
 template <typename T>
-Arr<T> vec_arr(Vec<T>* vec) {
+Arr<T> vec_arr(Vec<T> *vec) {
     return {.ptr = vec->ptr, .count = vec->count};
 }
 
 template <typename T>
-void vec_reset(Vec<T>* vec) {
+void vec_reset(Vec<T> *vec) {
     vec->count = 0;
 }
 
 template <typename T>
-bool vec_is_empty(Vec<T>* vec) {
+bool vec_is_empty(Vec<T> *vec) {
     return vec->count == 0;
 }
 
@@ -375,7 +375,7 @@ struct Map {
 };
 
 template <typename K, typename V>
-V* map__find_slot(Map<K, V>* map, K key) {
+V *map__find_slot(Map<K, V> *map, K key) {
     for (u64 i = 0; i < map->keys.count; i++) {
         if (map->keys[i] == key) {
             return &map->values[i];
@@ -385,7 +385,7 @@ V* map__find_slot(Map<K, V>* map, K key) {
 }
 
 template <typename E, typename V>
-V* map__find_slot(Map<Arr<E>, V>* map, Arr<E> key) {
+V *map__find_slot(Map<Arr<E>, V> *map, Arr<E> key) {
     for (u64 i = 0; i < map->keys.count; i++) {
         if (arr_eq(map->keys[i], key)) {
             return &map->values[i];
@@ -395,8 +395,8 @@ V* map__find_slot(Map<Arr<E>, V>* map, Arr<E> key) {
 }
 
 template <typename K, typename V>
-V map_get(Map<K, V>* map, K key) {
-    V* slot = map__find_slot(map, key);
+V map_get(Map<K, V> *map, K key) {
+    V *slot = map__find_slot(map, key);
     if (slot != nullptr) {
         return *slot;
     }
@@ -404,8 +404,8 @@ V map_get(Map<K, V>* map, K key) {
 }
 
 template <typename K, typename V>
-void map_set(Arena* arena, Map<K, V>* map, K key, V value) {
-    V* slot = map__find_slot(map, key);
+void map_set(Arena *arena, Map<K, V> *map, K key, V value) {
+    V *slot = map__find_slot(map, key);
     if (slot != nullptr) {
         *slot = value;
     } else {
@@ -415,13 +415,13 @@ void map_set(Arena* arena, Map<K, V>* map, K key, V value) {
 }
 
 template <typename K, typename V>
-bool map_has(Map<K, V>* map, K key) {
+bool map_has(Map<K, V> *map, K key) {
     return map__find_slot(map, key) != nullptr;
 }
 
 template <typename K, typename V>
-void map_del(Arena* arena, Map<K, V>* map, K key) {
-    V* slot = map__find_slot(map, key);
+void map_del(Arena *arena, Map<K, V> *map, K key) {
+    V *slot = map__find_slot(map, key);
     if (slot != nullptr) {
         // Count must be at least 1
         if (map->keys.count > 1) {
@@ -443,8 +443,8 @@ struct Defer {
     explicit Defer(F f) : fn(f) {}
     ~Defer() { fn(); }
 
-    Defer(const Defer&) = delete;
-    Defer& operator=(const Defer&) = delete;
+    Defer(const Defer &) = delete;
+    Defer &operator=(const Defer &) = delete;
 };
 
 // Deduction guide (C++17) — lets you write Defer d([&]{...}) without specifying F
@@ -463,8 +463,8 @@ struct DeferCtx {
     DeferCtx(F f, uint64_t c) : fn(f), ctx(c) {}
     ~DeferCtx() { fn(ctx); }
 
-    DeferCtx(const DeferCtx&) = delete;
-    DeferCtx& operator=(const DeferCtx&) = delete;
+    DeferCtx(const DeferCtx &) = delete;
+    DeferCtx &operator=(const DeferCtx &) = delete;
 };
 
 template <typename F>
@@ -477,13 +477,13 @@ DeferCtx(F, uint64_t) -> DeferCtx<F>;
 //
 
 struct ErrorContext {
-    Arena* arena;
+    Arena *arena;
     Vec<Str> ctx_stack;
 };
 
-__attribute__((format(printf, 2, 3))) void err_push_ctx(ErrorContext* ctx, const char* format, ...);
-void err_log(ErrorContext* ctx);
-bool err_occurred(ErrorContext* ctx);
+__attribute__((format(printf, 2, 3))) void err_push_ctx(ErrorContext *ctx, const char *format, ...);
+void err_log(ErrorContext *ctx);
+bool err_occurred(ErrorContext *ctx);
 
 #define err_scope(err, format, ...)                                      \
     DeferCtx CONCAT(_err_scope_, __LINE__)(                              \
@@ -559,7 +559,7 @@ bool err_occurred(ErrorContext* ctx);
 // Paths
 //
 
-Str path_join(Arena* arena, Str left_path, Str right_path);
+Str path_join(Arena *arena, Str left_path, Str right_path);
 
 //
 // Time
@@ -585,13 +585,13 @@ constexpr Duration DURATION_ZERO = {};
 Instant get_current_monotonic_time();
 Instant instant_from_sdl_nanos(u64 nanos);
 
-constexpr Duration operator+(const Duration& t1, const Duration& t2) {
+constexpr Duration operator+(const Duration &t1, const Duration &t2) {
     i64 ns_sum = t1.nanoseconds + t2.nanoseconds;
     i64 sec_sum = t1.seconds + t2.seconds + (ns_sum / 1'000'000'000);
     return {.seconds = sec_sum, .nanoseconds = (u32)(ns_sum % 1'000'000'000)};
 }
 
-constexpr Duration operator-(const Duration& t1, const Duration& t2) {
+constexpr Duration operator-(const Duration &t1, const Duration &t2) {
     i64 ns_diff = (i64)t1.nanoseconds - (i64)t2.nanoseconds;
     i64 sec_diff = t1.seconds - t2.seconds;
     if (ns_diff < 0) {
@@ -602,23 +602,23 @@ constexpr Duration operator-(const Duration& t1, const Duration& t2) {
     return {.seconds = sec_diff, .nanoseconds = (u32)(ns_diff)};
 }
 
-constexpr Duration operator-(const Duration& t) {
+constexpr Duration operator-(const Duration &t) {
     return DURATION_ZERO - t;
 }
 
-constexpr void operator+=(Duration& t1, const Duration& t2) {
+constexpr void operator+=(Duration &t1, const Duration &t2) {
     t1 = t1 + t2;
 }
 
-constexpr void operator-=(Duration& t1, const Duration& t2) {
+constexpr void operator-=(Duration &t1, const Duration &t2) {
     t1 = t1 - t2;
 }
 
-constexpr bool operator==(const Duration& t1, const Duration& t2) {
+constexpr bool operator==(const Duration &t1, const Duration &t2) {
     return t1.seconds == t2.seconds && t1.nanoseconds == t2.nanoseconds;
 }
 
-constexpr bool operator<(const Duration& t1, const Duration& t2) {
+constexpr bool operator<(const Duration &t1, const Duration &t2) {
     if (t1.seconds < t2.seconds) {
         return true;
     }
@@ -628,15 +628,15 @@ constexpr bool operator<(const Duration& t1, const Duration& t2) {
     return (t1.seconds < 0) ^ (t1.nanoseconds < t2.nanoseconds);
 }
 
-constexpr bool operator<=(const Duration& t1, const Duration& t2) {
+constexpr bool operator<=(const Duration &t1, const Duration &t2) {
     return (t1 < t2) || t1 == t2;
 }
 
-constexpr bool operator>(const Duration& t1, const Duration& t2) {
+constexpr bool operator>(const Duration &t1, const Duration &t2) {
     return !(t1 <= t2);
 }
 
-constexpr bool operator>=(const Duration& t1, const Duration& t2) {
+constexpr bool operator>=(const Duration &t1, const Duration &t2) {
     return !(t1 < t2);
 }
 
@@ -656,7 +656,7 @@ constexpr u32 duration_subsec_nanos(Duration duration) {
     }
 }
 
-constexpr Duration operator-(const Instant& t1, const Instant& t2) {
+constexpr Duration operator-(const Instant &t1, const Instant &t2) {
     Duration d1 = {.seconds = t1.seconds, .nanoseconds = t1.nanoseconds};
     Duration d2 = {.seconds = t2.seconds, .nanoseconds = t2.nanoseconds};
     return d1 - d2;
@@ -666,9 +666,9 @@ constexpr Duration operator-(const Instant& t1, const Instant& t2) {
 // Encoding/Decoding
 //
 
-u64 parse_u64(ErrorContext* err, Str s);
-Arr<u8> base64_decode(Arena* arena, ErrorContext* err, Str s);
-Str base64_encode(Arena* arena, Arr<u8> a);
+u64 parse_u64(ErrorContext *err, Str s);
+Arr<u8> base64_decode(Arena *arena, ErrorContext *err, Str s);
+Str base64_encode(Arena *arena, Arr<u8> a);
 
 //
 // Idk
@@ -680,4 +680,4 @@ void thread_init();
 // FS
 //
 
-Arr<u8> fs_load_file(ErrorContext* err, Arena* arena, Str path);
+Arr<u8> fs_load_file(ErrorContext *err, Arena *arena, Str path);

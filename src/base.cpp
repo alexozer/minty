@@ -290,23 +290,6 @@ Str base64_encode(Arena *arena, Arr<u8> a) {
 }
 
 //
-// Time
-//
-
-constexpr u64 SECOND_IN_NS = 1'000'000'000;
-
-Instant instant_from_sdl_nanos(u64 nanos) {
-    return {
-        .seconds = (i64)(nanos / SECOND_IN_NS),
-        .nanoseconds = (u32)(nanos % SECOND_IN_NS),
-    };
-}
-
-Instant get_current_monotonic_time() {
-    return instant_from_sdl_nanos(SDL_GetTicksNS());
-}
-
-//
 // Idk
 //
 

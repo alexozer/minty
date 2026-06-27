@@ -9,7 +9,7 @@
 #include <SDL3/SDL_stdinc.h>
 
 //
-// Math
+// Basics
 //
 
 typedef uint8_t u8;
@@ -27,6 +27,10 @@ typedef double f64;
 #define megabytes(n) ((n) * kilobytes(n))
 
 constexpr u64 DEFAULT_ALIGNMENT = 8;
+u64 align_to(u64 n, u64 a);
+
+#define CONCAT_IMPL(a, b) a##b
+#define CONCAT(a, b) CONCAT_IMPL(a, b)
 
 //
 // Logging
@@ -63,7 +67,13 @@ void arena_pool_init();
 Arena *arena_acquire();
 void arena_release(Arena *arena);
 
-#define arena_push_arr(arena, t, count) sizeof(*(t){}.ptr)
+#define arena_push(arena, t) (t *)(arena__push_bytes(arena, sizeof(t), alignof(t)))
+
+#define arena_push_arr(arena, t, c)                                        \
+    ((CONCAT(Arr_, t)){                                                    \
+        .ptr = (t *)(arena__push_bytes(arena, sizeof(t) * c, alignof(t))), \
+        .count = c,                                                        \
+    })
 
 //
 // Strings
@@ -150,9 +160,21 @@ typedef struct {
     // Monotonic nanoseconds starting at program start
     i64 time_nanoseconds;
 } Instant;
+
 inline static Duration instant_sub(Instant a, Instant b) {
     return a.time_nanoseconds - b.time_nanoseconds;
 }
 
 // TODO memset?
 #define vec_reset(v) (v)->count = 0
+
+//
+// Errors
+//
+
+struct ErrorContext {
+    Arena *arena;
+    Vec_Str ctx_stack;
+};
+
+__attribute__((format(printf, 2, 3))) void err_push(ErrorContext *ctx, const char *format, ...);

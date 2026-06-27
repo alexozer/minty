@@ -1,6 +1,10 @@
 #include "base.h"
+#include "platform.h"
+#include "template_types.h"
 
+#include <SDL3/SDL_iostream.h>
 #include <SDL3/SDL_log.h>
+#include <SDL3/SDL_timer.h>
 
 // TODO sane arena sizing/lifetime scheme
 static constexpr u64 ARENA_POOL_MAX = 16;
@@ -42,9 +46,6 @@ u64 next_pow2(u64 x) {
 [[noreturn]] void log__assert(const char *cond, const char *file, int line) {
     log_fatal("Assertion failed: %s:%d: %s", file, line, cond);
 }
-
-// TODO fix
-#define os_alloc(n) (calloc(1, (n)))
 
 void arena_pool_init() {
     for (u64 i = 0; i < ARENA_POOL_MAX; i++) {
@@ -304,4 +305,64 @@ bool parse_u64(Str s, u64 *out) {
 
 void thread_init() {
     arena_pool_init();
+}
+
+Arr_u8 fs_load_file_c(ErrorContext *err, Arena *arena, Str path) {
+    Arr_u8 ret = {};
+    Arena *scratch = arena_acquire();
+    SDL_IOStream *stream = nullptr;
+
+    char *path_cstr = str_to_c(scratch, path);
+    stream = SDL_IOFromFile(path_cstr, "rb");
+
+    i64 size = SDL_GetIOSize(stream);
+    if (size < 0) {
+        err_push(err, "%s", SDL_GetError());
+        goto end;
+    }
+
+    ret = arena_push_arr(arena, u8, (u64)size);
+    u64 offset = 0;
+    while (offset < size && SDL_GetIOStatus(stream) == SDL_IO_STATUS_READY) {
+        offset += SDL_ReadIO(stream, ret.ptr + offset, (u64)size - offset);
+    }
+    if (offset != size) {
+        err_push(err, "%s", SDL_GetError());
+        goto end;
+    }
+
+end:
+    if (err->ctx_stack.count) err_push(err, "Load file '%.*s'", SF(path));
+    if (stream) SDL_CloseIO(stream);
+    if (arena) arena_release(scratch);
+    return ret;
+}
+
+//
+// Time
+//
+
+Instant get_current_monotonic_time() {
+    return (Instant){.time_nanoseconds = (i64)SDL_GetTicksNS()};
+}
+
+//
+// Errors
+//
+
+// typedef struct {
+//     u64 stack_pos;
+// } ErrToken;
+//
+// ErrToken err_push(ErrorContext *err);
+// void err_pop(ErrorContext *err, const char *format, ...);
+
+__attribute__((format(printf, 2, 3))) void err_push_ctx(ErrorContext *ctx,
+                                                        const char *format,
+                                                        ...) {
+    va_list args;
+    va_start(args, format);
+    Str msg = str_format_v(ctx->arena, format, args);
+    vec_push(ctx->arena, &ctx->ctx_stack, msg);
+    va_end(args);
 }

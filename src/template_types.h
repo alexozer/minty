@@ -19,12 +19,18 @@ typedef struct Box Box;
 typedef struct Session Session;
 typedef struct GlyphAtlas GlyphAtlas;
 typedef struct SegSummary SegSummary;
+typedef struct App App;
+typedef struct ErrorContext ErrorContext;
+typedef struct stbrp_rect stbrp_rect;
+typedef struct stbrp_node stbrp_node;
+typedef struct Mesh Mesh;
+typedef struct ShapedGlyph ShapedGlyph;
 
 typedef enum TimerMode TimerMode;
 typedef enum TimerAction TimerAction;
 typedef enum ShaderType ShaderType;
 typedef enum BlendType BlendType;
-typedef enum TextureFilterType TextureFilterType;
+typedef enum FilterType FilterType;
 typedef enum BoxType BoxType;
 
 typedef struct {
@@ -59,14 +65,19 @@ typedef struct {
 } Vec_Opt_Duration;
 
 typedef struct {
-    SegmentDef *ptr;
+    PxRect *ptr;
     u64 count;
 } Arr_PxRect;
 
 typedef struct {
-    SegmentDef *ptr;
+    stbrp_rect *ptr;
     u64 count;
 } Arr_stbrp_rect;
+
+typedef struct {
+    stbrp_node *ptr;
+    u64 count;
+} Arr_stbrp_node;
 
 typedef struct {
     GlyphMetrics *ptr;
@@ -101,3 +112,36 @@ typedef struct {
     SegSummary *ptr;
     u64 count;
 } Arr_SegSummary;
+
+typedef struct {
+    CPUTexture *ptr;
+    u64 count;
+} Arr_CPUTexture;
+
+typedef struct {
+    u32 *ptr;
+    u64 count;
+} Arr_u32;
+
+typedef struct {
+    ShapedGlyph *ptr;
+    u64 count;
+} Arr_ShapedGlyph;
+
+typedef struct {
+    ShapedGlyph *ptr;
+    u64 count;
+    u64 cap;
+} Vec_ShapedGlyph;
+
+typedef struct {
+    Str *ptr;
+    u64 count;
+    u64 cap;
+} Vec_Str;
+
+typedef struct {
+    SegmentDef *ptr;
+    u64 count;
+    u64 cap;
+} Vec_SegmentDef;

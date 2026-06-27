@@ -166,7 +166,7 @@ struct Atlas {
     SDL_GPUTransferBuffer *transfer_buffer;
 
     // Rect packer state, useful for online repacking
-    Arr_stbrp_rect packer_nodes;
+    Arr_stbrp_node packer_nodes;
     Arr_stbrp_rect packer_rects;
 };
 
@@ -198,9 +198,9 @@ enum BlendType {
     BlendType_Over,
 };
 
-enum TextureFilterType {
-    TextureFilterType_Nearest,
-    TextureFilterType_Linear,
+enum FilterType {
+    FilterType_Nearest,
+    FilterType_Linear,
 };
 
 enum BoxType {
@@ -369,10 +369,10 @@ Str format_duration(Arena *arena, Duration duration, u32 ms_digits, bool show_pl
     constexpr u64 HOUR_SECS = 60 * 60;
     constexpr u64 MINUTE_SECS = 60;
     constexpr u64 MILLISEC_NSECS = 1'000'000;
-    constexpr u64 SECOND_NSECS = 1'000'000;
+    constexpr u64 SECOND_NSECS = 1'000'000'000;
 
-    u64 total_seconds = duration_seconds(duration);
-    u32 subsec_nanos = duration_subsec_nanos(duration);
+    u64 total_seconds = (u64)duration / SECOND_NSECS;
+    u64 subsec_nanos = (u64)duration % SECOND_NSECS;
 
     u64 days = total_seconds / DAY_SECS;
     u64 hours = total_seconds % DAY_SECS / HOUR_SECS;
@@ -410,10 +410,10 @@ Duration timer_get_elapsed(Timer *timer, Instant event_time) {
         return 0;
     }
     case TimerMode_Finished: {
-        return timer->live_splits[timer->live_splits.count - 1].opt;
+        return A(timer->live_splits, timer->live_splits.count - 1).opt;
     }
     case TimerMode_Running: {
-        return (event_time - timer->start_time) - timer->total_paused_duration;
+        return instant_sub(event_time, timer->start_time) - timer->total_paused_duration;
     }
     case TimerMode_Paused: {
         Duration pause_duration = instant_sub(timer->paused_time, timer->start_time);
@@ -586,8 +586,34 @@ u8 PNG_HEADER[] = {0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a};
 //     return arr_slice(icon_bin, png_idx.opt, icon_bin.count);
 // }
 
-Arr_SegmentDef parse_livesplit_segments(Arena *arena,
-                                        ErrorContext *err,
+CPUTexture decode_png_to_texture(ErrorContext *err, Arena *arena, Arr_u8 png) {
+    CPUTexture ret = {};
+    SDL_IOStream *stream = nullptr;
+    SDL_Surface *surface = nullptr;
+
+    stream = SDL_IOFromMem(png.ptr, png.count);
+    if (!stream) {
+        err_push(err, "%s", SDL_GetError());
+        goto end;
+    }
+
+    surface = SDL_LoadPNG_IO(stream, false);
+    if (!surface) {
+        err_push(err, "%s", SDL_GetError());
+        goto end;
+    }
+
+    ret = convert_srgb_surface_to_rgba(arena, surface);
+
+end:
+    if (err->ctx_stack.count) err_push(err, "Decode PNG to texture");
+    if (stream) SDL_CloseIO(stream);
+    if (surface) SDL_DestroySurface(surface);
+    return ret;
+}
+
+Arr_SegmentDef parse_livesplit_segments(ErrorContext *err,
+                                        Arena *arena,
                                         xao_Reader *r,
                                         xao_Value segments_tag) {
     err_scope(err, "Parse LiveSplit LSS segments");
@@ -608,15 +634,7 @@ Arr_SegmentDef parse_livesplit_segments(Arena *arena,
                 Str base64 = xml_inner(r, attr_tag);
                 if (!str_is_empty(base64)) {
                     seg->icon_png = decode_icon_base64_to_png(arena, err, base64);
-
-                    SDL_IOStream *png_stream =
-                        try_sdl(err, {}, SDL_IOFromMem(seg->icon_png.ptr, seg->icon_png.count));
-                    defer(SDL_CloseIO(png_stream));
-
-                    SDL_Surface *surface = try_sdl(err, {}, SDL_LoadPNG_IO(png_stream, false));
-                    defer(SDL_DestroySurface(surface));
-
-                    seg->icon_texture = convert_srgb_surface_to_rgba(arena, surface);
+                    seg->icon_texture = decode_png_to_texture(arena, seg->icon_png);
                 }
             }
         }
@@ -1137,9 +1155,11 @@ u64 make_icon_mesh(Arena *arena, PxSize window_size, Session *session, Atlas *at
 // TODO cache shaping context
 // TODO arena allocate kbts stuff
 // TODO handling style/direction/face runs etc.
-Arr<ShapedGlyph> shape_text_naive(Arena *arena, Arr<u8> font, Str text) {
-    kbts_shape_context *context = kbts_CreateShapeContext(0, 0);
-    defer(kbts_DestroyShapeContext(context));
+Arr_ShapedGlyph shape_text_naive(Arena *arena, Arr_u8 font, Str text) {
+    Vec_ShapedGlyph output = {};
+    kbts_shape_context *context = NULL;
+
+    context = kbts_CreateShapeContext(0, 0);
     kbts_ShapePushFontFromMemory(context, font.ptr, (int)font.count, 0);
 
     kbts_ShapeBegin(context, KBTS_DIRECTION_DONT_KNOW, KBTS_LANGUAGE_DONT_KNOW);
@@ -1151,7 +1171,6 @@ Arr<ShapedGlyph> shape_text_naive(Arena *arena, Arr<u8> font, Str text) {
     kbts_run Run = {};
     i32 cursor_x = 0, cursor_y = 0;
     // u32 run_idx = 0;
-    Vec<ShapedGlyph> output = {};
     vec_prealloc(arena, &output, text.count);
     while (kbts_ShapeRun(context, &Run)) {
         kbts_glyph *glyph = nullptr;
@@ -1170,6 +1189,8 @@ Arr<ShapedGlyph> shape_text_naive(Arena *arena, Arr<u8> font, Str text) {
         // run_idx++;
     }
 
+end:
+    if (context != NULL) kbts_DestroyShapeContext(context);
     return vec_arr(&output);
 }
 
@@ -1179,9 +1200,9 @@ Atlas *make_and_upload_atlas(ErrorContext *err,
                              SDL_GPUCommandBuffer *command_buffer,
                              SDL_GPUGraphicsPipeline *clear_texture_pipeline,
                              Str name,
-                             Arr<CPUTexture> textures,
+                             Arr_CPUTexture textures,
                              PxSize atlas_size,
-                             TextureFilterType filter);
+                             FilterType filter);
 
 GlyphAtlas make_and_upload_glyph_atlas(ErrorContext *err,
                                        Arena *arena,
@@ -1189,76 +1210,84 @@ GlyphAtlas make_and_upload_glyph_atlas(ErrorContext *err,
                                        SDL_GPUCommandBuffer *command_buffer,
                                        SDL_GPUGraphicsPipeline *clear_texture_pipeline,
                                        FT_Library freetype_handle,
-                                       Arr<u8> font_file,
+                                       Arr_u8 font_file,
                                        u16 face_size_px) {
-    err_scope(err, "Initialize text rendering");
-
     log_assert(face_size_px > 0);
 
     Arena *scratch = arena_acquire();
-    defer(arena_release(scratch));
-
     FT_Face face = {};
-    try_ft(err, {},
-           FT_New_Memory_Face(freetype_handle, font_file.ptr, (long)font_file.count, 0, &face));
-    defer(FT_Done_Face(face));
+    GlyphAtlas ret = {};
 
-    try_ft(err, {}, FT_Set_Pixel_Sizes(face, face_size_px, 0));
+    // err_scope(err, "Initialize text rendering");
 
-    Arr<CPUTexture> textures = arena_push_arr<CPUTexture>(scratch, (u64)face->num_glyphs);
-    Arr<GlyphMetrics> metrics = arena_push_arr<GlyphMetrics>(arena, (u64)face->num_glyphs);
+    // defer(arena_release(scratch));
 
-    for (u64 glyph_idx = 0; glyph_idx < face->num_glyphs; glyph_idx++) {
-        // TODO re-enable hinting once we can account for spacing discrepancies
-        // Also maybe disable on macos for more native look?
-        try_ft(err, {}, FT_Load_Glyph(face, (u32)glyph_idx, FT_LOAD_NO_HINTING));
-        // if (face->glyph->format == FT_GLYPH_FORMAT_BITMAP) {
-        //     bail(err, "TODO: handle bitmap glyph");
-        // }
-        try_ft(err, {}, FT_Render_Glyph(face->glyph, FT_RENDER_MODE_NORMAL));
+    do {
+        if (FT_New_Memory_Face(freetype_handle, font_file.ptr, (long)font_file.count, 0, &face) !=
+            FT_Err_Ok) {
+            break;
+        }
 
-        FT_Bitmap bitmap = face->glyph->bitmap;
-        CPUTexture *texture = &textures[glyph_idx];
-        Arr<u8> tmp_buffer = {.ptr = bitmap.buffer, .count = bitmap.width * bitmap.rows};
-        texture->format = SDL_GPU_TEXTUREFORMAT_R8_UNORM;
-        texture->buffer = arr_clone(scratch, tmp_buffer);
-        texture->dims = {.w = (u16)bitmap.width, .h = (u16)bitmap.rows};
+        if (FT_Set_Pixel_Sizes(face, face_size_px, 0) != FT_Err_Ok) {
+            break;
+        }
 
-        // Convert from 26.6 fixed point pixels to f32 pixels
-        metrics[glyph_idx].bearing_px_x = (f32)face->glyph->bitmap_left;
-        metrics[glyph_idx].bearing_px_y = (f32)face->glyph->bitmap_top;
-    }
+        Arr_CPUTexture textures = arena_push_arr(scratch, CPUTexture, (u64)face->num_glyphs);
+        Arr_GlyphMetrics metrics = arena_push_arr(arena, GlyphMetrics, (u64)face->num_glyphs);
 
-    PxSize font_atlas_size = {.w = 2048, .h = 2048};
-    Str texture_name = str_format(scratch, "Glyph atlas: family = '%s', style = '%s', size = %dpx",
-                                  face->family_name, face->style_name, face_size_px);
-    Atlas *atlas =
-        make_and_upload_atlas(err, arena, device, command_buffer, clear_texture_pipeline,
-                              texture_name, textures, font_atlas_size, TextureFilterType_Nearest);
-    return {
-        .atlas = atlas,
-        .px_per_em = face_size_px,
-        .units_per_em = face->units_per_EM,
-        .metrics = metrics,
-    };
+        for (u64 glyph_idx = 0; glyph_idx < face->num_glyphs; glyph_idx++) {
+            // TODO re-enable hinting once we can account for spacing discrepancies
+            // Also maybe disable on macos for more native look?
+            FT_Load_Glyph(face, (u32)glyph_idx, FT_LOAD_NO_HINTING);
+            // if (face->glyph->format == FT_GLYPH_FORMAT_BITMAP) {
+            //     bail(err, "TODO: handle bitmap glyph");
+            // }
+            FT_Render_Glyph(face->glyph, FT_RENDER_MODE_NORMAL);
+
+            FT_Bitmap bitmap = face->glyph->bitmap;
+            CPUTexture *texture = &textures[glyph_idx];
+            Arr_u8 tmp_buffer = {.ptr = bitmap.buffer, .count = bitmap.width * bitmap.rows};
+            texture->format = SDL_GPU_TEXTUREFORMAT_R8_UNORM;
+            texture->buffer = arr_clone(scratch, tmp_buffer);
+            texture->dims = (PxSize){.w = (u16)bitmap.width, .h = (u16)bitmap.rows};
+
+            // Convert from 26.6 fixed point pixels to f32 pixels
+            metrics[glyph_idx].bearing_px_x = (f32)face->glyph->bitmap_left;
+            metrics[glyph_idx].bearing_px_y = (f32)face->glyph->bitmap_top;
+        }
+
+        PxSize font_atlas_size = {.w = 2048, .h = 2048};
+        Str texture_name =
+            str_format(scratch, "Glyph atlas: family = '%s', style = '%s', size = %dpx",
+                       face->family_name, face->style_name, face_size_px);
+        Atlas *atlas =
+            make_and_upload_atlas(arena, device, command_buffer, clear_texture_pipeline,
+                                  texture_name, textures, font_atlas_size, FilterType_Nearest);
+        ret.atlas = atlas;
+        ret.px_per_em = face_size_px;
+        ret.units_per_em = face->units_per_EM;
+        ret.metrics = metrics;
+    } while (0);
+
+    if (face) FT_Done_Face(face);
+    arena_release(arena);
+    return ret;
 }
 
 u64 make_glyph_mesh(Arena *arena,
                     PxSize window_size,
-                    Arr<u8> font_file,
+                    Arr_u8 font_file,
                     GlyphAtlas *atlas,
                     Str text,
                     Mesh *mesh) {
+    u64 ret = 0;
     Arena *scratch = arena_acquire();
-    defer(arena_release(scratch));
 
-    if (text.count == 0) {
-        return 0;
-    }
+    if (text.count == 0) goto end;
 
     u64 start_vertex_count = mesh->vertices.count;
 
-    Arr<ShapedGlyph> shaped_glyphs = shape_text_naive(scratch, font_file, text);
+    Arr_ShapedGlyph shaped_glyphs = shape_text_naive(scratch, font_file, text);
     for (u64 i = 0; i < shaped_glyphs.count; i++) {
         u32 glyph_id = shaped_glyphs[i].glyph_id;
 
@@ -1281,7 +1310,11 @@ u64 make_glyph_mesh(Arena *arena,
     }
 
     u64 end_vertex_count = mesh->vertices.count;
-    return (end_vertex_count - start_vertex_count) / 4;
+    ret = (end_vertex_count - start_vertex_count) / 4;
+
+end:
+    arena_release(arena);
+    return ret;
 }
 
 //
@@ -1299,7 +1332,7 @@ SDL_GPUGraphicsPipeline *make_render_pipeline(ErrorContext *err,
 
     SDL_GPUColorTargetBlendState blend_state = {};
     if (blend_type == BlendType_Over) {
-        blend_state = {
+        blend_state = (SDL_GPUColorTargetBlendState){
             .src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA,
             .dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
             .color_blend_op = SDL_GPU_BLENDOP_ADD,
@@ -1385,20 +1418,20 @@ Atlas *make_and_upload_atlas(ErrorContext *err,
                              SDL_GPUCommandBuffer *command_buffer,
                              SDL_GPUGraphicsPipeline *clear_texture_pipeline,
                              Str name,
-                             Arr<CPUTexture> textures,
+                             Arr_CPUTexture textures,
                              PxSize atlas_size,
-                             TextureFilterType filter) {
+                             FilterType filter) {
+    Atlas *atlas = arena_push(arena, Atlas);
     Arena *scratch = arena_acquire();
-    defer(arena_release(scratch));
 
     // Texture formats must be equal
     SDL_GPUTextureFormat texture_format = SDL_GPU_TEXTUREFORMAT_INVALID;
     for (u64 i = 0; i < textures.count; i++) {
-        if (textures[i].dims.w > 0 && textures[i].dims.h > 0) {
+        if (A(textures, i).dims.w > 0 && A(textures, i).dims.h > 0) {
             if (texture_format == SDL_GPU_TEXTUREFORMAT_INVALID) {
-                texture_format = textures[i].format;
+                texture_format = A(textures, i).format;
             } else {
-                log_assert(texture_format == textures[i].format);
+                log_assert(texture_format == A(textures, i).format);
             }
         }
     }
@@ -1428,28 +1461,28 @@ Atlas *make_and_upload_atlas(ErrorContext *err,
     //
 
     stbrp_context packer_ctx = {};
-    Arr<stbrp_node> packer_nodes = arena_push_arr<stbrp_node>(arena, atlas_size.w);
+    Arr_stbrp_node packer_nodes = arena_push_arr(arena, stbrp_node, atlas_size.w);
     stbrp_init_target(&packer_ctx, (i32)atlas_size.w, (i32)atlas_size.h, packer_nodes.ptr,
                       (i32)packer_nodes.count);
 
-    Arr<stbrp_rect> packer_rects = arena_push_arr<stbrp_rect>(arena, textures.count);
+    Arr_stbrp_rect packer_rects = arena_push_arr(arena, stbrp_rect, textures.count);
     for (u64 i = 0; i < textures.count; i++) {
-        packer_rects[i].id = (i32)i;
-        if (textures[i].dims.w > 0 && textures[i].dims.h > 0) {
-            packer_rects[i].w = textures[i].dims.w + 2;
-            packer_rects[i].h = textures[i].dims.h + 2;
+        A(packer_rects, i).id = (i32)i;
+        if (A(textures, i).dims.w > 0 && A(textures, i).dims.h > 0) {
+            A(packer_rects, i).w = A(textures, i).dims.w + 2;
+            A(packer_rects, i).h = A(textures, i).dims.h + 2;
         }
     }
 
     log_assert(stbrp_pack_rects(&packer_ctx, packer_rects.ptr, (i32)packer_rects.count) == 1);
 
-    Arr<PxRect> placements = arena_push_arr<PxRect>(arena, textures.count);
+    Arr_PxRect placements = arena_push_arr(arena, PxRect, textures.count);
     for (u64 i = 0; i < textures.count; i++) {
-        if (textures[i].dims.w > 0 && textures[i].dims.h > 0) {
-            placements[i].x = (u16)packer_rects[i].x + 1;
-            placements[i].y = (u16)packer_rects[i].y + 1;
-            placements[i].w = (u16)textures[i].dims.w;
-            placements[i].h = (u16)textures[i].dims.h;
+        if (A(textures, i).dims.w > 0 && A(textures, i).dims.h > 0) {
+            A(placements, i).x = (u16)A(packer_rects, i).x + 1;
+            A(placements, i).y = (u16)A(packer_rects, i).y + 1;
+            A(placements, i).w = A(textures, i).dims.w;
+            A(placements, i).h = A(textures, i).dims.h;
         }
     }
 
@@ -1458,16 +1491,16 @@ Atlas *make_and_upload_atlas(ErrorContext *err,
     //
 
     // Compute transfer buffer size
-    Arr<u32> offsets = arena_push_arr<u32>(scratch, textures.count);
+    Arr_u32 offsets = arena_push_arr(scratch, u32, textures.count);
     for (u64 i = 0; i < textures.count; i++) {
         if (i > 0) {
-            u32 prev_offset = offsets[i - 1];
-            u32 prev_size = (u32)textures[i - 1].buffer.count;
-            offsets[i] = align_to(prev_offset + prev_size, (u32)512);
+            u32 prev_offset = A(offsets, i - 1);
+            u32 prev_size = (u32)A(textures, i - 1).buffer.count;
+            A(offsets, i) = align_to(prev_offset + prev_size, (u32)512);
         }
     }
     u32 transfer_buffer_size =
-        offsets[offsets.count - 1] + (u32)textures[textures.count - 1].buffer.count;
+        A(offsets, offsets.count - 1) + (u32)A(textures, textures.count - 1).buffer.count;
 
     SDL_GPUTransferBufferCreateInfo transfer_buffer_info = {
         .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
@@ -1478,8 +1511,8 @@ Atlas *make_and_upload_atlas(ErrorContext *err,
 
     void *buf = SDL_MapGPUTransferBuffer(device, transfer_buffer, false);
     for (u64 i = 0; i < textures.count; i++) {
-        u64 size = textures[i].buffer.count;
-        SDL_memcpy((u8 *)buf + offsets[i], textures[i].buffer.ptr, size);
+        u64 size = A(textures, i).buffer.count;
+        SDL_memcpy((u8 *)buf + A(offsets, i), A(textures, i).buffer.ptr, size);
     }
     SDL_UnmapGPUTransferBuffer(device, transfer_buffer);
 
@@ -1491,7 +1524,7 @@ Atlas *make_and_upload_atlas(ErrorContext *err,
     SDL_GPUCopyPass *copy_pass = SDL_BeginGPUCopyPass(command_buffer);
 
     for (u64 i = 0; i < textures.count; i++) {
-        if (textures[i].dims.w > 0 && textures[i].dims.h > 0) {
+        if (A(textures, i).dims.w > 0 && A(textures, i).dims.h > 0) {
             SDL_GPUTextureTransferInfo src = {
                 .transfer_buffer = transfer_buffer,
                 .offset = offsets[i],
@@ -1500,11 +1533,11 @@ Atlas *make_and_upload_atlas(ErrorContext *err,
                 .texture = texture,
                 .mip_level = 0,
                 .layer = 0,
-                .x = (u32)placements[i].x,
-                .y = (u32)placements[i].y,
+                .x = (u32)A(placements, i).x,
+                .y = (u32)A(placements, i).y,
                 .z = 0,
-                .w = (u32)placements[i].w,
-                .h = (u32)placements[i].h,
+                .w = (u32)A(placements, i).w,
+                .h = (u32)A(placements, i).h,
                 .d = 1,
             };
             SDL_UploadToGPUTexture(copy_pass, &src, &dest, false);
@@ -1519,8 +1552,8 @@ Atlas *make_and_upload_atlas(ErrorContext *err,
 
     SDL_GPUSamplerCreateInfo sampler_info = {};
     switch (filter) {
-    case TextureFilterType_Linear: {
-        sampler_info = {
+    case FilterType_Linear: {
+        sampler_info = (SDL_GPUSamplerCreateInfo){
             .min_filter = SDL_GPU_FILTER_LINEAR,
             .mag_filter = SDL_GPU_FILTER_LINEAR,
             .mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_LINEAR,
@@ -1530,8 +1563,8 @@ Atlas *make_and_upload_atlas(ErrorContext *err,
         };
         break;
     }
-    case TextureFilterType_Nearest: {
-        sampler_info = {
+    case FilterType_Nearest: {
+        sampler_info = (SDL_GPUSamplerCreateInfo){
             .min_filter = SDL_GPU_FILTER_NEAREST,
             .mag_filter = SDL_GPU_FILTER_NEAREST,
             .mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_NEAREST,
@@ -1549,7 +1582,6 @@ Atlas *make_and_upload_atlas(ErrorContext *err,
     // Return atlas descriptor
     //
 
-    Atlas *atlas = arena_push<Atlas>(arena);
     atlas->size = atlas_size;
     atlas->texture = texture;
     atlas->sampler = sampler;
@@ -1558,6 +1590,8 @@ Atlas *make_and_upload_atlas(ErrorContext *err,
     atlas->packer_nodes = packer_nodes;
     atlas->packer_rects = packer_rects;
 
+end:
+    arena_release(scratch);
     return atlas;
 }
 
@@ -1633,16 +1667,17 @@ void init_vertex_buffers(ErrorContext *err, App *app) {
 
 void make_and_upload_icon_atlas(ErrorContext *err, App *app, SDL_GPUCommandBuffer *command_buffer) {
     Arena *scratch = arena_acquire();
-    defer(arena_release(scratch));
 
     FileDef *file = &app->session->file;
-    Arr<CPUTexture> icon_textures = arena_push_arr<CPUTexture>(scratch, file->segments.count);
+    Arr_CPUTexture icon_textures = arena_push_arr<CPUTexture>(scratch, file->segments.count);
     for (u64 i = 0; i < file->segments.count; i++) {
-        icon_textures[i] = file->segments[i].icon_texture;
+        A(icon_textures, i) = A(file->segments, i).icon_texture;
     }
     app->icon_atlas = make_and_upload_atlas(
-        err, app->session_arena, app->device, command_buffer, app->clear_icon_pipeline,
-        S("Icon atlas"), icon_textures, {.w = 1024, .h = 1024}, TextureFilterType_Linear);
+        err app->session_arena, app->device, command_buffer, app->clear_icon_pipeline,
+        S("Icon atlas"), icon_textures, (PxSize){.w = 1024, .h = 1024}, FilterType_Linear);
+
+    arena_release(scratch);
 }
 
 void init_render_pipelines(ErrorContext *err, App *app) {
@@ -1679,18 +1714,26 @@ void init_render_pipelines(ErrorContext *err, App *app) {
 }
 
 void init_render_buffers(ErrorContext *err, App *app) {
-    SDL_GPUCommandBuffer *command_buffer = try_sdl(err, SDL_AcquireGPUCommandBuffer(app->device));
-    defer(SDL_SubmitGPUCommandBuffer(command_buffer));
+    SDL_GPUCommandBuffer *command_buffer = NULL;
+    err_push(err, S("Initialize render buffers"));
 
-    init_vertex_buffers(err, app);
-    if (err_occurred(err)) return;
+    do {
+        command_buffer = SDL_AcquireGPUCommandBuffer(app->device);
+        if (command_buffer == NULL) break;
 
-    make_and_upload_icon_atlas(err, app, command_buffer);
-    if (err_occurred(err)) return;
+        init_vertex_buffers(err, app);
+        if (err_occurred(err)) break;
 
-    app->glyph_atlas = make_and_upload_glyph_atlas(err, app->app_arena, app->device, command_buffer,
-                                                   app->clear_glyph_pipeline, app->freetype,
-                                                   app->font_file, FONT_SIZE_PX);
+        make_and_upload_icon_atlas(err, app, command_buffer);
+        if (err_occurred(err)) break;
+
+        app->glyph_atlas = make_and_upload_glyph_atlas(err, app->app_arena, app->device,
+                                                       command_buffer, app->clear_glyph_pipeline,
+                                                       app->freetype, app->font_file, FONT_SIZE_PX);
+    } while (0);
+
+    if (command_buffer != NULL) SDL_SubmitGPUCommandBuffer(command_buffer);
+    err_pop();
 }
 
 void init_renderer(ErrorContext *err, App *app) {
@@ -1810,18 +1853,16 @@ void render_main_color_pass(App *app,
 
 void render(App *app) {
     Arena *frame_arena = arena_acquire();
-    defer(arena_release(frame_arena));
+    SDL_GPUCommandBuffer *command_buffer = NULL;
 
-    SDL_GPUCommandBuffer *command_buffer = SDL_AcquireGPUCommandBuffer(app->device);
+    command_buffer = SDL_AcquireGPUCommandBuffer(app->device);
     SDL_GPUTexture *swapchain_texture = nullptr;
     u32 width = 0;
     u32 height = 0;
     SDL_WaitAndAcquireGPUSwapchainTexture(command_buffer, app->window, &swapchain_texture, &width,
                                           &height);
     if (swapchain_texture == nullptr) {  // Apparently can occur if window is minimized
-        // Submit nothing in order to get rid of command buffer I guess?
-        SDL_SubmitGPUCommandBuffer(command_buffer);
-        return;
+        goto end;
     }
     PxSize window_size = {.w = (u16)width, .h = (u16)height};
 
@@ -1842,6 +1883,10 @@ void render(App *app) {
                            glyph_quad_count);
 
     SDL_SubmitGPUCommandBuffer(command_buffer);
+
+end:
+    if (command_buffer) SDL_SubmitGPUCommandBuffer(command_buffer);
+    arena_release(frame_arena);
 }
 
 //
@@ -2000,11 +2045,11 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
         event->button.button == SDL_BUTTON_RIGHT) {
         if (SDL_HasClipboardText()) {
             char *clipboard_cstr = SDL_GetClipboardText();
-            defer(SDL_free(clipboard_cstr));
             Str clipboard = str_trim(str_from_c(clipboard_cstr));
             if (!str_is_empty(clipboard)) {  // Empty iff SDL failed to allocate it
                 try_load_new_session(app, clipboard);
             }
+            SDL_free(clipboard_cstr);
         }
     }
 
