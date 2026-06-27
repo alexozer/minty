@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#include <SDL3/SDL_iostream.h>
 #include <SDL3/SDL_log.h>
 #include <SDL3/SDL_stdinc.h>
 
@@ -106,6 +107,7 @@ bool str_starts_with(Str s, Str prefix);
 __attribute__((format(printf, 2, 3))) Str str_format(Arena *arena, const char *format, ...);
 Str str_format_v(Arena *arena, const char *format, va_list args);
 bool str_is_valid_utf8(Str s);
+bool str_is_empty(Str s);
 bool str_find(Str haystack, Str needle, u64 *pos);
 Str str_slice(Str s, u64 start, u64 end);
 
@@ -156,48 +158,40 @@ inline static Duration instant_sub(Instant a, Instant b) {
     return a.time_nanoseconds - b.time_nanoseconds;
 }
 
+inline static Instant instant_from_sdl_nanos(u64 nanos) {
+    return (Instant){.time_nanoseconds = (i64)nanos};
+}
+
 // TODO memset?
 #define vec_reset(v) (v)->count = 0
+
+//
+// IO
+//
+
+SDL_IOStream *sdl_io_from_mem(ErrorContext *err, Arr_u8 buf);
+void sdl_close_io(SDL_IOStream *stream);
 
 //
 // Errors
 //
 
-struct ErrorContext {
+typedef struct ErrorContext {
     Arena *arena;
     Vec_Str ctx_stack;
-};
+} ErrorContext;
 
-__attribute__((format(printf, 2, 3))) void err_push(ErrorContext *ctx, const char *format, ...);
+typedef struct Scope {
+    ErrorContext *err;
+    u64 last_err_stack_pos;
+} Scope;
 
-#define bail(err, format, ...)                           \
-    err_push((err), (format)__VA_OPT__(, ) __VA_ARGS__); \
-    goto end;
+Scope scope_open(ErrorContext *err);
+__attribute__((format(printf, 2, 3))) void err_report(ErrorContext *err, const char *format, ...);
+__attribute__((format(printf, 2, 3))) void scope_close(Scope scope, const char *format, ...);
 
-#define try(func_call)                              \
-    ({                                              \
-        typeof(func_call) _child_ret = (func_call); \
-        if (!_child_ret) {                          \
-            goto end;                               \
-        }                                           \
-        _child_ret;                                 \
-    })
+//
+// Encoding/decoding
+//
 
-#define try_sdl(err, func_call)                     \
-    ({                                              \
-        typeof(func_call) _child_ret = (func_call); \
-        if (!_child_ret) {                          \
-            bail(err, "%s", SDL_GetError());        \
-        }                                           \
-        _child_ret;                                 \
-    })
-
-#define try_ft(err, func_call)                        \
-    ({                                                \
-        FT_Error _err = (func_call);                  \
-        if (_err != FT_Err_Ok) {                      \
-            bail((err), "%s", FT_Error_String(_err)); \
-        }                                             \
-    })
-
-Arr_u8 fs_load_file_c(ErrorContext *err, Arena *arena, Str path);
+Arr_u8 decode_base64(ErrorContext *err, Arena *arena, Str s);

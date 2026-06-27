@@ -267,6 +267,8 @@ struct App {
 //
 
 CPUTexture convert_srgb_surface_to_rgba(Arena *arena, SDL_Surface *surface) {
+    if (!surface) return (CPUTexture){};
+
     u64 dest_size = (u64)(surface->w * surface->h * 4);
     Arr_u8 buffer = {
         // TODO don't use "private" arena API for alignment
@@ -573,19 +575,33 @@ Str xml_inner(xao_Reader *r, xao_Value outer) {
 // should be const
 u8 PNG_HEADER[] = {0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a};
 
-CPUTexture decode_png_to_texture(ErrorContext *err, Arena *arena, Arr_u8 png) {
-    CPUTexture texture = {};
-    SDL_IOStream *stream = nullptr;
-    SDL_Surface *surface = nullptr;
+SDL_Surface *sdl_load_png_io(ErrorContext *err, SDL_IOStream *stream) {
+    if (!stream) return nullptr;
+    Scope scope = scope_open(err);
 
-    stream = try_sdl(err, SDL_IOFromMem(png.ptr, png.count));
-    surface = try_sdl(err, SDL_LoadPNG_IO(stream, false));
-    texture = convert_srgb_surface_to_rgba(arena, surface);
+    SDL_Surface *surface = SDL_LoadPNG_IO(stream, false);
+    if (!surface) {
+        err_report(err, "%s", SDL_GetError());
+    }
 
-end:
-    if (err->ctx_stack.count) err_push(err, "Decode PNG to texture");
-    if (stream) SDL_CloseIO(stream);
+    scope_close(scope, "Load PNG from stream");
+    return surface;
+}
+
+void sdl_destroy_surface(SDL_Surface *surface) {
     if (surface) SDL_DestroySurface(surface);
+}
+
+CPUTexture decode_png_to_texture(ErrorContext *err, Arena *arena, Arr_u8 png) {
+    ErrorScope scope = err_scope(err);
+
+    SDL_IOStream *stream = sdl_io_from_mem(err, png);
+    SDL_Surface *surface = sdl_load_png_io(err, stream);
+    CPUTexture texture = convert_srgb_surface_to_rgba(arena, surface);
+    sdl_destroy_surface(surface);
+    sdl_close_io(stream);
+
+    err_ctx(scope, "Decode png to texture");
     return texture;
 }
 
@@ -593,7 +609,7 @@ Arr_SegmentDef parse_livesplit_segments(ErrorContext *err,
                                         Arena *arena,
                                         xao_Reader *r,
                                         xao_Value segments_tag) {
-    err_scope(err, "Parse LiveSplit LSS segments");
+    Scope scope = scope_open(err);
 
     Vec_SegmentDef segments = {};
     xao_Value seg_tag = {};
@@ -603,19 +619,22 @@ Arr_SegmentDef parse_livesplit_segments(ErrorContext *err,
         while (xao_iter_tags(r, seg_tag, &attr_tag)) {
             if (eq(attr_tag, "Name")) {
                 seg->name = str_clone(arena, xml_inner(r, attr_tag));
-                if (str_is_empty(seg->name)) {
-                    bail_v(err, {}, "Segment %" PRIu64 " has empty name", segments.count + 1);
-                }
+
             } else if (eq(attr_tag, "Icon")) {
-                err_scope(err, "Decode icon for segment '%.*s'", SF(seg->name));
+                Scope icon_scope = scope_open(err);
+
                 Str base64 = xml_inner(r, attr_tag);
                 if (!str_is_empty(base64)) {
-                    seg->icon_png = decode_icon_base64_to_png(arena, err, base64);
-                    seg->icon_texture = decode_png_to_texture(arena, seg->icon_png);
+                    seg->icon_png = decode_base64(err, arena, base64);
+                    seg->icon_texture = decode_png_to_texture(err, arena, seg->icon_png);
                 }
+
+                scope_close(icon_scope, "Decode icon for segment '%.*s'", SF(seg->name));
             }
         }
     }
+
+    scope_close(scope, "Parse LiveSplit LSS segments");
     return vec_arr(&segments);
 }
 
