@@ -284,8 +284,6 @@ struct Vec {
     }
 };
 
-constexpr u64 MIN_VEC_CAPACITY = 8;
-
 template <typename T>
 void vec__grow(Arena *arena, Vec<T> *vec, u64 new_cap) {
     // Fast path?
