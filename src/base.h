@@ -184,7 +184,6 @@ bool str_split2(Str base, u8 delim, Str *left, Str *right);
 //
 
 #define c_arr_count(a) (sizeof((a)) / sizeof((a)[0]))
-#define arr_from_c(a) ((CONCAT(Arr_, typeof(*a->ptr))){.ptr = (a), .count = c_arr_count(a)}))
 
 #define arr_eq(a, b) \
     ((a).count == (b).count && SDL_memcmp((a).ptr, (b).ptr, (a).count * sizeof(*(a).ptr)) == 0)
@@ -200,7 +199,7 @@ bool str_split2(Str base, u8 delim, Str *left, Str *right);
         })                              \
     })
 
-#define vec_last(v) A(v, ((v).count - 1))
+#define arr_last(v) A(v, ((v).count - 1))
 
 // For non-overlapping arrays
 #define arr_copy(dest, source)                                                          \
@@ -223,11 +222,18 @@ bool str_split2(Str base, u8 delim, Str *left, Str *right);
 #define arr_is_empty(arr) ((arr).count == 0)
 
 #define arr_clone(arena, arr)                                                          \
-    ({                                                                                \
+    ({                                                                                 \
         typeof(arr) clone = arena_push_arr(arena, typeof(*((arr).ptr)), (arr).count)); \
         arr_copy(clone, (arr));                                                        \
         clone;                                                                         \
     })
+
+//
+// Option
+//
+
+// TODO codegen to avoid passing type
+#define some(v, t) ((CONCAT(Opt_, t)){.opt = (v), .present = true})
 
 //
 // Duration

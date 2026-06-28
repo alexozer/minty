@@ -467,7 +467,7 @@ void timer_apply_action_running(Arena *arena, Session *session, TimerAction acti
     switch (action) {
     case TimerAction_Split: {
         Duration elapsed = timer_get_elapsed(timer, t);
-        vec_push(arena, &timer->live_splits, some(elapsed));
+        vec_push(arena, &timer->live_splits, some(elapsed, Duration));
 
         if (timer->live_splits.count == file->segments.count) {
             timer->mode = TimerMode_Finished;
@@ -746,14 +746,14 @@ Box *make_text_box(Arena *arena, Str content, Color color) {
 Box *make_empty_box(Arena *arena, PxSize size) {
     Box *box = arena_push(arena, Box);
     box->type = BoxType_Empty;
-    box->bbox = some(size);
+    box->bbox = some(size, PxSize);
     return box;
 }
 
 Box *make_texture_box(Arena *arena, u64 texture_idx, PxSize size) {
     Box *box = arena_push(arena, Box);
     box->type = BoxType_Texture;
-    box->bbox = some(size);
+    box->bbox = some(size, PxSize);
     box->texture_idx = texture_idx;
     return box;
 }
@@ -761,7 +761,7 @@ Box *make_texture_box(Arena *arena, u64 texture_idx, PxSize size) {
 Box *make_solid_color_box(Arena *arena, Color color, PxSize size) {
     Box *box = arena_push(arena, Box);
     box->type = BoxType_SolidColor;
-    box->bbox = some(size);
+    box->bbox = some(size, PxSize);
     box->color = color;
     return box;
 }
@@ -827,7 +827,7 @@ PxSize compute_box_bbox(Box *box) {
         return box->bbox.opt;
     }
     PxSize bbox = compute_box_bbox_uncached(box);
-    box->bbox = some(bbox);
+    box->bbox = some(bbox, PxSize);
     return bbox;
 }
 
@@ -1312,7 +1312,7 @@ u64 make_glyph_mesh(Arena *arena,
 
     Arr_ShapedGlyph shaped_glyphs = shape_text_naive(scratch, font_file, text);
     for (u64 i = 0; i < shaped_glyphs.count; i++) {
-        u32 glyph_id = shaped_glyphs[i].glyph_id;
+        u32 glyph_id = A(shaped_glyphs, i).glyph_id;
 
         // Shaping position of glyph
         f32 glyph_px_x =
@@ -1328,7 +1328,8 @@ u64 make_glyph_mesh(Arena *arena,
         u16 dest_px_x = (u16)SDL_lroundf(200.f + bitmap_px_x);
         u16 dest_px_y = (u16)SDL_lroundf(200.f - bitmap_px_y);
 
-        PxRect src = atlas->atlas->placements[shaped_glyphs[i].glyph_id];
+        u32 shaped_id = A(shaped_glyphs, i).glyph_id;
+        PxRect src = A(atlas->atlas->placements, shaped_id);
         PxRect dst = {.x = dest_px_x, .y = dest_px_y, .w = src.w, .h = src.h};
         Color color = {.r = 255, .g = 255, .b = 255, .a = 255};
         push_atlas_quad(arena, window_size, atlas->atlas, mesh, src, dst, color);
@@ -1949,12 +1950,11 @@ void render(App *app) {
     SDL_GPUCommandBuffer *command_buffer = SDL_AcquireGPUCommandBuffer(app->device);
     log_assert(command_buffer);
 
-    SDL_GPUTexture *swapchain_texture = nullptr;
+    SDL_GPUTexture *texture = nullptr;
     u32 width = 0;
     u32 height = 0;
-    SDL_WaitAndAcquireGPUSwapchainTexture(command_buffer, app->window, &swapchain_texture, &width,
-                                          &height);
-    if (swapchain_texture) {  // Apparently can be null if window is minimized
+    SDL_WaitAndAcquireGPUSwapchainTexture(command_buffer, app->window, &texture, &width, &height);
+    if (texture) {  // Apparently can be null if window is minimized
         PxSize window_size = {.w = (u16)width, .h = (u16)height};
 
         Mesh mesh = {};
@@ -1970,8 +1970,7 @@ void render(App *app) {
         }
 
         do_geometry_upload_pass(app, command_buffer, &mesh);
-        render_main_color_pass(app, command_buffer, swapchain_texture, icon_quad_count,
-                               glyph_quad_count);
+        render_main_color_pass(app, command_buffer, texture, icon_quad_count, glyph_quad_count);
     }
 
     SDL_SubmitGPUCommandBuffer(command_buffer);
