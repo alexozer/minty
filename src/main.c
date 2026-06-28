@@ -593,7 +593,7 @@ void sdl_destroy_surface(SDL_Surface *surface) {
 }
 
 CPUTexture decode_png_to_texture(ErrorContext *err, Arena *arena, Arr_u8 png) {
-    ErrorScope scope = err_scope(err);
+    Scope scope = scope_open(err);
 
     SDL_IOStream *stream = sdl_io_from_mem(err, png);
     SDL_Surface *surface = sdl_load_png_io(err, stream);
@@ -601,7 +601,7 @@ CPUTexture decode_png_to_texture(ErrorContext *err, Arena *arena, Arr_u8 png) {
     sdl_destroy_surface(surface);
     sdl_close_io(stream);
 
-    err_ctx(scope, "Decode png to texture");
+    scope_close(scope, "Decode png to texture");
     return texture;
 }
 
@@ -638,11 +638,11 @@ Arr_SegmentDef parse_livesplit_segments(ErrorContext *err,
     return vec_arr(&segments);
 }
 
-void parse_livesplit_lss(ErrorContext *err, Arena *arena, FileDef *file, Arr<u8> xml) {
-    err_scope(err, "Parse LiveSplit LSS");
+void parse_livesplit_lss(ErrorContext *err, Arena *arena, FileDef *file, Arr_u8 xml) {
+    Scope scope = scope_open(err);
 
     if (!str_is_valid_utf8(xml)) {
-        bail(err, "Invalid UTF-8");
+        err_report(err, "Invalid UTF_8");
     }
 
     xao_Reader r = xao_reader((char *)xml.ptr, xml.count);
@@ -657,9 +657,10 @@ void parse_livesplit_lss(ErrorContext *err, Arena *arena, FileDef *file, Arr<u8>
                 } else if (eq(run_tag, "CategoryName")) {
                     file->category_name = str_clone(arena, xml_inner(&r, run_tag));
                 } else if (eq(run_tag, "AttemptCount")) {
-                    err_scope(err, "Parse AttemptCount");
+                    Scope attempt_count_scope = scope_open(err);
                     Str attempts_str = str_clone(arena, xml_inner(&r, run_tag));
                     file->total_attempts = parse_u64(err, attempts_str);
+                    scope_close(attempt_count_scope, "Parse AttemptCount");
                 } else if (eq(run_tag, "Segments")) {
                     file->segments = parse_livesplit_segments(arena, err, &r, run_tag);
                 }
@@ -683,10 +684,12 @@ void parse_livesplit_lss(ErrorContext *err, Arena *arena, FileDef *file, Arr<u8>
     if (str_is_empty(file->game_name)) {
         bail(err, "Empty game name");
     }
+
+    scope_close(scope, "Parse LiveSplit LSS");
 }
 
 void load_livesplit_lss(Arena *arena, ErrorContext *err, Str lss_path, FileDef *file) {
-    err_scope(err, "Load LiveSplit LSS file '%.*s'", SF(lss_path));
+    scope_open(err, "Load LiveSplit LSS file '%.*s'", SF(lss_path));
 
     Arena *scratch = arena_acquire();
     defer(arena_release(scratch));
@@ -999,17 +1002,17 @@ void push_atlas_quad(Arena *arena,
                      PxRect src,
                      PxRect dst,
                      Color color) {
-    Arr<u16> indices = vec_extend_zero(arena, &mesh->indices, 6);
-    indices[0] = (u16)(mesh->vertices.count + 0);
-    indices[1] = (u16)(mesh->vertices.count + 1);
-    indices[2] = (u16)(mesh->vertices.count + 2);
-    indices[3] = (u16)(mesh->vertices.count + 2);
-    indices[4] = (u16)(mesh->vertices.count + 1);
-    indices[5] = (u16)(mesh->vertices.count + 3);
+    Arr_u16 indices = vec_extend_zero(arena, &mesh->indices, 6);
+    A(indices, 0) = (u16)(mesh->vertices.count + 0);
+    A(indices, 1) = (u16)(mesh->vertices.count + 1);
+    A(indices, 2) = (u16)(mesh->vertices.count + 2);
+    A(indices, 3) = (u16)(mesh->vertices.count + 2);
+    A(indices, 4) = (u16)(mesh->vertices.count + 1);
+    A(indices, 5) = (u16)(mesh->vertices.count + 3);
 
-    Arr<Vertex> vertices = vec_extend_zero(arena, &mesh->vertices, 4);
+    Arr_Vertex vertices = vec_extend_zero(arena, &mesh->vertices, 4);
     // Top left
-    vertices[0] = {
+    A(vertices, 0) = (Vertex){
         .x = (f32)dst.x,
         .y = (f32)dst.y,
         .z = 0,
@@ -1021,7 +1024,7 @@ void push_atlas_quad(Arena *arena,
         .a = color.a,
     };
     // Top right
-    vertices[1] = {
+    A(vertices, 1) = (Vertex){
         .x = (f32)(dst.x + dst.w),
         .y = (f32)dst.y,
         .z = 0,
@@ -1033,7 +1036,7 @@ void push_atlas_quad(Arena *arena,
         .a = color.a,
     };
     // Bottom left
-    vertices[2] = {
+    A(vertices, 2) = (Vertex){
         .x = (f32)dst.x,
         .y = (f32)(dst.y + dst.h),
         .z = 0,
@@ -1045,7 +1048,7 @@ void push_atlas_quad(Arena *arena,
         .a = color.a,
     };
     // Bottom right
-    vertices[3] = {
+    A(vertices, 3) = (Vertex){
         .x = (f32)(dst.x + dst.w),
         .y = (f32)(dst.y + dst.h),
         .z = 0,
@@ -1058,10 +1061,10 @@ void push_atlas_quad(Arena *arena,
     };
 
     // TODO less awkward way to do this?
-    window_to_ndc(&vertices[0], window_size);
-    window_to_ndc(&vertices[1], window_size);
-    window_to_ndc(&vertices[2], window_size);
-    window_to_ndc(&vertices[3], window_size);
+    window_to_ndc(&A(vertices, 0), window_size);
+    window_to_ndc(&A(vertices, 1), window_size);
+    window_to_ndc(&A(vertices, 2), window_size);
+    window_to_ndc(&A(vertices, 3), window_size);
 }
 
 void make_icon_mesh_inner(Arena *arena,
@@ -1214,7 +1217,7 @@ GlyphAtlas make_and_upload_glyph_atlas(ErrorContext *err,
     FT_Face face = {};
     GlyphAtlas ret = {};
 
-    // err_scope(err, "Initialize text rendering");
+    // scope_open(err, "Initialize text rendering");
 
     // defer(arena_release(scratch));
 
@@ -1324,7 +1327,7 @@ SDL_GPUGraphicsPipeline *make_render_pipeline(ErrorContext *err,
                                               SDL_GPUShader *frag_shader,
                                               SDL_GPUTextureFormat target_texture_format,
                                               BlendType blend_type) {
-    err_scope(err, "Init render pipeline");
+    scope_open(err, "Init render pipeline");
 
     SDL_GPUColorTargetBlendState blend_state = {};
     if (blend_type == BlendType_Over) {
@@ -1592,7 +1595,7 @@ end:
 }
 
 SDL_GPUShader *load_shader(ErrorContext *err, SDL_GPUDevice *device, Str name, ShaderType type) {
-    err_scope(err, "Load shader '%.*s'", SF(name));
+    scope_open(err, "Load shader '%.*s'", SF(name));
 
     Arena *scratch = arena_acquire();
     defer(arena_release(scratch));
@@ -1638,7 +1641,7 @@ SDL_GPUShader *load_shader(ErrorContext *err, SDL_GPUDevice *device, Str name, S
 }
 
 void init_vertex_buffers(ErrorContext *err, App *app) {
-    err_scope(err, "Init vertex+index buffers");
+    scope_open(err, "Init vertex+index buffers");
 
     SDL_GPUBufferCreateInfo vert_info = {
         .usage = SDL_GPU_BUFFERUSAGE_VERTEX,
@@ -1896,7 +1899,7 @@ SDL_HitTestResult hittest_callback(SDL_Window *window, const SDL_Point *point, v
 }
 
 void init_window(ErrorContext *err, App *app) {
-    err_scope(err, "Initialize window");
+    scope_open(err, "Initialize window");
 
     try_sdl(err, SDL_SetAppMetadata("Blitter", "0.0.1", nullptr));
 

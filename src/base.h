@@ -106,7 +106,7 @@ bool str_eq(Str s1, Str s2);
 bool str_starts_with(Str s, Str prefix);
 __attribute__((format(printf, 2, 3))) Str str_format(Arena *arena, const char *format, ...);
 Str str_format_v(Arena *arena, const char *format, va_list args);
-bool str_is_valid_utf8(Str s);
+bool str_is_valid_utf8(Arr_u8 s);
 bool str_is_empty(Str s);
 bool str_find(Str haystack, Str needle, u64 *pos);
 Str str_slice(Str s, u64 start, u64 end);
@@ -135,7 +135,7 @@ bool str_split2(Str base, u8 delim, Str *left, Str *right);
 // Encoding/Decoding
 //
 
-bool parse_u64(Str s, u64 *out);
+u64 parse_u64(ErrorContext *err, Str s);
 
 //
 // FS
@@ -189,6 +189,7 @@ typedef struct Scope {
 Scope scope_open(ErrorContext *err);
 __attribute__((format(printf, 2, 3))) void err_report(ErrorContext *err, const char *format, ...);
 __attribute__((format(printf, 2, 3))) void scope_close(Scope scope, const char *format, ...);
+bool err_occurred(ErrorContext *err);
 
 //
 // Encoding/decoding

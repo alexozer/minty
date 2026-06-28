@@ -278,27 +278,29 @@ bool str_find(Str haystack, Str needle, u64 *out) {
 // Encoding/Decoding
 //
 
-bool parse_u64(Str s, u64 *out) {
-    *out = 0;
+u64 parse_u64(ErrorContext *err, Str s) {
+    Scope scope = scope_open(err);
 
     if (str_is_empty(s)) {
-        return false;
+        err_report(err, "Empty string");
     }
 
     u64 result = 0;
     for (u64 i = 0; i < s.count; i++) {
         if (A(s, i) < C('0') || A(s, i) > C('9')) {
-            return false;
+            err_report(err, "Non-numeric character");
         }
         u64 new_result = result * 10 + (s.ptr[i] - C('0'));
         if (new_result < result) {
-            return false;
+            err_report(err, "Overflow");
         }
         result = new_result;
     }
 
-    *out = result;
-    return true;
+    // In general, should fallible functions try to return "reasonable" values on failure?
+    if (err_occurred(err)) result = 0;
+    scope_close(scope, "Parse '%.*s' as u64", SF(s));
+    return result;
 }
 
 //
@@ -312,7 +314,7 @@ void thread_init() {
 SDL_IOStream *sdl_io_from_mem(ErrorContext *err, Arr_u8 buf) {
     SDL_IOStream *stream = SDL_IOFromMem(buf.ptr, buf.count);
     if (!stream) {
-        err_push(err, "%s", SDL_GetError());
+        err_report(err, "%s", SDL_GetError());
     }
     return stream;
 }
@@ -408,6 +410,10 @@ __attribute__((format(printf, 2, 3))) void err_ctx(Scope scope, const char *form
         vec_push(scope.err->arena, &scope.err->ctx_stack, msg);
         va_end(args);
     }
+}
+
+bool err_occurred(ErrorContext *err) {
+    return err->ctx_stack.count > 0;
 }
 
 //

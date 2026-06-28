@@ -36,6 +36,7 @@ typedef struct stbrp_rect stbrp_rect;
 typedef struct stbrp_node stbrp_node;
 typedef struct Mesh Mesh;
 typedef struct ShapedGlyph ShapedGlyph;
+typedef struct PxPos PxPos;
 
 typedef enum TimerMode TimerMode;
 typedef enum TimerAction TimerAction;
@@ -135,9 +136,19 @@ typedef struct {
 } Arr_u32;
 
 typedef struct {
+    u16 *ptr;
+    u64 count;
+} Arr_u16;
+
+typedef struct {
     ShapedGlyph *ptr;
     u64 count;
 } Arr_ShapedGlyph;
+
+typedef struct {
+    Vertex *ptr;
+    u64 count;
+} Arr_Vertex;
 
 typedef struct {
     ShapedGlyph *ptr;
