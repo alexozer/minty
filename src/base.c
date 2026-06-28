@@ -1,8 +1,7 @@
 #include "base.h"
-#include "SDL3/SDL_error.h"
 #include "platform.h"
-#include "template_types.h"
 
+#include <SDL3/SDL_error.h>
 #include <SDL3/SDL_iostream.h>
 #include <SDL3/SDL_log.h>
 #include <SDL3/SDL_timer.h>
