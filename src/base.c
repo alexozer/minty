@@ -365,6 +365,10 @@ Instant get_current_monotonic_time() {
     return (Instant){.time_nanoseconds = (i64)SDL_GetTicksNS()};
 }
 
+inline static Instant instant_from_sdl_nanos(u64 nanos) {
+    return (Instant){.time_nanoseconds = (i64)nanos};
+}
+
 //
 // Errors
 //

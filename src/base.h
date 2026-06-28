@@ -247,9 +247,8 @@ inline static Duration instant_sub(Instant a, Instant b) {
     return a.time_nanoseconds - b.time_nanoseconds;
 }
 
-inline static Instant instant_from_sdl_nanos(u64 nanos) {
-    return (Instant){.time_nanoseconds = (i64)nanos};
-}
+Instant get_current_monotonic_time();
+Instant instant_from_sdl_nanos(u64 nanos);
 
 // TODO memset?
 #define vec_reset(v) (v)->count = 0

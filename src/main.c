@@ -814,7 +814,7 @@ PxSize compute_box_bbox_uncached(Box *box) {
         return total;
     }
     case BoxType_Text: {
-        return {.w = 0, .h = 0};
+        return (PxSize){.w = 0, .h = 0};
     }
     case BoxType_Texture: {
         return box->bbox.opt;
@@ -833,9 +833,9 @@ PxSize compute_box_bbox(Box *box) {
 
 Box *pad_box_left(Arena *arena, Box *box, u16 pad) {
     PxSize bbox = compute_box_bbox(box);
-    Box *pad_box = make_empty_box(arena, {.w = pad, .h = bbox.h});
+    Box *pad_box = make_empty_box(arena, (PxSize){.w = pad, .h = bbox.h});
 
-    Box *parent_box = arena_push<Box>(arena);
+    Box *parent_box = arena_push(arena, Box);
     parent_box->type = BoxType_LeftToRightStack;
     vec_push(arena, &parent_box->children, pad_box);
     vec_push(arena, &parent_box->children, box);
@@ -845,9 +845,9 @@ Box *pad_box_left(Arena *arena, Box *box, u16 pad) {
 
 Box *pad_box_right(Arena *arena, Box *box, u16 pad) {
     PxSize bbox = compute_box_bbox(box);
-    Box *pad_box = make_empty_box(arena, {.w = pad, .h = bbox.h});
+    Box *pad_box = make_empty_box(arena, (PxSize){.w = pad, .h = bbox.h});
 
-    Box *parent_box = arena_push<Box>(arena);
+    Box *parent_box = arena_push(arena, Box);
     parent_box->type = BoxType_LeftToRightStack;
     vec_push(arena, &parent_box->children, box);
     vec_push(arena, &parent_box->children, pad_box);
@@ -857,9 +857,9 @@ Box *pad_box_right(Arena *arena, Box *box, u16 pad) {
 
 Box *pad_box_top(Arena *arena, Box *box, u16 pad) {
     PxSize bbox = compute_box_bbox(box);
-    Box *pad_box = make_empty_box(arena, {.w = bbox.w, .h = pad});
+    Box *pad_box = make_empty_box(arena, (PxSize){.w = bbox.w, .h = pad});
 
-    Box *parent_box = arena_push<Box>(arena);
+    Box *parent_box = arena_push(arena, Box);
     parent_box->type = BoxType_TopToBottomStack;
     vec_push(arena, &parent_box->children, pad_box);
     vec_push(arena, &parent_box->children, box);
@@ -869,9 +869,9 @@ Box *pad_box_top(Arena *arena, Box *box, u16 pad) {
 
 Box *pad_box_bottom(Arena *arena, Box *box, u16 pad) {
     PxSize bbox = compute_box_bbox(box);
-    Box *pad_box = make_empty_box(arena, {.w = bbox.w, .h = pad});
+    Box *pad_box = make_empty_box(arena, (PxSize){.w = bbox.w, .h = pad});
 
-    Box *parent_box = arena_push<Box>(arena);
+    Box *parent_box = arena_push(arena, Box);
     parent_box->type = BoxType_TopToBottomStack;
     vec_push(arena, &parent_box->children, box);
     vec_push(arena, &parent_box->children, pad_box);
@@ -888,7 +888,7 @@ Box *align_box_center_horiz(Arena *arena, Box *box, u16 width) {
     Box *left_pad_box = make_empty_box(arena, {left_pad, bbox.h});
     Box *right_pad_box = make_empty_box(arena, {right_pad, bbox.h});
 
-    Box *parent = arena_push<Box>(arena);
+    Box *parent = arena_push(arena, Box);
     parent->type = BoxType_LeftToRightStack;
     vec_push(arena, &parent->children, left_pad_box);
     vec_push(arena, &parent->children, box);
@@ -903,10 +903,10 @@ Box *align_box_center_vert(Arena *arena, Box *box, u16 height) {
     u16 top_pad = (height - bbox.h) / 2;
     u16 bottom_pad = height - bbox.h - top_pad;
 
-    Box *top_pad_box = make_empty_box(arena, {bbox.w, top_pad});
-    Box *bottom_pad_box = make_empty_box(arena, {bbox.w, bottom_pad});
+    Box *top_pad_box = make_empty_box(arena, (PxSize){bbox.w, top_pad});
+    Box *bottom_pad_box = make_empty_box(arena, (PxSize){bbox.w, bottom_pad});
 
-    Box *parent = arena_push<Box>(arena);
+    Box *parent = arena_push(arena, Box);
     parent->type = BoxType_TopToBottomStack;
     vec_push(arena, &parent->children, top_pad_box);
     vec_push(arena, &parent->children, box);
@@ -933,7 +933,7 @@ Box *prerender_segment(Arena *arena, Session *session, u16 width, u64 idx) {
     Box *title = make_text_box(arena, session->file.segments[idx].name, text_color);
     Box *title_centered = align_box_center_vert(arena, title, ICON_OUTER_PX);
 
-    Box *row_front = arena_push<Box>(arena);
+    Box *row_front = arena_push(arena, Box);
     row_front->type = BoxType_LeftToRightStack;
     vec_push(arena, &row_front->children, icon);
     vec_push(arena, &row_front->children, pad);
@@ -945,7 +945,7 @@ Box *prerender_segment(Arena *arena, Session *session, u16 width, u64 idx) {
         PxSize row_back_size = {.w = width, .h = row_front_bbox.h};
         Box *row_back = make_solid_color_box(arena, bg_color, row_back_size);
 
-        Box *row = arena_push<Box>(arena);
+        Box *row = arena_push(arena, Box);
         row->type = BoxType_BackToFrontStack;
         vec_push(arena, &row->children, row_back);
         vec_push(arena, &row->children, row_front);
@@ -965,7 +965,7 @@ Box *prerender_contents(Arena *arena, Session *session, PxSize size) {
     Box *game_name_centered = align_box_center_horiz(arena, game_name, size.w);
     Box *cat_name_centered = align_box_center_horiz(arena, cat_name, size.w);
 
-    Box *top = arena_push<Box>(arena);
+    Box *top = arena_push(arena, Box);
     top->type = BoxType_TopToBottomStack;
     vec_push(arena, &top->children, game_name_centered);
     vec_push(arena, &top->children, cat_name_centered);
@@ -975,7 +975,7 @@ Box *prerender_contents(Arena *arena, Session *session, PxSize size) {
         vec_push(arena, &top->children, segment);
     }
 
-    Box *bottom = arena_push<Box>(arena);
+    Box *bottom = arena_push(arena, Box);
     bottom->type = BoxType_TopToBottomStack;
 
     Duration t = timer_get_elapsed(&session->timer, get_current_monotonic_time());
@@ -992,7 +992,7 @@ Box *prerender_contents(Arena *arena, Session *session, PxSize size) {
     PxSize vsep_size = {.w = 0, .h = (u16)(size.h - top_bbox.h - bottom_bbox.h)};
     Box *vsep = make_empty_box(arena, vsep_size);
 
-    Box *root = arena_push<Box>(arena);
+    Box *root = arena_push(arena, Box);
     root->type = BoxType_TopToBottomStack;
     vec_push(arena, &root->children, top);
     vec_push(arena, &root->children, vsep);
@@ -2030,7 +2030,7 @@ SDL_Window *init_window(ErrorContext *err) {
 }
 
 Session *make_session(ErrorContext *err, Arena *arena, App *app, Str path) {
-    Session *session = arena_push<Session>(arena);
+    Session *session = arena_push(arena, Session);
     load_livesplit_lss(arena, err, path, &session->file);
     return session;
 }
