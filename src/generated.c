@@ -28,3 +28,8 @@ void vec__grow_Str(Arena *arena, Vec_Str *vec, u64 new_count) {
     vec->capacity = new_cap;
 }
 
+#define vec__grow(arg0, arg1, arg2) _Generic((arg1), \
+    u64: vec__grow_u64, \
+    Str: vec__grow_Str \
+)(arg0, arg1, arg2)
+

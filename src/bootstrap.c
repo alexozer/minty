@@ -191,6 +191,8 @@ Pair_Str str_split2(Str base, u8 delim) {
     if (delim_idx < base.count) {
         pair.left = str_slice(base, 0, delim_idx);
         pair.right = str_slice(base, delim_idx + 1, base.count);
+    } else {
+        pair.left = base;
     }
     return pair;
 }
@@ -241,6 +243,11 @@ bool str_find(Str haystack, Str needle, u64 *out) {
         i = haystack_start + 1;
     }
     return false;
+}
+
+bool str_contains(Str haystack, Str needle) {
+    u64 dummy = 0;
+    return str_find(haystack, needle, &dummy);
 }
 
 //

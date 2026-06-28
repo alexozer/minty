@@ -103,6 +103,7 @@ Str str_format_v(Arena *arena, const char *format, va_list args);
 bool str_is_valid_utf8(Arr_u8 s);
 bool str_is_empty(Str s);
 bool str_find(Str haystack, Str needle, u64 *pos);
+bool str_contains(Str haystack, Str needle);
 Str str_slice(Str s, u64 start, u64 end);
 
 // Certainly possible to do this simply and w/o an iterator object, but just messin around
