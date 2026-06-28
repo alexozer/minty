@@ -18,8 +18,10 @@
 #define kilobytes(n) ((n) * 1024)
 #define megabytes(n) ((n) * kilobytes(n))
 
-constexpr u64 DEFAULT_ALIGNMENT = 8;
-u64 align_to(u64 n, u64 a);
+#define align_to(n, a) ((n) + (a - 1)) & ~(a - 1);
+
+#define min(a, b) ((a) < (b) ? (a) : (b))
+#define max(a, b) ((a) > (b) ? (a) : (b))
 
 #define CONCAT_IMPL(a, b) a##b
 #define CONCAT(a, b) CONCAT_IMPL(a, b)
@@ -141,7 +143,7 @@ u64 parse_u64(ErrorContext *err, Str s);
 // FS
 //
 
-// Arr<u8> fs_load_file(ErrorContext* err, Arena* arena, Str path);
+Arr_u8 fs_load_file(ErrorContext *err, Arena *arena, Str path);
 
 //
 // Duration

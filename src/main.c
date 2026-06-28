@@ -3,8 +3,9 @@
 
 #include <stdarg.h>
 
-#include <SDL3/SDL.h>
 #define SDL_MAIN_USE_CALLBACKS
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_error.h>
 #include <SDL3/SDL_gpu.h>
 #include <SDL3/SDL_init.h>
 #include <SDL3/SDL_keycode.h>
@@ -488,7 +489,7 @@ void timer_apply_action_paused(Arena *arena, Session *session, TimerAction actio
     switch (action) {
     case TimerAction_Pause: {
         // Unpause
-        Duration pause_duration = t - timer->paused_time;
+        Duration pause_duration = instant_sub(t, timer->paused_time);
         timer->total_paused_duration += pause_duration;
         timer->mode = TimerMode_Running;
         break;
@@ -654,50 +655,52 @@ void parse_livesplit_lss(ErrorContext *err, Arena *arena, FileDef *file, Arr_u8 
             while (xao_iter_tags(&r, root_tag, &run_tag)) {
                 if (eq(run_tag, "GameName")) {
                     file->game_name = str_clone(arena, xml_inner(&r, run_tag));
+
                 } else if (eq(run_tag, "CategoryName")) {
                     file->category_name = str_clone(arena, xml_inner(&r, run_tag));
+
                 } else if (eq(run_tag, "AttemptCount")) {
                     Scope attempt_count_scope = scope_open(err);
                     Str attempts_str = str_clone(arena, xml_inner(&r, run_tag));
                     file->total_attempts = parse_u64(err, attempts_str);
                     scope_close(attempt_count_scope, "Parse AttemptCount");
+
                 } else if (eq(run_tag, "Segments")) {
-                    file->segments = parse_livesplit_segments(arena, err, &r, run_tag);
+                    file->segments = parse_livesplit_segments(err, arena, &r, run_tag);
                 }
             }
         }
     }
 
     if (r.error != nullptr) {
-        bail(err, "Failed to parse LSS XML: %s", r.error);
+        err_report(err, "Failed to parse LSS XML: %s", r.error);
     }
 
     // Basic validation
     if (arr_is_empty(file->segments)) {
-        bail(err, "No segments found");
+        err_report(err, "No segments found");
     }
     for (u64 i = 0; i < file->segments.count; i++) {
-        if (str_is_empty(file->segments[i].name)) {
-            bail(err, "Segment %" PRIu64 " has no name", i + 1);
+        if (str_is_empty(A(file->segments, i).name)) {
+            err_report(err, "Segment %" PRIu64 " has no name", i + 1);
         }
     }
     if (str_is_empty(file->game_name)) {
-        bail(err, "Empty game name");
+        err_report(err, "Empty game name");
     }
 
     scope_close(scope, "Parse LiveSplit LSS");
 }
 
 void load_livesplit_lss(Arena *arena, ErrorContext *err, Str lss_path, FileDef *file) {
-    scope_open(err, "Load LiveSplit LSS file '%.*s'", SF(lss_path));
+    Scope scope = scope_open(err);
 
     Arena *scratch = arena_acquire();
-    defer(arena_release(scratch));
-
-    Arr<u8> xml = fs_load_file(err, scratch, lss_path);
-    if (err_occurred(err)) return;
-
+    Arr_u8 xml = fs_load_file(err, scratch, lss_path);
     parse_livesplit_lss(err, arena, file, xml);
+    arena_release(scratch);
+
+    scope_close(scope, "Load LiveSplit LSS file '%.*s'", SF(lss_path));
 }
 
 //
@@ -705,7 +708,7 @@ void load_livesplit_lss(Arena *arena, ErrorContext *err, Str lss_path, FileDef *
 //
 
 Box *make_text_box(Arena *arena, Str content, Color color) {
-    Box *box = arena_push<Box>(arena);
+    Box *box = arena_push(arena, Box);
 
     box->type = BoxType_Text;
     // const char *content_cstr = str_is_empty(content) ? "" : (const char
@@ -717,14 +720,14 @@ Box *make_text_box(Arena *arena, Str content, Color color) {
 }
 
 Box *make_empty_box(Arena *arena, PxSize size) {
-    Box *box = arena_push<Box>(arena);
+    Box *box = arena_push(arena, Box);
     box->type = BoxType_Empty;
     box->bbox = some(size);
     return box;
 }
 
 Box *make_texture_box(Arena *arena, u64 texture_idx, PxSize size) {
-    Box *box = arena_push<Box>(arena);
+    Box *box = arena_push(arena, Box);
     box->type = BoxType_Texture;
     box->bbox = some(size);
     box->texture_idx = texture_idx;
@@ -732,7 +735,7 @@ Box *make_texture_box(Arena *arena, u64 texture_idx, PxSize size) {
 }
 
 Box *make_solid_color_box(Arena *arena, Color color, PxSize size) {
-    Box *box = arena_push<Box>(arena);
+    Box *box = arena_push(arena, Box);
     box->type = BoxType_SolidColor;
     box->bbox = some(size);
     box->color = color;
@@ -750,7 +753,7 @@ PxSize compute_box_bbox_uncached(Box *box) {
     case BoxType_LeftToRightStack: {
         PxSize total = {};
         for (u64 i = 0; i < box->children.count; i++) {
-            PxSize child_bbox = compute_box_bbox(box->children[i]);
+            PxSize child_bbox = compute_box_bbox(A(box->children, i));
             if (i == 0) {
                 total = child_bbox;
             } else {
@@ -763,7 +766,7 @@ PxSize compute_box_bbox_uncached(Box *box) {
     case BoxType_TopToBottomStack: {
         PxSize total = {};
         for (u64 i = 0; i < box->children.count; i++) {
-            PxSize child_bbox = compute_box_bbox(box->children[i]);
+            PxSize child_bbox = compute_box_bbox(A(box->children, i));
             if (i == 0) {
                 total = child_bbox;
             } else {
@@ -776,7 +779,7 @@ PxSize compute_box_bbox_uncached(Box *box) {
     case BoxType_BackToFrontStack: {
         PxSize total = {};
         for (u64 i = 0; i < box->children.count; i++) {
-            PxSize child_bbox = compute_box_bbox(box->children[i]);
+            PxSize child_bbox = compute_box_bbox(A(box->children, i));
             if (i == 0) {
                 total = child_bbox;
             } else {
@@ -1104,7 +1107,7 @@ void make_icon_mesh_inner(Arena *arena,
         break;
     }
     case BoxType_Texture: {
-        PxRect src = atlas->placements[box->texture_idx];
+        PxRect src = A(atlas->placements, box->texture_idx);
 
         f32 src_ratio = (f32)src.w / (f32)src.h;
         f32 dst_ratio = (f32)box->bbox.opt.w / (f32)box->bbox.opt.h;
@@ -1211,6 +1214,10 @@ GlyphAtlas make_and_upload_glyph_atlas(ErrorContext *err,
                                        FT_Library freetype_handle,
                                        Arr_u8 font_file,
                                        u16 face_size_px) {
+    if (!command_buffer) return (GlyphAtlas){};
+    if (!clear_texture_pipeline) return (GlyphAtlas){};
+    if (!freetype_handle) return (GlyphAtlas){};
+
     log_assert(face_size_px > 0);
 
     Arena *scratch = arena_acquire();
@@ -1327,7 +1334,7 @@ SDL_GPUGraphicsPipeline *make_render_pipeline(ErrorContext *err,
                                               SDL_GPUShader *frag_shader,
                                               SDL_GPUTextureFormat target_texture_format,
                                               BlendType blend_type) {
-    scope_open(err, "Init render pipeline");
+    Scope scope = scope_open(err);
 
     SDL_GPUColorTargetBlendState blend_state = {};
     if (blend_type == BlendType_Over) {
@@ -1392,7 +1399,15 @@ SDL_GPUGraphicsPipeline *make_render_pipeline(ErrorContext *err,
                 .num_color_targets = c_arr_count(color_target_descs),
             },
     };
-    return try_sdl(err, nullptr, SDL_CreateGPUGraphicsPipeline(device, &pipeline_create_info));
+
+    SDL_GPUGraphicsPipeline *pipeline =
+        SDL_CreateGPUGraphicsPipeline(device, &pipeline_create_info);
+    if (!pipeline) {
+        err_report(err, "%s", SDL_GetError());
+    }
+
+    scope_close(scope, "Create render pipeline");
+    return pipeline;
 }
 
 void clear_texture(ErrorContext *err,
@@ -1421,6 +1436,9 @@ Atlas *make_and_upload_atlas(ErrorContext *err,
                              PxSize atlas_size,
                              FilterType filter) {
     Atlas *atlas = arena_push(arena, Atlas);
+    if (!command_buffer) return atlas;
+    if (!clear_texture_pipeline) return atlas;
+
     Arena *scratch = arena_acquire();
 
     // Texture formats must be equal
@@ -1526,7 +1544,7 @@ Atlas *make_and_upload_atlas(ErrorContext *err,
         if (A(textures, i).dims.w > 0 && A(textures, i).dims.h > 0) {
             SDL_GPUTextureTransferInfo src = {
                 .transfer_buffer = transfer_buffer,
-                .offset = offsets[i],
+                .offset = A(offsets, i),
             };
             SDL_GPUTextureRegion dest = {
                 .texture = texture,
@@ -1589,27 +1607,22 @@ Atlas *make_and_upload_atlas(ErrorContext *err,
     atlas->packer_nodes = packer_nodes;
     atlas->packer_rects = packer_rects;
 
-end:
     arena_release(scratch);
     return atlas;
 }
 
 SDL_GPUShader *load_shader(ErrorContext *err, SDL_GPUDevice *device, Str name, ShaderType type) {
-    scope_open(err, "Load shader '%.*s'", SF(name));
-
+    Scope scope = scope_open(err);
     Arena *scratch = arena_acquire();
-    defer(arena_release(scratch));
 
     Str shader_path =
         str_format(scratch, "src/shaders/%.*s.%.*s", SF(name), SF(OS_SHADER_EXTENSION));
-
-    Arr<u8> source = fs_load_file(err, scratch, shader_path);
-    if (err_occurred(err)) return nullptr;
+    Arr_u8 source = fs_load_file(err, scratch, shader_path);
 
     SDL_GPUShaderCreateInfo info = {};
     switch (type) {
     case ShaderType_Vertex: {
-        info = {
+        info = (SDL_GPUShaderCreateInfo){
             .code_size = source.count,
             .code = (u8 *)source.ptr,
             .format = OS_SHADER_FORMAT,
@@ -1623,7 +1636,7 @@ SDL_GPUShader *load_shader(ErrorContext *err, SDL_GPUDevice *device, Str name, S
         break;
     }
     case ShaderType_Fragment: {
-        info = {
+        info = (SDL_GPUShaderCreateInfo){
             .code_size = source.count,
             .code = (u8 *)source.ptr,
             .format = OS_SHADER_FORMAT,
@@ -1637,46 +1650,92 @@ SDL_GPUShader *load_shader(ErrorContext *err, SDL_GPUDevice *device, Str name, S
         break;
     }
     }
-    return try_sdl(err, nullptr, SDL_CreateGPUShader(device, &info));
+    SDL_GPUShader *shader = SDL_CreateGPUShader(device, &info);
+    if (!shader) {
+        err_report(err, "%s", SDL_GetError());
+    }
+
+    arena_release(scratch);
+    scope_close(scope, "Load shader '%.*s'", SF(name));
+    return shader;
+}
+
+SDL_GPUBuffer *sdl_create_gpu_buffer(ErrorContext *err,
+                                     SDL_GPUDevice *device,
+                                     SDL_GPUBufferCreateInfo *info,
+                                     Str name) {
+    if (!device) return nullptr;
+    Scope scope = scope_open(err);
+    Arena *scratch = arena_acquire();
+
+    SDL_GPUBuffer *gpu_buffer = SDL_CreateGPUBuffer(device, info);
+    if (!gpu_buffer) {
+        err_report(err, "%s", SDL_GetError());
+    } else {
+        SDL_SetGPUBufferName(device, gpu_buffer, str_to_c(scratch, name));
+    }
+
+    arena_release(scratch);
+    scope_close(scope, "Create buffer '%.*s'", SF(name));
+}
+
+SDL_GPUTransferBuffer *sdl_create_gpu_transfer_buffer(ErrorContext *err,
+                                                      SDL_GPUDevice *device,
+                                                      SDL_GPUTransferBufferCreateInfo *info) {
+    if (!device) return nullptr;
+    Scope scope = scope_open(err);
+
+    SDL_GPUTransferBuffer *buffer = SDL_CreateGPUTransferBuffer(device, info);
+    if (!buffer) {
+        err_report(err, "%s", SDL_GetError());
+    }
+
+    scope_close(scope, "Create GPU transfer buffer");
+    return buffer;
 }
 
 void init_vertex_buffers(ErrorContext *err, App *app) {
-    scope_open(err, "Init vertex+index buffers");
+    Scope scope = scope_open(err);
 
     SDL_GPUBufferCreateInfo vert_info = {
         .usage = SDL_GPU_BUFFERUSAGE_VERTEX,
         .size = sizeof(Vertex) * MAX_VERTEX_COUNT,
     };
-    app->vertex_buffer = try_sdl(err, SDL_CreateGPUBuffer(app->device, &vert_info));
-    SDL_SetGPUBufferName(app->device, app->vertex_buffer, "THE vertex buffer");
+    app->vertex_buffer =
+        sdl_create_gpu_buffer(err, app->device, &vert_info, S("THE vertex buffer"));
 
     SDL_GPUBufferCreateInfo index_info = {
         .usage = SDL_GPU_BUFFERUSAGE_INDEX,
         .size = sizeof(u16) * MAX_INDEX_COUNT,
     };
-    app->index_buffer = try_sdl(err, SDL_CreateGPUBuffer(app->device, &index_info));
-    SDL_SetGPUBufferName(app->device, app->index_buffer, "THE index buffer");
+    app->index_buffer = sdl_create_gpu_buffer(err, app->device, &index_info, S("THE index buffer"));
 
     SDL_GPUTransferBufferCreateInfo transfer_buffer_info = {
         .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-        .size = (sizeof(Vertex) * MAX_VERTEX_COUNT) + (sizeof(u16) * MAX_INDEX_COUNT)};
+        .size = (sizeof(Vertex) * MAX_VERTEX_COUNT) + (sizeof(u16) * MAX_INDEX_COUNT),
+    };
     app->vertex_transfer_buffer =
-        try_sdl(err, SDL_CreateGPUTransferBuffer(app->device, &transfer_buffer_info));
+        sdl_create_gpu_transfer_buffer(err, app->device, &transfer_buffer_info);
+
+    scope_close(scope, "Init vertex+index buffers");
 }
 
 void make_and_upload_icon_atlas(ErrorContext *err, App *app, SDL_GPUCommandBuffer *command_buffer) {
+    if (!command_buffer) return;
+    Scope scope = scope_open(err);
     Arena *scratch = arena_acquire();
 
     FileDef *file = &app->session->file;
-    Arr_CPUTexture icon_textures = arena_push_arr<CPUTexture>(scratch, file->segments.count);
+    Arr_CPUTexture icon_textures = arena_push_arr(scratch, CPUTexture, file->segments.count);
     for (u64 i = 0; i < file->segments.count; i++) {
         A(icon_textures, i) = A(file->segments, i).icon_texture;
     }
     app->icon_atlas = make_and_upload_atlas(
-        err app->session_arena, app->device, command_buffer, app->clear_icon_pipeline,
+        err, app->session_arena, app->device, command_buffer, app->clear_icon_pipeline,
         S("Icon atlas"), icon_textures, (PxSize){.w = 1024, .h = 1024}, FilterType_Linear);
 
     arena_release(scratch);
+    scope_close(scope, "Make and upload icon atlas");
 }
 
 void init_render_pipelines(ErrorContext *err, App *app) {
@@ -1687,13 +1746,13 @@ void init_render_pipelines(ErrorContext *err, App *app) {
     if (err_occurred(err)) return;
 
     if (SDL_WindowSupportsGPUPresentMode(app->device, app->window, SDL_GPU_PRESENTMODE_MAILBOX)) {
-        try_sdl(err, SDL_SetGPUSwapchainParameters(app->device, app->window,
-                                                   SDL_GPU_SWAPCHAINCOMPOSITION_SDR_LINEAR,
-                                                   SDL_GPU_PRESENTMODE_MAILBOX));
+        SDL_SetGPUSwapchainParameters(app->device, app->window,
+                                      SDL_GPU_SWAPCHAINCOMPOSITION_SDR_LINEAR,
+                                      SDL_GPU_PRESENTMODE_MAILBOX);
     } else {
-        try_sdl(err, SDL_SetGPUSwapchainParameters(app->device, app->window,
-                                                   SDL_GPU_SWAPCHAINCOMPOSITION_SDR_LINEAR,
-                                                   SDL_GPU_PRESENTMODE_VSYNC));
+        SDL_SetGPUSwapchainParameters(app->device, app->window,
+                                      SDL_GPU_SWAPCHAINCOMPOSITION_SDR_LINEAR,
+                                      SDL_GPU_PRESENTMODE_VSYNC);
     }
     SDL_GPUTextureFormat swapchain_format =
         SDL_GetGPUSwapchainTextureFormat(app->device, app->window);
@@ -1709,45 +1768,58 @@ void init_render_pipelines(ErrorContext *err, App *app) {
     app->clear_glyph_pipeline =
         make_render_pipeline(err, app->device, app->window, app->vert_shader, app->icon_frag_shader,
                              SDL_GPU_TEXTUREFORMAT_R8_UNORM, BlendType_None);
-    if (err_occurred(err)) return;
+}
+
+SDL_GPUCommandBuffer *sdl_acquire_gpu_command_buffer(ErrorContext *err, SDL_GPUDevice *device) {
+    Scope scope = scope_open(err);
+
+    SDL_GPUCommandBuffer *command_buffer = SDL_AcquireGPUCommandBuffer(device);
+    if (!command_buffer) {
+        err_report(err, "%s", SDL_GetError());
+    }
+
+    scope_close(scope, "Acquire GPU command buffer");
+    return command_buffer;
+}
+
+void sdl_submit_gpu_command_buffer(SDL_GPUCommandBuffer *command_buffer) {
+    if (command_buffer) SDL_SubmitGPUCommandBuffer(command_buffer);
 }
 
 void init_render_buffers(ErrorContext *err, App *app) {
-    SDL_GPUCommandBuffer *command_buffer = NULL;
-    err_push(err, S("Initialize render buffers"));
+    Scope scope = scope_open(err);
 
-    do {
-        command_buffer = SDL_AcquireGPUCommandBuffer(app->device);
-        if (command_buffer == NULL) break;
+    SDL_GPUCommandBuffer *command_buffer = sdl_acquire_gpu_command_buffer(err, app->device);
+    init_vertex_buffers(err, app);
+    make_and_upload_icon_atlas(err, app, command_buffer);
+    app->glyph_atlas = make_and_upload_glyph_atlas(err, app->app_arena, app->device, command_buffer,
+                                                   app->clear_glyph_pipeline, app->freetype,
+                                                   app->font_file, FONT_SIZE_PX);
 
-        init_vertex_buffers(err, app);
-        if (err_occurred(err)) break;
-
-        make_and_upload_icon_atlas(err, app, command_buffer);
-        if (err_occurred(err)) break;
-
-        app->glyph_atlas = make_and_upload_glyph_atlas(err, app->app_arena, app->device,
-                                                       command_buffer, app->clear_glyph_pipeline,
-                                                       app->freetype, app->font_file, FONT_SIZE_PX);
-    } while (0);
-
-    if (command_buffer != NULL) SDL_SubmitGPUCommandBuffer(command_buffer);
-    err_pop();
+    sdl_submit_gpu_command_buffer(command_buffer);
+    scope_close(scope, "Initialize render buffers");
 }
 
 void init_renderer(ErrorContext *err, App *app) {
-    try_ft(err, FT_Init_FreeType(&app->freetype));
-    app->font_file = try(fs_load_file(err, app->app_arena, FONT_PATH));
+    Scope scope = scope_open(err);
 
-    app->device =
-        try_sdl(err, SDL_CreateGPUDevice(OS_SHADER_FORMAT, RENDERER_DEBUG_MODE_ENABLED, nullptr));
-    try_sdl(err, SDL_ClaimWindowForGPUDevice(app->device, app->window));
+    if (FT_Init_FreeType(&app->freetype) != FT_Err_Ok) {
+        err_report(err, "Failed to initialize freetype");
+    }
+    app->font_file = fs_load_file(err, app->app_arena, FONT_PATH);
 
-    init_render_pipelines(err, app);
-    init_render_buffers(err, app);
+    app->device = SDL_CreateGPUDevice(OS_SHADER_FORMAT, RENDERER_DEBUG_MODE_ENABLED, nullptr);
+    if (!app->device) {
+        err_report(err, "%s", SDL_GetError());
+    } else {
+        // ... or should  I make all renderer initialization functions invariant to nullptr
+        // SDL_GPUDevice?
+        SDL_ClaimWindowForGPUDevice(app->device, app->window);
+        init_render_pipelines(err, app);
+        init_render_buffers(err, app);
+    }
 
-end:
-    if (err->ctx_stack.count) err_push(err, "Initialize renderer");
+    scope_close(scope, "Initialize renderer");
 }
 
 void do_geometry_upload_pass(App *app, SDL_GPUCommandBuffer *command_buffer, Mesh *mesh) {
@@ -1919,19 +1991,16 @@ Session *make_session(ErrorContext *err, Arena *arena, App *app, Str path) {
 
 App *init_app(ErrorContext *err, Str path) {
     Arena *root_arena = arena_acquire();
-    App *app = arena_push<App>(root_arena);
+    App *app = arena_push(root_arena, App);
     app->app_arena = root_arena;
 
     init_window(err, app);
-    // init_text(err, app);
 
     app->session_arena = arena_acquire();
     app->session = make_session(err, app->session_arena, app, path);
-    if (err_occurred(err)) {
-        return app;
+    if (!err_occurred(err)) {
+        init_renderer(err, app);
     }
-
-    init_renderer(err, app);
 
     return app;
 }

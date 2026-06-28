@@ -15,19 +15,6 @@ static Arena s_arena_pool[ARENA_POOL_MAX];
 static Arena *s_arena_stack[ARENA_POOL_MAX];
 static u64 s_arena_stack_top;
 
-// TODO make 100% sure LTO inlining is working for these small functions
-u64 align_to(u64 n, u64 a) {
-    return ((n) + (a - 1)) & ~(a - 1);
-}
-
-u64 min(u64 a, u64 b) {
-    return a < b ? a : b;
-}
-
-u64 max(u64 a, u64 b) {
-    return a > b ? a : b;
-}
-
 // https://jameshfisher.com/2018/03/30/round-up-power-2/
 u64 next_pow2(u64 x) {
     x--;
