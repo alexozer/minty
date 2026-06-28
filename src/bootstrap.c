@@ -242,3 +242,11 @@ bool str_find(Str haystack, Str needle, u64 *out) {
     }
     return false;
 }
+
+//
+// Idk
+//
+
+void thread_init() {
+    arena_pool_init();
+}

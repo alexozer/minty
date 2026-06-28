@@ -60,19 +60,6 @@ constexpr T max(T a, T b) {
 
 constexpr u64 DEFAULT_ALIGNMENT = 8;
 
-// https://jameshfisher.com/2018/03/30/round-up-power-2/
-constexpr u64 next_pow2(u64 x) {
-    x--;
-    x |= x >> 1;
-    x |= x >> 2;
-    x |= x >> 4;
-    x |= x >> 8;
-    x |= x >> 16;
-    x |= x >> 32;
-    x++;
-    return x;
-}
-
 //
 // Logging
 //

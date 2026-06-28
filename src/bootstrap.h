@@ -25,6 +25,7 @@ typedef double f64;
 #define megabytes(n) ((n) * kilobytes(n))
 
 #define align_to(n, a) ((n) + (a - 1)) & ~(a - 1);
+u64 next_pow2(u64 x);
 
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define max(a, b) ((a) > (b) ? (a) : (b))
@@ -55,6 +56,8 @@ void arena_release(Arena *arena);
         .ptr = (t *)(arena__push_bytes(arena, sizeof(t) * c, alignof(t))), \
         .count = c,                                                        \
     })
+
+constexpr u64 MIN_VEC_CAPACITY = 8;
 
 //
 // Strings
@@ -87,7 +90,6 @@ typedef struct Arr_u8 {
 #define C(c) ((u8)(c))
 #define ARR(a) ((Arr<u8>){.ptr = (a), .count = sizeof((a)) / sizeof((a)[0])})
 
-char *str_to_c(Arena *arena, Str s);
 Str str_from_c(const char *cstr);
 Str str_from_c_len(const char *cstr);
 bool char_is_whitespace(u8 c);
@@ -137,3 +139,9 @@ Pair_Str str_split2(Str base, u8 delim);
 [[noreturn]] void log__assert(const char *cond, const char *file, int line);
 #define log_assert(cond) \
     if ((cond) == false) log__assert(#cond, __FILE_NAME__, __LINE__)
+
+//
+// Idk
+//
+
+void thread_init();
