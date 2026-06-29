@@ -226,7 +226,7 @@ bool str_find(Str haystack, Str needle, u64 *out) {
     }
 
     u64 i = 0;
-    while (i + needle.count < haystack.count) {
+    while (i + needle.count <= haystack.count) {
         void *loc = memchr(haystack.ptr + i, A(needle, 0), haystack.count - i);
         if (loc == nullptr) return false;
 

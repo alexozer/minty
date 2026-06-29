@@ -19,12 +19,27 @@ const char *GENCODES[] = {
     "src/generated.c",
 };
 
+typedef struct Type {
+    Str name;
+    u64 pointer_levels;
+} Type;
+
+typedef struct Binding {
+    Str var_name;
+    Type type;
+} Binding;
+
 // Shitty vec implementations just to get us by
 
 typedef struct Vec_Str {
     Str ptr[128];
     u64 count;
 } Vec_Str;
+
+typedef struct Vec_Binding {
+    Binding ptr[128];
+    u64 count;
+} Vec_Binding;
 
 typedef struct StructTemplate {
     Str name;
@@ -33,7 +48,7 @@ typedef struct StructTemplate {
 
 typedef struct FunctionTemplate {
     Str name;
-    Vec_Str args;
+    Vec_Binding args;
     Vec_Str lines;
 } FunctionTemplate;
 
@@ -98,16 +113,19 @@ void render_template(Vec_Str *lines, FILE *out) {
     }
 }
 
-void render_generic_function(Str name, Vec_Str *args, FILE *out) {
+void render_generic_function(Str name, Vec_Binding *args, FILE *out) {
     u64 generic_arg_idx = args->count;
     for (u64 i = 0; i < args->count; i++) {
-        if (str_contains(args->ptr[i], S("TYPE"))) {
+        if (str_contains(args->ptr[i].type.name, S("TYPE"))) {
             generic_arg_idx = i;
             break;
         }
     }
     if (generic_arg_idx == args->count) {
-        log_fatal("Function %.*s is not generic!", SF(name));
+        for (u64 i = 0; i < args->count; i++) {
+            log_error("Arg %" PRIu64 ": %.*s", i, SF(args->ptr[i].type.name));
+        }
+        log_fatal("Function '%.*s' is not generic!", SF(name));
     }
 
     // Intro
@@ -116,9 +134,10 @@ void render_generic_function(Str name, Vec_Str *args, FILE *out) {
         if (i != 0) {
             fprintf(out, ", ");
         }
-        fprintf(out, "arg%" PRIu64, i);
+        fprintf(out, "%.*s", SF(args->ptr[i].var_name));
     }
-    fprintf(out, ") _Generic((arg%" PRIu64 "), \\\n", generic_arg_idx);
+    Str generic_arg_name = args->ptr[generic_arg_idx].var_name;
+    fprintf(out, ") _Generic((%.*s), \\\n", SF(generic_arg_name));
 
     // Type -> function mapping
     for (u64 i = 0; i < c_arr_count(ELEM_TYPES); i++) {
@@ -134,12 +153,32 @@ void render_generic_function(Str name, Vec_Str *args, FILE *out) {
         if (i != 0) {
             fprintf(out, ", ");
         }
-        fprintf(out, "arg%" PRIu64, i);
+        fprintf(out, "%.*s", SF(args->ptr[i].var_name));
     }
     fprintf(out, ")\n\n");
 }
 
-void parse_signature(Str body, Vec_Str *out_args) {
+Binding parse_binding(Str s) {
+    Binding binding = {};
+    u64 star_start = 0;
+    if (str_find(s, S("*"), &star_start)) {
+        u64 star_end = star_start;
+        while (s.ptr[star_end] == '*') {
+            star_end++;
+        }
+        binding.type.name = str_trim(str_slice(s, 0, star_start));
+        binding.var_name = str_trim(str_slice(s, star_end, s.count));
+        binding.type.pointer_levels = star_end - star_start;
+    } else {
+        Pair_Str pair = str_split2(s, ' ');
+        binding.type.name = str_trim(pair.left);
+        binding.var_name = str_trim(pair.right);
+        binding.type.pointer_levels = 0;
+    }
+    return binding;
+}
+
+void parse_signature(Str body, Vec_Binding *out_args) {
     u64 start_paren = 0;
     u64 end_paren = 0;
     log_assert(str_find(body, S("("), &start_paren));
@@ -149,9 +188,22 @@ void parse_signature(Str body, Vec_Str *out_args) {
     while (true) {
         if (str_is_empty(args)) break;
         Pair_Str pair = str_split2(args, C(','));
-        vec_push(out_args, str_trim(pair.left));
+        vec_push(out_args, parse_binding(str_trim(pair.left)));
         args = pair.right;
     }
+}
+
+void write_generic_type(Str base_name, Type type, FILE *out) {
+    u64 pos = 0;
+    log_assert(str_find(base_name, S("TYPE"), &pos));
+    Str prefix = str_slice(base_name, 0, pos);
+    fprintf(out, "%.*s", SF(prefix));
+
+    for (u64 i = 0; i < type.pointer_levels; i++) {
+        fprintf(out, "_P");
+    }
+
+    fprintf(out, "_%.*s", SF(type.name));
 }
 
 void process_template(const char *template_path, const char *gencode_path) {

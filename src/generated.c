@@ -28,8 +28,21 @@ void vec__grow_Str(Arena *arena, Vec_Str *vec, u64 new_count) {
     vec->capacity = new_cap;
 }
 
-#define vec__grow(arg0, arg1, arg2) _Generic((arg1), \
+#define vec__grow(arena, vec, new_count) _Generic((vec), \
     u64: vec__grow_u64, \
     Str: vec__grow_Str \
-)(arg0, arg1, arg2)
+)(arena, vec, new_count)
+
+Opt_u64 some_u64(u64 value) {
+    return (Opt_u64){.present = true, .opt = value};
+}
+
+Opt_Str some_Str(Str value) {
+    return (Opt_Str){.present = true, .opt = value};
+}
+
+#define some(value) _Generic((value), \
+    u64: some_u64, \
+    Str: some_Str \
+)(value)
 

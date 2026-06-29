@@ -13,5 +13,11 @@ void vec__grow_TYPE(Arena *arena, Vec_TYPE *vec, u64 new_count) {
 }
 // END_TEMPLATE_FUNCTION
 
+// BEGIN_TEMPLATE_FUNCTION some
+Opt_TYPE some_TYPE(TYPE value) {
+    return (Opt_TYPE){.present = true, .opt = value};
+}
+// END_TEMPLATE_FUNCTION
+
 #define vec__grow(arena, vec, new_count) \
     _Generic((vec), u64: vec__grow_u64, Str: vec__grow_Str, )((arena), (vec), (new_count))
