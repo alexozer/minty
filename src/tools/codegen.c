@@ -9,16 +9,6 @@ Str ELEM_TYPES[] = {
     S("Str"),
 };
 
-const char *TEMPLATES[] = {
-    "src/templates.h",
-    "src/templates.c",
-};
-
-const char *GENCODES[] = {
-    "src/generated.h",
-    "src/generated.c",
-};
-
 typedef struct Type {
     Str name;
     u64 pointer_levels;
@@ -35,6 +25,11 @@ typedef struct Vec_Str {
     Str ptr[128];
     u64 count;
 } Vec_Str;
+
+typedef struct Vec_u8 {
+    u8 ptr[128];
+    u64 count;
+} Vec_u8;
 
 typedef struct Vec_Binding {
     Binding ptr[128];
@@ -72,19 +67,44 @@ typedef struct Vec_FunctionTemplate {
         (vec)->ptr + (vec)->count++;                        \
     })
 
-// Only does one replacement atm
-void str_replace(Str s, Str before, Str after, FILE *out) {
+void vec_extend_u8(Vec_u8 *vec, Str s) {
+    log_assert(vec->count + s.count <= c_arr_count(vec->ptr));
+    SDL_memcpy(vec->ptr + vec->count, s.ptr, s.count);
+    vec->count += s.count;
+}
+
+Str vec_str(Vec_u8 *vec) {
+    return (Str){.ptr = vec->ptr, .count = vec->count};
+}
+
+void str_replace(Str s, Str before, Str after, Vec_u8 *out) {
     while (true) {
         u64 pos = 0;
         if (str_find(s, before, &pos)) {
             Str left = str_slice(s, 0, pos);
-            fprintf(out, "%.*s%.*s", SF(left), SF(after));
+            vec_extend_u8(out, left);
+            vec_extend_u8(out, after);
             s = str_slice(s, pos + before.count, s.count);
         } else {
             break;
         }
     }
-    fprintf(out, "%.*s\n", SF(s));
+    vec_extend_u8(out, s);
+}
+
+void render_rtype(Type type, Vec_u8 *out) {
+    vec_extend_u8(out, type.name);
+    vec_extend_u8(out, S(" "));
+    for (u64 i = 0; i < type.pointer_levels; i++) {
+        vec_extend_u8(out, S("*"));
+    }
+}
+
+void render_itype(Type type, Vec_u8 *out) {
+    for (u64 i = 0; i < type.pointer_levels; i++) {
+        vec_extend_u8(out, S("P_"));
+    }
+    vec_extend_u8(out, type.name);
 }
 
 Str read_file(const char *path) {
@@ -103,20 +123,11 @@ Str read_file(const char *path) {
     return (Str){.ptr = (u8 *)buf, .count = (u64)size};
 }
 
-void render_template(Vec_Str *lines, FILE *out) {
-    for (u64 et_idx = 0; et_idx < c_arr_count(ELEM_TYPES); et_idx++) {
-        Str elem_type = ELEM_TYPES[et_idx];
-        for (u64 i = 0; i < lines->count; i++) {
-            str_replace(lines->ptr[i], S("TYPE"), elem_type, out);
-        }
-        fprintf(out, "\n");
-    }
-}
-
 void render_generic_function(Str name, Vec_Binding *args, FILE *out) {
     u64 generic_arg_idx = args->count;
     for (u64 i = 0; i < args->count; i++) {
-        if (str_contains(args->ptr[i].type.name, S("TYPE"))) {
+        Str type_name = args->ptr[i].type.name;
+        if (str_eq(type_name, S("RTYPE")) || str_contains(type_name, S("ITYPE"))) {
             generic_arg_idx = i;
             break;
         }
@@ -193,17 +204,38 @@ void parse_signature(Str body, Vec_Binding *out_args) {
     }
 }
 
-void write_generic_type(Str base_name, Type type, FILE *out) {
-    u64 pos = 0;
-    log_assert(str_find(base_name, S("TYPE"), &pos));
-    Str prefix = str_slice(base_name, 0, pos);
-    fprintf(out, "%.*s", SF(prefix));
+Type parse_type(Str s) {
+    Binding binding = parse_binding(s);
+    return binding.type;
+}
 
-    for (u64 i = 0; i < type.pointer_levels; i++) {
-        fprintf(out, "_P");
+void render_template(Vec_Str *lines, FILE *out) {
+    for (u64 et_idx = 0; et_idx < c_arr_count(ELEM_TYPES); et_idx++) {
+        Type type = parse_type(ELEM_TYPES[et_idx]);
+
+        Vec_u8 rtype_vec = {};
+        render_rtype(type, &rtype_vec);
+        Str rtype = vec_str(&rtype_vec);
+
+        Vec_u8 itype_vec = {};
+        render_itype(type, &itype_vec);
+        Str itype = vec_str(&itype_vec);
+
+        for (u64 i = 0; i < lines->count; i++) {
+            Str line = lines->ptr[i];
+
+            Vec_u8 vec1 = {};
+            str_replace(line, S("RTYPE"), rtype, &vec1);
+            line = vec_str(&vec1);
+
+            Vec_u8 vec2 = {};
+            str_replace(line, S("ITYPE"), itype, &vec2);
+            line = vec_str(&vec2);
+
+            fprintf(out, "%.*s\n", SF(line));
+        }
+        fprintf(out, "\n");
     }
-
-    fprintf(out, "_%.*s", SF(type.name));
 }
 
 void process_template(const char *template_path, const char *gencode_path) {
@@ -260,7 +292,6 @@ void process_template(const char *template_path, const char *gencode_path) {
     fprintf(out, "#pragma once\n");
     fprintf(out, "\n");
     fprintf(out, "#include \"bootstrap.h\"\n");
-    fprintf(out, "#include \"generated.h\"\n");
     fprintf(out, "\n");
 
     for (u64 i = 0; i < struct_templates.count; i++) {
@@ -279,7 +310,5 @@ void process_template(const char *template_path, const char *gencode_path) {
 int main(int argc, char **argv) {
     thread_init();
 
-    for (u64 i = 0; i < c_arr_count(TEMPLATES); i++) {
-        process_template(TEMPLATES[i], GENCODES[i]);
-    }
+    process_template("src/templates.c", "src/generated.c");
 }
