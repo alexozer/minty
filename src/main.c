@@ -660,7 +660,7 @@ Arr_SegmentDef parse_livesplit_segments(ErrorContext *err,
     }
 
     scope_close(scope, "Parse LiveSplit LSS segments");
-    return vec_arr(&segments);
+    return vec_arr(&segments, SegmentDef);
 }
 
 void parse_livesplit_lss(ErrorContext *err, Arena *arena, FileDef *file, Arr_u8 xml) {
@@ -1029,7 +1029,7 @@ void push_atlas_quad(Arena *arena,
                      PxRect src,
                      PxRect dst,
                      Color color) {
-    Arr_u16 indices = vec_extend_zero(arena, &mesh->indices, 6);
+    Arr_u16 indices = vec_extend_zero(arena, &mesh->indices, u16, 6);
     A(indices, 0) = (u16)(mesh->vertices.count + 0);
     A(indices, 1) = (u16)(mesh->vertices.count + 1);
     A(indices, 2) = (u16)(mesh->vertices.count + 2);

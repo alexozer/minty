@@ -113,7 +113,7 @@ pub fn build(b: *std.Build) !void {
     blitter.root_module.linkLibrary(sdl.artifact("SDL3"));
     blitter.root_module.linkLibrary(freetype.artifact("freetype"));
     try cdb_targets.append(b.allocator, blitter);
-    // b.installArtifact(blitter);
+    b.installArtifact(blitter);
 
     const codegen = b.addExecutable(.{
         .name = "codegen",
@@ -132,7 +132,7 @@ pub fn build(b: *std.Build) !void {
     });
     codegen.root_module.linkLibrary(sdl.artifact("SDL3"));
     try cdb_targets.append(b.allocator, codegen);
-    b.installArtifact(codegen);
+    // b.installArtifact(codegen);
 
     const run_blitter = b.addRunArtifact(blitter);
     if (b.args) |args| {
