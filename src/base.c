@@ -223,37 +223,34 @@ __attribute__((format(printf, 2, 3))) Str str_format(Arena *arena, const char *f
     return s;
 }
 
-bool str_find(Str haystack, Str needle, u64 *out) {
-    *out = 0;
-
+Opt_u64 str_find(Str haystack, Str needle) {
     if (is_empty(needle)) {
-        // Found the non-existent needle at the start of the haystack
-        return false;
+        return none(u64);
     }
 
     u64 i = 0;
     while (i + needle.count <= haystack.count) {
-        void *loc = memchr(haystack.ptr + i, A(needle, 0), haystack.count - i);
-        if (loc == nullptr) return false;
+        void *loc =
+            (void *)simdutf_find((char *)(haystack.ptr + i),
+                                 (char *)(haystack.ptr + haystack.count), (char)A(needle, 0));
+        if (loc == haystack.ptr + haystack.count) return none(u64);
 
         u64 haystack_start = (u64)loc - (u64)haystack.ptr;
         u64 haystack_end = haystack_start + needle.count;
-        if (haystack_end > haystack.count) return false;
+        if (haystack_end > haystack.count) return none(u64);
 
         Str haystack_slice = str_slice(haystack, haystack_start, haystack_end);
         if (str_eq(haystack_slice, needle)) {
-            *out = haystack_start;
-            return true;
+            return some(haystack_start, u64);
         }
 
         i = haystack_start + 1;
     }
-    return false;
+    return none(u64);
 }
 
 bool str_contains(Str haystack, Str needle) {
-    u64 dummy = 0;
-    return str_find(haystack, needle, &dummy);
+    return str_find(haystack, needle).present;
 }
 
 derive_type(char);
@@ -303,10 +300,9 @@ u64 parse_u64(ErrorContext *err, Str s) {
         result = new_result;
     }
 
-    // In general, should fallible functions try to return "reasonable" values on failure?
-    if (err_occurred(err)) result = 0;
     scope_close(scope, "Parse '%.*s' as u64", SF(s));
-    return result;
+    // In general, should fallible functions return "zero" values on error, or just anything goes?
+    return err_occurred(err) ? 0 : result;
 }
 
 //

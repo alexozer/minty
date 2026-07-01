@@ -158,7 +158,7 @@ bool str_starts_with(Str s, Str prefix);
 __attribute__((format(printf, 2, 3))) Str str_format(Arena *arena, const char *format, ...);
 Str str_format_v(Arena *arena, const char *format, va_list args);
 bool str_is_valid_utf8(Arr_u8 s);
-bool str_find(Str haystack, Str needle, u64 *pos);
+Opt_u64 str_find(Str haystack, Str needle);
 bool str_contains(Str haystack, Str needle);
 Str str_slice(Str s, u64 start, u64 end);
 
@@ -364,6 +364,7 @@ void thread_init();
 
 // TODO codegen to avoid passing type
 #define some(v, t) ((CONCAT(Opt_, t)){.opt = (v), .present = true})
+#define none(t) ((CONCAT(Opt_, t)){.present = false})
 
 //
 // Duration
