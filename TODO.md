@@ -191,3 +191,12 @@ Issues:
 - Window not resizable
 - Window size seems to be measured in real pixels on Linux and Windows, even in hidpi mode, unlike macos
 - Shoulnd't be able to maximize on Windows
+
+# C port
+
+Very, very close w/ the macro approach
+
+TODO:
+Implement vec__grow()
+    Pass it a "generic" vec struct type to avoid passing a bajillion parameters?
+    Implement using arena_realloc()?
