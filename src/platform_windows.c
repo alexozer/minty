@@ -14,3 +14,7 @@ void os_free(void *buf, u64 size) {
 
 const SDL_GPUShaderFormat OS_SHADER_FORMAT = SDL_GPU_SHADERFORMAT_DXIL;
 const Str OS_SHADER_EXTENSION = S("dxil");
+
+Arr_u8 os_read_file(ErrorContext *err, Arena *arena, Str path) {
+    log_fatal("TODO");
+}

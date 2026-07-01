@@ -439,12 +439,6 @@ Arr_u8 decode_base64(ErrorContext *err, Arena *arena, Str s);
 u64 parse_u64(ErrorContext *err, Str s);
 
 //
-// FS
-//
-
-Arr_u8 fs_load_file(ErrorContext *err, Arena *arena, Str path);
-
-//
 // SDL helpers
 //
 

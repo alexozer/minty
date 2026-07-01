@@ -390,17 +390,6 @@ void sdl_close_io(SDL_IOStream *stream) {
     if (stream) SDL_CloseIO(stream);
 }
 
-Arr_u8 fs_load_file(ErrorContext *err, Arena *arena, Str path) {
-    Scope scope = scope_open(err);
-
-    SDL_IOStream *stream = sdl_io_from_file(err, path, S("rb"));
-    Arr_u8 buffer = sdl_read_entire_stream(err, arena, stream);
-    sdl_close_io(stream);
-
-    scope_close(scope, "Load file '%.*s'", SF(path));
-    return buffer;
-}
-
 //
 // Time
 //

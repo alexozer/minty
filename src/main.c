@@ -727,7 +727,7 @@ void load_livesplit_lss(Arena *arena, ErrorContext *err, Str lss_path, FileDef *
     Scope scope = scope_open(err);
 
     Arena *scratch = arena_acquire();
-    Arr_u8 xml = fs_load_file(err, scratch, lss_path);
+    Arr_u8 xml = os_read_file(err, scratch, lss_path);
     parse_livesplit_lss(err, arena, file, xml);
     arena_release(scratch);
 
@@ -1653,7 +1653,7 @@ SDL_GPUShader *load_shader(ErrorContext *err, SDL_GPUDevice *device, Str name, S
 
     Str shader_path =
         str_format(scratch, "src/shaders/%.*s.%.*s", SF(name), SF(OS_SHADER_EXTENSION));
-    Arr_u8 source = fs_load_file(err, scratch, shader_path);
+    Arr_u8 source = os_read_file(err, scratch, shader_path);
 
     SDL_GPUShaderCreateInfo info = {};
     switch (type) {
@@ -1843,7 +1843,7 @@ void init_renderer(ErrorContext *err, App *app) {
     if (FT_Init_FreeType(&app->freetype) != FT_Err_Ok) {
         err_report(err, "Failed to initialize freetype");
     }
-    app->font_file = fs_load_file(err, app->app_arena, FONT_PATH);
+    app->font_file = os_read_file(err, app->app_arena, FONT_PATH);
 
     app->device = SDL_CreateGPUDevice(OS_SHADER_FORMAT, RENDERER_DEBUG_MODE_ENABLED, nullptr);
     if (!app->device) {
