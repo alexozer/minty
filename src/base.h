@@ -106,6 +106,7 @@ derive_struct(Arena);
 
 // TODO use comptime alignment
 void *arena_push_bytes(Arena *arena, u64 size, u64 alignment);
+void *arena_realloc_bytes(Arena *arena, void *ptr, u64 old_size, u64 new_size, u64 alignment);
 
 void arena_pool_init();
 Arena *arena_acquire();
@@ -123,6 +124,26 @@ void arena_release(Arena *arena);
     })
 
 constexpr u64 MIN_VEC_CAPACITY = 8;
+
+//
+// Logging
+//
+
+[[noreturn]] void crash(const char *why);
+
+#define log_trace(...) SDL_LogTrace(SDL_LOG_CATEGORY_APPLICATION, __VA_ARGS__)
+#define log_debug(...) SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION, __VA_ARGS__)
+#define log_info(...) SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, __VA_ARGS__)
+#define log_warn(...) SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, __VA_ARGS__)
+#define log_error(...) SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, __VA_ARGS__)
+#define log_fatal(...)                                          \
+    SDL_LogCritical(SDL_LOG_CATEGORY_APPLICATION, __VA_ARGS__); \
+    abort()
+
+#define log_assert(cond) \
+    if ((cond) == false) crash("assertion failed")
+
+#define log_unreachable() crash("assertion failed: unreachable")
 
 //
 // Strings
@@ -248,20 +269,37 @@ Pair_Str str_split2(Str base, u8 delim);
 // Vec
 //
 
-// void vec_push(Arena *arena, Vec<T> *vec, T val) {
-#define vec_push(arena, vec, val)         \
-    ({                                    \
-        typeof(vec) _vec_ = (vec);        \
-        typeof(val) _val_ = (val);        \
-        _vec_->ptr[_vec_->count] = _val_; \
-        _vec_->count++;                   \
+struct GenericVec {
+    void *ptr;
+    u64 count;
+    u64 capacity;
+};
+derive_struct(GenericVec);
+
+void vec__grow(Arena *arena, GenericVec *vec, u64 elem_size, u64 elem_align, u64 new_count);
+
+#define vec_push(arena, vec, val)                                        \
+    ({                                                                   \
+        typeof(arena) _arena_ = (arena);                                 \
+        typeof(vec) _vec_ = (vec);                                       \
+        typeof(val) _val_ = (val);                                       \
+        if (_vec_->count == _vec_->capacity) {                           \
+            vec__grow(_arena_, (GenericVec *)_vec_, sizeof(*_vec_->ptr), \
+                      alignof(typeof(*_vec_->ptr)), _vec_->count + 1);   \
+        }                                                                \
+        _vec_->ptr[_vec_->count] = _val_;                                \
+        _vec_->count++;                                                  \
     })
 
-// vec__grow(arena, vec, vec->count + 1);
-#define vec_push_zero(arena, vec)      \
-    ({                                 \
-        typeof(vec) _vec_ = (vec);     \
-        (&_vec_->ptr[_vec_->count++]); \
+#define vec_push_zero(arena, vec)                                        \
+    ({                                                                   \
+        typeof(arena) _arena_ = (arena);                                 \
+        typeof(vec) _vec_ = (vec);                                       \
+        if (_vec_->count == _vec_->capacity) {                           \
+            vec__grow(_arena_, (GenericVec *)_vec_, sizeof(*_vec_->ptr), \
+                      alignof(typeof(*_vec_->ptr)), _vec_->count + 1);   \
+        }                                                                \
+        (&_vec_->ptr[_vec_->count++]);                                   \
     })
 
 #define vec_pop(vec)                                          \
@@ -271,37 +309,48 @@ Pair_Str str_split2(Str base, u8 delim);
         _vec_->ptr[--_vec_->count] = (typeof(*_vec_->ptr)){}; \
     })
 
-// vec__grow(arena, vec, vec->count + arr.count);
-#define vec_extend(arena, vec, arr)        \
-    ({                                     \
-        typeof(vec) _vec_ = (vec);         \
-        typeof(arr) _arr_ = (arr);         \
-        u64 start = _vec_->count;          \
-        _vec_->count += _arr_.count;       \
-        typeof(arr) a = {                  \
-            .ptr = _vec_->ptr + start,     \
-            .count = _vec_->count - start, \
-        };                                 \
-        arr_copy(a, _arr_);                \
+#define vec_extend(arena, vec, arr)                                              \
+    ({                                                                           \
+        typeof(arena) _arena_ = (arena);                                         \
+        typeof(vec) _vec_ = (vec);                                               \
+        typeof(arr) _arr_ = (arr);                                               \
+        if (_vec_->count + _arr_.count >= _vec_->capacity) {                     \
+            vec__grow(_arena_, (GenericVec *)_vec_, sizeof(*_vec_->ptr),         \
+                      alignof(typeof(*_vec_->ptr)), _vec_->count + _arr_.count); \
+        }                                                                        \
+        u64 start = _vec_->count;                                                \
+        _vec_->count += _arr_.count;                                             \
+        typeof(_arr_) a = {                                                      \
+            .ptr = _vec_->ptr + start,                                           \
+            .count = _vec_->count - start,                                       \
+        };                                                                       \
+        SDL_memcpy(a.ptr, arr.ptr, a.count * sizeof(*a.ptr));                    \
     })
 
-#define vec_arr(vec)                                                                  \
-    ({                                                                                \
-        typeof(vec) _vec_ = (vec);                                                    \
-        (typeof((_vec_)->__to_arr[0])){.ptr = (_vec_)->ptr, .count = (_vec_)->count}; \
+#define vec_extend_zero(arena, vec, new_count)                                   \
+    ({                                                                           \
+        typeof(arena) _arena_ = (arena);                                         \
+        typeof(vec) _vec_ = (vec);                                               \
+        u64 _new_count_ = (new_count);                                           \
+        if (_vec_->count + _new_count_ >= _vec_->capacity) {                     \
+            vec__grow(_arena_, (GenericVec *)_vec_, sizeof(*_vec_->ptr),         \
+                      alignof(typeof(*_vec_->ptr)), _vec_->count + _new_count_); \
+        }                                                                        \
+        u64 start = _vec_->count;                                                \
+        _vec_->count += _new_count_;                                             \
+        (typeof(_vec_->__to_arr[0])){                                            \
+            .ptr = _vec_->ptr + start,                                           \
+            .count = _new_count_,                                                \
+        };                                                                       \
     })
 
-// vec__grow(arena, vec, vec->count + count);
-#define vec_extend_zero(arena, vec, new_count) \
-    ({                                         \
-        typeof(vec) _vec_ = (vec);             \
-        u64 _new_count_ = (new_count);         \
-        u64 start = _vec_->count;              \
-        _vec_->count += _new_count_;           \
-        (typeof(_vec_->__to_arr[0])){          \
-            .ptr = _vec_->ptr + start,         \
-            .count = _new_count_,              \
-        };                                     \
+#define vec_arr(vec)                    \
+    ({                                  \
+        typeof(vec) _vec_ = (vec);      \
+        (typeof((_vec_)->__to_arr[0])){ \
+            .ptr = (_vec_)->ptr,        \
+            .count = (_vec_)->count,    \
+        };                              \
     })
 
 #define vec_reset(vec)                                                 \
@@ -325,32 +374,6 @@ Pair_Str str_split2(Str base, u8 delim);
             _vec_->ptr = new_ptr;                                                           \
         }                                                                                   \
     })
-
-// #define vec_last(vec)               \
-//     ({                              \
-//         typeof(vec) _vec_ = (vec);  \
-//         A(_vec_, _vec_->count - 1); \
-//     })
-
-//
-// Logging
-//
-
-[[noreturn]] void crash(const char *why);
-
-#define log_trace(...) SDL_LogTrace(SDL_LOG_CATEGORY_APPLICATION, __VA_ARGS__)
-#define log_debug(...) SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION, __VA_ARGS__)
-#define log_info(...) SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, __VA_ARGS__)
-#define log_warn(...) SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, __VA_ARGS__)
-#define log_error(...) SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, __VA_ARGS__)
-#define log_fatal(...)                                          \
-    SDL_LogCritical(SDL_LOG_CATEGORY_APPLICATION, __VA_ARGS__); \
-    abort()
-
-#define log_assert(cond) \
-    if ((cond) == false) crash("assertion failed")
-
-#define log_unreachable() crash("assertion failed: unreachable")
 
 //
 // Idk

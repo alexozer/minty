@@ -62,6 +62,20 @@ void *arena_push_bytes(Arena *arena, u64 size, u64 alignment) {
     return pos;
 }
 
+void *arena_realloc_bytes(Arena *arena, void *ptr, u64 old_size, u64 new_size, u64 alignment) {
+    if (new_size < old_size) return ptr;
+    if (arena->data + arena->offset == ptr + old_size) {
+        // Allocate new space at end of arena
+        // Assume original alignment hasn't changed
+        arena_push_bytes(arena, new_size - old_size, 1);  // Discard new space
+        return ptr;
+    } else {
+        void *new_ptr = arena_push_bytes(arena, new_size, alignment);
+        SDL_memcpy(new_ptr, ptr, old_size);
+        return new_ptr;
+    }
+}
+
 Arena *arena_acquire() {
     if (s_arena_stack_top >= ARENA_POOL_MAX) {
         log_fatal("Out of arenas!");
@@ -267,6 +281,24 @@ Str str_from_c(const char *cstr) {
 
 bool str_is_valid_utf8(Str s) {
     return simdutf_validate_utf8((const char *)s.ptr, s.count);
+}
+
+//
+// Vec
+//
+
+// Alignment is a property of the elem type, not the vector. A 512 byte-aligned Vec_u8 won't work
+// here... but I don't think e.g. GPU texture transfer buffers use Vec atm.
+void vec__grow(Arena *arena, GenericVec *vec, u64 elem_size, u64 elem_align, u64 new_count) {
+    // Callee checks this for performance (to hopefully avoid calling vec__grow() on each e.g.
+    // vec_push())
+    log_assert(new_count <= vec->capacity);
+
+    u64 old_size = vec->count * elem_size;
+    u64 new_capacity = max(MIN_VEC_CAPACITY, next_pow2(new_count));
+    u64 new_size = new_capacity * elem_size;
+    vec->ptr = arena_realloc_bytes(arena, vec->ptr, old_size, new_size, elem_align);
+    vec->capacity = new_capacity;
 }
 
 //
