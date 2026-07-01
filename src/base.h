@@ -165,7 +165,7 @@ derive_type(Str);
 #define S(s) ((Str){.ptr = (u8 *)(s), .count = (sizeof(s)) - 1})
 #define SF(s) (int)(s).count, (char *)(s).ptr
 #define C(c) ((u8)(c))
-#define ARR(a) ((Arr<u8>){.ptr = (a), .count = sizeof((a)) / sizeof((a)[0])})
+#define ARR(a) ((Arr_u8){.ptr = (a), .count = sizeof((a)) / sizeof((a)[0])})
 
 Str str_from_c(const char *cstr);
 char *str_to_c(Arena *arena, Str str);
@@ -314,7 +314,7 @@ void vec__grow(Arena *arena, GenericVec *vec, u64 elem_size, u64 elem_align, u64
         typeof(arena) _arena_ = (arena);                                         \
         typeof(vec) _vec_ = (vec);                                               \
         typeof(arr) _arr_ = (arr);                                               \
-        if (_vec_->count + _arr_.count >= _vec_->capacity) {                     \
+        if (_vec_->count + _arr_.count > _vec_->capacity) {                      \
             vec__grow(_arena_, (GenericVec *)_vec_, sizeof(*_vec_->ptr),         \
                       alignof(typeof(*_vec_->ptr)), _vec_->count + _arr_.count); \
         }                                                                        \
@@ -332,7 +332,7 @@ void vec__grow(Arena *arena, GenericVec *vec, u64 elem_size, u64 elem_align, u64
         typeof(arena) _arena_ = (arena);                                         \
         typeof(vec) _vec_ = (vec);                                               \
         u64 _new_count_ = (new_count);                                           \
-        if (_vec_->count + _new_count_ >= _vec_->capacity) {                     \
+        if (_vec_->count + _new_count_ > _vec_->capacity) {                      \
             vec__grow(_arena_, (GenericVec *)_vec_, sizeof(*_vec_->ptr),         \
                       alignof(typeof(*_vec_->ptr)), _vec_->count + _new_count_); \
         }                                                                        \
@@ -360,19 +360,18 @@ void vec__grow(Arena *arena, GenericVec *vec, u64 elem_size, u64 elem_align, u64
         _vec_->count = 0;                                              \
     })
 
-#define vec_prealloc(arena, vec, reserve)                                                   \
-    ({                                                                                      \
-        typeof(arena) _arena_ = (arena);                                                    \
-        typeof(vec) _vec_ = (vec);                                                          \
-        typeof(reserve) _reserve_ = (reserve);                                              \
-        if (_vec_->capacity < _reserve_) {                                                  \
-            typeof(_vec_->ptr) new_ptr = arena_push_bytes(                                  \
-                _arena_, _vec_->count * sizeof(*_vec_->ptr), alignof(typeof(*_vec_->ptr))); \
-            if (_vec_->count > 0) {                                                         \
-                SDL_memcpy(new_ptr, _vec_->ptr, _vec_->count * sizeof(*_vec_->ptr));        \
-            }                                                                               \
-            _vec_->ptr = new_ptr;                                                           \
-        }                                                                                   \
+#define vec_prealloc(arena, vec, reserve)                                                     \
+    ({                                                                                        \
+        typeof(arena) _arena_ = (arena);                                                      \
+        typeof(vec) _vec_ = (vec);                                                            \
+        typeof(reserve) _reserve_ = (reserve);                                                \
+        if (_vec_->capacity < _reserve_) {                                                    \
+            u64 old_size = _vec_->capacity * sizeof(*_vec_->ptr);                             \
+            u64 new_size = _reserve_ * sizeof(*_vec_->ptr);                                   \
+            u64 align = alignof(typeof(*_vec_->ptr));                                         \
+            _vec_->ptr = arena_realloc_bytes(_arena_, _vec_->ptr, old_size, new_size, align); \
+            _vec_->capacity = _reserve_;                                                      \
+        }                                                                                     \
     })
 
 //
@@ -446,8 +445,17 @@ u64 parse_u64(ErrorContext *err, Str s);
 Arr_u8 fs_load_file(ErrorContext *err, Arena *arena, Str path);
 
 //
-// IO
+// SDL helpers
 //
 
 SDL_IOStream *sdl_io_from_mem(ErrorContext *err, Arr_u8 buf);
 void sdl_close_io(SDL_IOStream *stream);
+
+#define sdl_assert(func)                     \
+    ({                                       \
+        typeof(func) ret = (func);           \
+        if (!ret) {                          \
+            log_fatal("%s", SDL_GetError()); \
+        }                                    \
+        ret;                                 \
+    })

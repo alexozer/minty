@@ -626,6 +626,22 @@ CPUTexture decode_png_to_texture(ErrorContext *err, Arena *arena, Arr_u8 png) {
     return texture;
 }
 
+void parse_segment_icon(ErrorContext *err, Arena *arena, SegmentDef *segment, Str base64) {
+    Scope scope = scope_open(err);
+
+    segment->icon_png = decode_base64(err, arena, base64);
+    Opt_u64 png_header_offset = str_find(segment->icon_png, ARR(PNG_HEADER));
+    if (png_header_offset.present) {
+        Arr_u8 png_buf =
+            arr_slice(segment->icon_png, png_header_offset.opt, segment->icon_png.count);
+        segment->icon_texture = decode_png_to_texture(err, arena, png_buf);
+    } else {
+        err_report(err, "PNG header not found");
+    }
+
+    scope_close(scope, "Decode icon for segment '%.*s'", SF(segment->name));
+}
+
 Arr_SegmentDef parse_livesplit_segments(ErrorContext *err,
                                         Arena *arena,
                                         xao_Reader *r,
@@ -642,15 +658,10 @@ Arr_SegmentDef parse_livesplit_segments(ErrorContext *err,
                 seg->name = str_clone(arena, xml_inner(r, attr_tag));
 
             } else if (eq(attr_tag, "Icon")) {
-                Scope icon_scope = scope_open(err);
-
                 Str base64 = xml_inner(r, attr_tag);
                 if (!is_empty(base64)) {
-                    seg->icon_png = decode_base64(err, arena, base64);
-                    seg->icon_texture = decode_png_to_texture(err, arena, seg->icon_png);
+                    parse_segment_icon(err, arena, seg, base64);
                 }
-
-                scope_close(icon_scope, "Decode icon for segment '%.*s'", SF(seg->name));
             }
         }
     }
@@ -1294,7 +1305,7 @@ GlyphAtlas make_and_upload_glyph_atlas(ErrorContext *err,
 
     FT_Done_Face(face);
     scope_close(scope, "Create and upload glyph atlas");
-    arena_release(arena);
+    arena_release(scratch);
     return ret;
 }
 
@@ -1947,7 +1958,6 @@ void render_main_color_pass(App *app,
 void render(App *app) {
     Arena *frame_arena = arena_acquire();
     SDL_GPUCommandBuffer *command_buffer = SDL_AcquireGPUCommandBuffer(app->device);
-    log_assert(command_buffer);
 
     SDL_GPUTexture *texture = nullptr;
     u32 width = 0;
@@ -1964,6 +1974,9 @@ void render(App *app) {
             make_icon_mesh(frame_arena, window_size, app->session, app->icon_atlas, &mesh);
         u64 glyph_quad_count = make_glyph_mesh(frame_arena, window_size, app->font_file,
                                                &app->glyph_atlas, vec_arr(&app->typed_text), &mesh);
+        log_assert(mesh.vertices.count <= MAX_VERTEX_COUNT);
+        log_assert(mesh.indices.count <= MAX_INDEX_COUNT);
+
         for (u64 i = 0; i < mesh.vertices.count; i++) {
             A(mesh.vertices, i).y -= app->scroll * 0.1f;
         }

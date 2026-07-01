@@ -292,7 +292,7 @@ bool str_is_valid_utf8(Str s) {
 void vec__grow(Arena *arena, GenericVec *vec, u64 elem_size, u64 elem_align, u64 new_count) {
     // Callee checks this for performance (to hopefully avoid calling vec__grow() on each e.g.
     // vec_push())
-    log_assert(new_count <= vec->capacity);
+    log_assert(new_count > vec->capacity);
 
     u64 old_size = vec->count * elem_size;
     u64 new_capacity = max(MIN_VEC_CAPACITY, next_pow2(new_count));
