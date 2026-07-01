@@ -82,8 +82,8 @@ derive_type(i64);
 derive_type(f32);
 derive_type(f64);
 
-#define kilobytes(n) ((n) * 1024)
-#define megabytes(n) ((n) * kilobytes(n))
+#define kilobytes(n) (1024 * (n))
+#define megabytes(n) (1024 * kilobytes(n))
 
 #define align_to(n, a) ((n) + (a - 1)) & ~(a - 1);
 u64 next_pow2(u64 x);
