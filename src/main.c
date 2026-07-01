@@ -34,13 +34,13 @@ constexpr u64 MAX_QUAD_COUNT = 512;
 constexpr u64 MAX_VERTEX_COUNT = MAX_QUAD_COUNT * 4;
 constexpr u64 MAX_INDEX_COUNT = MAX_QUAD_COUNT * 6;
 
-struct PxSize {
+struct SizePX {
     u16 w, h;
 };
-derive_struct(PxSize);
+derive_struct(SizePX);
 
-constexpr PxSize DEFAULT_WINDOW_SIZE = {.w = 360, .h = 600};
-constexpr PxSize MIN_WINDOW_SIZE = {.w = 200, .h = 100};
+constexpr SizePX DEFAULT_WINDOW_SIZE = {.w = 360, .h = 600};
+constexpr SizePX MIN_WINDOW_SIZE = {.w = 200, .h = 100};
 
 // TODO thread through program properly
 Str FONT_PATH = S("data/Roboto-Medium.ttf");
@@ -58,7 +58,7 @@ derive_containers(Opt_Duration);
 struct CPUTexture {
     SDL_GPUTextureFormat format;
     Arr_u8 buffer;
-    PxSize dims;
+    SizePX dims;
 };
 derive_struct(CPUTexture);
 
@@ -171,7 +171,7 @@ derive_struct(stbrp_node);
 derive_struct(stbrp_rect);
 
 struct Atlas {
-    PxSize size;
+    SizePX size;
     SDL_GPUTexture *texture;
     SDL_GPUSampler *sampler;
     Arr_PxRect placements;
@@ -238,7 +238,7 @@ derive_enum(BoxType);
 derive_struct_pre(Box);
 struct Box {
     BoxType type;
-    Opt_PxSize bbox;
+    Opt_SizePX bbox;
     u64 texture_idx;
     Color color;
     Vec_P_Box children;
@@ -484,7 +484,7 @@ void timer_apply_action_running(Arena *arena, Session *session, TimerAction acti
     }
     case TimerAction_DeleteSplit: {
         if (timer->live_splits.count > 0) {
-            vec_last(timer->live_splits) = (Opt_Duration){};
+            A(timer->live_splits, timer->live_splits.count - 1) = (Opt_Duration){};
         }
         break;
     }
@@ -649,7 +649,7 @@ Arr_SegmentDef parse_livesplit_segments(ErrorContext *err,
                 Scope icon_scope = scope_open(err);
 
                 Str base64 = xml_inner(r, attr_tag);
-                if (!str_is_empty(base64)) {
+                if (!is_empty(base64)) {
                     seg->icon_png = decode_base64(err, arena, base64);
                     seg->icon_texture = decode_png_to_texture(err, arena, seg->icon_png);
                 }
@@ -660,7 +660,7 @@ Arr_SegmentDef parse_livesplit_segments(ErrorContext *err,
     }
 
     scope_close(scope, "Parse LiveSplit LSS segments");
-    return vec_arr(&segments, SegmentDef);
+    return vec_arr(&segments);
 }
 
 void parse_livesplit_lss(ErrorContext *err, Arena *arena, FileDef *file, Arr_u8 xml) {
@@ -701,15 +701,15 @@ void parse_livesplit_lss(ErrorContext *err, Arena *arena, FileDef *file, Arr_u8 
     }
 
     // Basic validation
-    if (arr_is_empty(file->segments)) {
+    if (is_empty(file->segments)) {
         err_report(err, "No segments found");
     }
     for (u64 i = 0; i < file->segments.count; i++) {
-        if (str_is_empty(A(file->segments, i).name)) {
+        if (is_empty(A(file->segments, i).name)) {
             err_report(err, "Segment %" PRIu64 " has no name", i + 1);
         }
     }
-    if (str_is_empty(file->game_name)) {
+    if (is_empty(file->game_name)) {
         err_report(err, "Empty game name");
     }
 
@@ -735,7 +735,7 @@ Box *make_text_box(Arena *arena, Str content, Color color) {
     Box *box = arena_push(arena, Box);
 
     box->type = BoxType_Text;
-    // const char *content_cstr = str_is_empty(content) ? "" : (const char
+    // const char *content_cstr = is_empty(content) ? "" : (const char
     // *)content.ptr; Zero length actually means "treat string as null terminated"
     // box->text_obj = TTF_CreateText(engine, font, content_cstr, content.count);
     // TTF_SetTextColorFloat(box->text_obj, color.r, color.g, color.b, color.a);
@@ -743,41 +743,41 @@ Box *make_text_box(Arena *arena, Str content, Color color) {
     return box;
 }
 
-Box *make_empty_box(Arena *arena, PxSize size) {
+Box *make_empty_box(Arena *arena, SizePX size) {
     Box *box = arena_push(arena, Box);
     box->type = BoxType_Empty;
-    box->bbox = some(size, PxSize);
+    box->bbox = some(size, SizePX);
     return box;
 }
 
-Box *make_texture_box(Arena *arena, u64 texture_idx, PxSize size) {
+Box *make_texture_box(Arena *arena, u64 texture_idx, SizePX size) {
     Box *box = arena_push(arena, Box);
     box->type = BoxType_Texture;
-    box->bbox = some(size, PxSize);
+    box->bbox = some(size, SizePX);
     box->texture_idx = texture_idx;
     return box;
 }
 
-Box *make_solid_color_box(Arena *arena, Color color, PxSize size) {
+Box *make_solid_color_box(Arena *arena, Color color, SizePX size) {
     Box *box = arena_push(arena, Box);
     box->type = BoxType_SolidColor;
-    box->bbox = some(size, PxSize);
+    box->bbox = some(size, SizePX);
     box->color = color;
     return box;
 }
 
-PxSize compute_box_bbox(Box *box);
+SizePX compute_box_bbox(Box *box);
 
-PxSize compute_box_bbox_uncached(Box *box) {
+SizePX compute_box_bbox_uncached(Box *box) {
     switch (box->type) {
     case BoxType_Empty:
     case BoxType_SolidColor: {
         return box->bbox.opt;
     }
     case BoxType_LeftToRightStack: {
-        PxSize total = {};
+        SizePX total = {};
         for (u64 i = 0; i < box->children.count; i++) {
-            PxSize child_bbox = compute_box_bbox(A(box->children, i));
+            SizePX child_bbox = compute_box_bbox(A(box->children, i));
             if (i == 0) {
                 total = child_bbox;
             } else {
@@ -788,9 +788,9 @@ PxSize compute_box_bbox_uncached(Box *box) {
         return total;
     }
     case BoxType_TopToBottomStack: {
-        PxSize total = {};
+        SizePX total = {};
         for (u64 i = 0; i < box->children.count; i++) {
-            PxSize child_bbox = compute_box_bbox(A(box->children, i));
+            SizePX child_bbox = compute_box_bbox(A(box->children, i));
             if (i == 0) {
                 total = child_bbox;
             } else {
@@ -801,9 +801,9 @@ PxSize compute_box_bbox_uncached(Box *box) {
         return total;
     }
     case BoxType_BackToFrontStack: {
-        PxSize total = {};
+        SizePX total = {};
         for (u64 i = 0; i < box->children.count; i++) {
-            PxSize child_bbox = compute_box_bbox(A(box->children, i));
+            SizePX child_bbox = compute_box_bbox(A(box->children, i));
             if (i == 0) {
                 total = child_bbox;
             } else {
@@ -814,7 +814,7 @@ PxSize compute_box_bbox_uncached(Box *box) {
         return total;
     }
     case BoxType_Text: {
-        return (PxSize){.w = 0, .h = 0};
+        return (SizePX){0, 0};
     }
     case BoxType_Texture: {
         return box->bbox.opt;
@@ -822,18 +822,18 @@ PxSize compute_box_bbox_uncached(Box *box) {
     }
 }
 
-PxSize compute_box_bbox(Box *box) {
+SizePX compute_box_bbox(Box *box) {
     if (box->bbox.present) {
         return box->bbox.opt;
     }
-    PxSize bbox = compute_box_bbox_uncached(box);
-    box->bbox = some(bbox, PxSize);
+    SizePX bbox = compute_box_bbox_uncached(box);
+    box->bbox = some(bbox, SizePX);
     return bbox;
 }
 
 Box *pad_box_left(Arena *arena, Box *box, u16 pad) {
-    PxSize bbox = compute_box_bbox(box);
-    Box *pad_box = make_empty_box(arena, (PxSize){.w = pad, .h = bbox.h});
+    SizePX bbox = compute_box_bbox(box);
+    Box *pad_box = make_empty_box(arena, (SizePX){pad, bbox.h});
 
     Box *parent_box = arena_push(arena, Box);
     parent_box->type = BoxType_LeftToRightStack;
@@ -844,8 +844,8 @@ Box *pad_box_left(Arena *arena, Box *box, u16 pad) {
 }
 
 Box *pad_box_right(Arena *arena, Box *box, u16 pad) {
-    PxSize bbox = compute_box_bbox(box);
-    Box *pad_box = make_empty_box(arena, (PxSize){.w = pad, .h = bbox.h});
+    SizePX bbox = compute_box_bbox(box);
+    Box *pad_box = make_empty_box(arena, (SizePX){pad, bbox.h});
 
     Box *parent_box = arena_push(arena, Box);
     parent_box->type = BoxType_LeftToRightStack;
@@ -856,8 +856,8 @@ Box *pad_box_right(Arena *arena, Box *box, u16 pad) {
 }
 
 Box *pad_box_top(Arena *arena, Box *box, u16 pad) {
-    PxSize bbox = compute_box_bbox(box);
-    Box *pad_box = make_empty_box(arena, (PxSize){.w = bbox.w, .h = pad});
+    SizePX bbox = compute_box_bbox(box);
+    Box *pad_box = make_empty_box(arena, (SizePX){bbox.w, pad});
 
     Box *parent_box = arena_push(arena, Box);
     parent_box->type = BoxType_TopToBottomStack;
@@ -868,8 +868,8 @@ Box *pad_box_top(Arena *arena, Box *box, u16 pad) {
 }
 
 Box *pad_box_bottom(Arena *arena, Box *box, u16 pad) {
-    PxSize bbox = compute_box_bbox(box);
-    Box *pad_box = make_empty_box(arena, (PxSize){.w = bbox.w, .h = pad});
+    SizePX bbox = compute_box_bbox(box);
+    Box *pad_box = make_empty_box(arena, (SizePX){bbox.w, pad});
 
     Box *parent_box = arena_push(arena, Box);
     parent_box->type = BoxType_TopToBottomStack;
@@ -880,13 +880,13 @@ Box *pad_box_bottom(Arena *arena, Box *box, u16 pad) {
 }
 
 Box *align_box_center_horiz(Arena *arena, Box *box, u16 width) {
-    PxSize bbox = compute_box_bbox(box);
+    SizePX bbox = compute_box_bbox(box);
     width = max(width, bbox.w);
     u16 left_pad = (width - bbox.w) / 2;
     u16 right_pad = width - bbox.w - left_pad;
 
-    Box *left_pad_box = make_empty_box(arena, {left_pad, bbox.h});
-    Box *right_pad_box = make_empty_box(arena, {right_pad, bbox.h});
+    Box *left_pad_box = make_empty_box(arena, (SizePX){left_pad, bbox.h});
+    Box *right_pad_box = make_empty_box(arena, (SizePX){right_pad, bbox.h});
 
     Box *parent = arena_push(arena, Box);
     parent->type = BoxType_LeftToRightStack;
@@ -898,13 +898,13 @@ Box *align_box_center_horiz(Arena *arena, Box *box, u16 width) {
 }
 
 Box *align_box_center_vert(Arena *arena, Box *box, u16 height) {
-    PxSize bbox = compute_box_bbox(box);
+    SizePX bbox = compute_box_bbox(box);
     height = max(height, bbox.h);
     u16 top_pad = (height - bbox.h) / 2;
     u16 bottom_pad = height - bbox.h - top_pad;
 
-    Box *top_pad_box = make_empty_box(arena, (PxSize){bbox.w, top_pad});
-    Box *bottom_pad_box = make_empty_box(arena, (PxSize){bbox.w, bottom_pad});
+    Box *top_pad_box = make_empty_box(arena, (SizePX){bbox.w, top_pad});
+    Box *bottom_pad_box = make_empty_box(arena, (SizePX){bbox.w, bottom_pad});
 
     Box *parent = arena_push(arena, Box);
     parent->type = BoxType_TopToBottomStack;
@@ -921,7 +921,7 @@ Box *prerender_segment(Arena *arena, Session *session, u16 width, u64 idx) {
     Box *icon = nullptr;
 
     // TODO handle empty icons
-    icon = make_texture_box(arena, idx, {.w = ICON_INNER_PX, .h = ICON_INNER_PX});
+    icon = make_texture_box(arena, idx, (SizePX){ICON_INNER_PX, ICON_INNER_PX});
     // } else {
     //     icon = make_empty_box(arena, ICON_INNER, ICON_INNER);
     // }
@@ -929,8 +929,8 @@ Box *prerender_segment(Arena *arena, Session *session, u16 width, u64 idx) {
     icon = align_box_center_vert(arena, icon, ICON_OUTER_PX);
 
     Color text_color = {.r = 255, .g = 255, .b = 255, .a = 255};
-    Box *pad = make_empty_box(arena, {.w = 10, .h = 0});
-    Box *title = make_text_box(arena, session->file.segments[idx].name, text_color);
+    Box *pad = make_empty_box(arena, (SizePX){.w = 10, .h = 0});
+    Box *title = make_text_box(arena, A(session->file.segments, idx).name, text_color);
     Box *title_centered = align_box_center_vert(arena, title, ICON_OUTER_PX);
 
     Box *row_front = arena_push(arena, Box);
@@ -940,9 +940,9 @@ Box *prerender_segment(Arena *arena, Session *session, u16 width, u64 idx) {
     vec_push(arena, &row_front->children, title_centered);
 
     if (session->timer.mode == TimerMode_Running && idx == session->timer.live_splits.count) {
-        PxSize row_front_bbox = compute_box_bbox(row_front);
+        SizePX row_front_bbox = compute_box_bbox(row_front);
         Color bg_color = {.r = 0, .g = 0, .b = 0, .a = 255};
-        PxSize row_back_size = {.w = width, .h = row_front_bbox.h};
+        SizePX row_back_size = {.w = width, .h = row_front_bbox.h};
         Box *row_back = make_solid_color_box(arena, bg_color, row_back_size);
 
         Box *row = arena_push(arena, Box);
@@ -956,7 +956,7 @@ Box *prerender_segment(Arena *arena, Session *session, u16 width, u64 idx) {
     return row_front;
 }
 
-Box *prerender_contents(Arena *arena, Session *session, PxSize size) {
+Box *prerender_contents(Arena *arena, Session *session, SizePX size) {
     Color color = {.r = 255, .g = 255, .b = 255, .a = 255};
 
     Box *game_name = make_text_box(arena, session->file.game_name, color);
@@ -981,15 +981,15 @@ Box *prerender_contents(Arena *arena, Session *session, PxSize size) {
     Duration t = timer_get_elapsed(&session->timer, get_current_monotonic_time());
     Str t_str = format_duration(arena, t, 2, false);
     Box *curr_time = make_text_box(arena, t_str, color);
-    PxSize curr_time_bbox = compute_box_bbox(curr_time);
+    SizePX curr_time_bbox = compute_box_bbox(curr_time);
     Box *curr_time_aligned = pad_box_left(arena, curr_time, size.w - curr_time_bbox.w);
 
     vec_push(arena, &bottom->children, curr_time_aligned);
 
     // Put timer at bottom
-    PxSize top_bbox = compute_box_bbox(top);
-    PxSize bottom_bbox = compute_box_bbox(bottom);
-    PxSize vsep_size = {.w = 0, .h = (u16)(size.h - top_bbox.h - bottom_bbox.h)};
+    SizePX top_bbox = compute_box_bbox(top);
+    SizePX bottom_bbox = compute_box_bbox(bottom);
+    SizePX vsep_size = {.w = 0, .h = (u16)(size.h - top_bbox.h - bottom_bbox.h)};
     Box *vsep = make_empty_box(arena, vsep_size);
 
     Box *root = arena_push(arena, Box);
@@ -1001,9 +1001,9 @@ Box *prerender_contents(Arena *arena, Session *session, PxSize size) {
     return root;
 }
 
-Box *prerender(Arena *arena, Session *session, PxSize window_size) {
+Box *prerender(Arena *arena, Session *session, SizePX window_size) {
     constexpr u16 PADDING = 10;
-    PxSize content_size = {
+    SizePX content_size = {
         .w = (u16)(window_size.w - PADDING * 2),
         .h = (u16)(window_size.h - PADDING * 2),
     };
@@ -1017,19 +1017,19 @@ Box *prerender(Arena *arena, Session *session, PxSize window_size) {
 
 // TODO for pixel-perfect rendering, need to understand rounding/UV mapping
 // w.r.t. pixel center better
-void window_to_ndc(Vertex *vertex, PxSize window_size) {
+void window_to_ndc(Vertex *vertex, SizePX window_size) {
     vertex->x = (vertex->x / (f32)window_size.w) * 2.f - 1.f;
     vertex->y = -((vertex->y / (f32)window_size.h) * 2.f - 1.f);
 }
 
 void push_atlas_quad(Arena *arena,
-                     PxSize window_size,
+                     SizePX window_size,
                      Atlas *atlas,
                      Mesh *mesh,
                      PxRect src,
                      PxRect dst,
                      Color color) {
-    Arr_u16 indices = vec_extend_zero(arena, &mesh->indices, u16, 6);
+    Arr_u16 indices = vec_extend_zero(arena, &mesh->indices, 6);
     A(indices, 0) = (u16)(mesh->vertices.count + 0);
     A(indices, 1) = (u16)(mesh->vertices.count + 1);
     A(indices, 2) = (u16)(mesh->vertices.count + 2);
@@ -1095,7 +1095,7 @@ void push_atlas_quad(Arena *arena,
 }
 
 void make_icon_mesh_inner(Arena *arena,
-                          PxSize window_size,
+                          SizePX window_size,
                           Box *box,
                           PxPos where,
                           Atlas *atlas,
@@ -1106,23 +1106,23 @@ void make_icon_mesh_inner(Arena *arena,
     }
     case BoxType_LeftToRightStack: {
         for (u64 i = 0; i < box->children.count; i++) {
-            PxSize child_bbox = compute_box_bbox(box->children[i]);
-            make_icon_mesh_inner(arena, window_size, box->children[i], where, atlas, mesh);
+            SizePX child_bbox = compute_box_bbox(A(box->children, i));
+            make_icon_mesh_inner(arena, window_size, A(box->children, i), where, atlas, mesh);
             where.x += child_bbox.w;
         }
         break;
     }
     case BoxType_TopToBottomStack: {
         for (u64 i = 0; i < box->children.count; i++) {
-            PxSize child_bbox = compute_box_bbox(box->children[i]);
-            make_icon_mesh_inner(arena, window_size, box->children[i], where, atlas, mesh);
+            SizePX child_bbox = compute_box_bbox(A(box->children, i));
+            make_icon_mesh_inner(arena, window_size, A(box->children, i), where, atlas, mesh);
             where.y += child_bbox.h;
         }
         break;
     }
     case BoxType_BackToFrontStack: {
         for (u64 i = 0; i < box->children.count; i++) {
-            make_icon_mesh_inner(arena, window_size, box->children[i], where, atlas, mesh);
+            make_icon_mesh_inner(arena, window_size, A(box->children, i), where, atlas, mesh);
         }
         break;
     }
@@ -1165,7 +1165,7 @@ void make_icon_mesh_inner(Arena *arena,
     }
 }
 
-u64 make_icon_mesh(Arena *arena, PxSize window_size, Session *session, Atlas *atlas, Mesh *mesh) {
+u64 make_icon_mesh(Arena *arena, SizePX window_size, Session *session, Atlas *atlas, Mesh *mesh) {
     Box *box = prerender(arena, session, window_size);
     u64 start_vertex_count = mesh->vertices.count;
     PxPos where = {.x = 0, .y = 0};
@@ -1229,7 +1229,7 @@ Atlas *make_and_upload_atlas(ErrorContext *err,
                              SDL_GPUGraphicsPipeline *clear_texture_pipeline,
                              Str name,
                              Arr_CPUTexture textures,
-                             PxSize atlas_size,
+                             SizePX atlas_size,
                              FilterType filter);
 
 GlyphAtlas make_and_upload_glyph_atlas(ErrorContext *err,
@@ -1271,23 +1271,23 @@ GlyphAtlas make_and_upload_glyph_atlas(ErrorContext *err,
         FT_Render_Glyph(face->glyph, FT_RENDER_MODE_NORMAL);
 
         FT_Bitmap bitmap = face->glyph->bitmap;
-        CPUTexture *texture = &textures[glyph_idx];
+        CPUTexture *texture = &A(textures, glyph_idx);
         Arr_u8 tmp_buffer = {.ptr = bitmap.buffer, .count = bitmap.width * bitmap.rows};
         texture->format = SDL_GPU_TEXTUREFORMAT_R8_UNORM;
         texture->buffer = arr_clone(scratch, tmp_buffer);
-        texture->dims = (PxSize){.w = (u16)bitmap.width, .h = (u16)bitmap.rows};
+        texture->dims = (SizePX){(u16)bitmap.width, (u16)bitmap.rows};
 
         // Convert from 26.6 fixed point pixels to f32 pixels
-        metrics[glyph_idx].bearing_px_x = (f32)face->glyph->bitmap_left;
-        metrics[glyph_idx].bearing_px_y = (f32)face->glyph->bitmap_top;
+        A(metrics, glyph_idx).bearing_px_x = (f32)face->glyph->bitmap_left;
+        A(metrics, glyph_idx).bearing_px_y = (f32)face->glyph->bitmap_top;
     }
 
-    PxSize font_atlas_size = {.w = 2048, .h = 2048};
+    SizePX font_atlas_size = {.w = 2048, .h = 2048};
     Str texture_name = str_format(scratch, "Glyph atlas: family = '%s', style = '%s', size = %dpx",
                                   face->family_name, face->style_name, face_size_px);
     Atlas *atlas =
-        make_and_upload_atlas(arena, device, command_buffer, clear_texture_pipeline, texture_name,
-                              textures, font_atlas_size, FilterType_Nearest);
+        make_and_upload_atlas(err, arena, device, command_buffer, clear_texture_pipeline,
+                              texture_name, textures, font_atlas_size, FilterType_Nearest);
     GlyphAtlas ret = {
         .atlas = atlas,
         .px_per_em = face_size_px,
@@ -1301,7 +1301,7 @@ GlyphAtlas make_and_upload_glyph_atlas(ErrorContext *err,
 }
 
 u64 make_glyph_mesh(Arena *arena,
-                    PxSize window_size,
+                    SizePX window_size,
                     Arr_u8 font_file,
                     GlyphAtlas *atlas,
                     Str text,
@@ -1456,7 +1456,7 @@ Atlas *make_and_upload_atlas(ErrorContext *err,
                              SDL_GPUGraphicsPipeline *clear_texture_pipeline,
                              Str name,
                              Arr_CPUTexture textures,
-                             PxSize atlas_size,
+                             SizePX atlas_size,
                              FilterType filter) {
     Atlas *atlas = arena_push(arena, Atlas);
     if (!command_buffer) return atlas;
@@ -1753,9 +1753,9 @@ void make_and_upload_icon_atlas(ErrorContext *err, App *app, SDL_GPUCommandBuffe
     for (u64 i = 0; i < file->segments.count; i++) {
         A(icon_textures, i) = A(file->segments, i).icon_texture;
     }
-    app->icon_atlas = make_and_upload_atlas(
-        err, app->session_arena, app->device, command_buffer, app->clear_icon_pipeline,
-        S("Icon atlas"), icon_textures, (PxSize){.w = 1024, .h = 1024}, FilterType_Linear);
+    app->icon_atlas = make_and_upload_atlas(err, app->session_arena, app->device, command_buffer,
+                                            app->clear_icon_pipeline, S("Icon atlas"),
+                                            icon_textures, (SizePX){1024, 1024}, FilterType_Linear);
 
     arena_release(scratch);
     scope_close(scope, "Make and upload icon atlas");
@@ -1955,7 +1955,7 @@ void render(App *app) {
     u32 height = 0;
     SDL_WaitAndAcquireGPUSwapchainTexture(command_buffer, app->window, &texture, &width, &height);
     if (texture) {  // Apparently can be null if window is minimized
-        PxSize window_size = {.w = (u16)width, .h = (u16)height};
+        SizePX window_size = {.w = (u16)width, .h = (u16)height};
 
         Mesh mesh = {};
         vec_prealloc(frame_arena, &mesh.vertices, MAX_VERTEX_COUNT);
@@ -1989,8 +1989,8 @@ SDL_HitTestResult hittest_callback(SDL_Window *window, const SDL_Point *point, v
 
 SDL_Window *sdl_create_window(ErrorContext *err,
                               Str name,
-                              PxSize size,
-                              PxSize min_size,
+                              SizePX size,
+                              SizePX min_size,
                               SDL_WindowFlags flags) {
     Scope scope = scope_open(err);
     Arena *scratch = arena_acquire();
@@ -2159,7 +2159,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
         if (SDL_HasClipboardText()) {
             char *clipboard_cstr = SDL_GetClipboardText();
             Str clipboard = str_trim(str_from_c(clipboard_cstr));
-            if (!str_is_empty(clipboard)) {  // Empty iff SDL failed to allocate it
+            if (!is_empty(clipboard)) {  // Empty iff SDL failed to allocate it
                 try_load_new_session(app, clipboard);
             }
             SDL_free(clipboard_cstr);

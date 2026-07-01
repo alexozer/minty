@@ -41,6 +41,7 @@ typedef double f64;
         name *ptr;                      \
         u64 count;                      \
         u64 capacity;                   \
+        CONCAT(Arr_, name) __to_arr[0]; \
     } CONCAT(Vec_, name);               \
                                         \
     typedef struct CONCAT(Opt_, name) { \
@@ -48,7 +49,7 @@ typedef double f64;
         name opt;                       \
     } CONCAT(Opt_, name)
 
-#define derive_primitive(name) derive_containers(name)
+#define derive_type(name) derive_containers(name)
 
 // In the rare case of recursive types
 #define derive_struct_pre(name)     \
@@ -70,16 +71,16 @@ typedef double f64;
 // Basic
 //
 
-derive_primitive(u8);
-derive_primitive(u16);
-derive_primitive(u32);
-derive_primitive(u64);
-derive_primitive(i8);
-derive_primitive(i16);
-derive_primitive(i32);
-derive_primitive(i64);
-derive_primitive(f32);
-derive_primitive(f64);
+derive_type(u8);
+derive_type(u16);
+derive_type(u32);
+derive_type(u64);
+derive_type(i8);
+derive_type(i16);
+derive_type(i32);
+derive_type(i64);
+derive_type(f32);
+derive_type(f64);
 
 #define kilobytes(n) ((n) * 1024)
 #define megabytes(n) ((n) * kilobytes(n))
@@ -126,20 +127,15 @@ constexpr u64 MIN_VEC_CAPACITY = 8;
 [[noreturn]] void *oob();
 
 // Sneaky array bounds checks in C
-#define A(arr, idx)                                                                       \
-    (*({                                                                                  \
-        typeof(arr) *__arr__ = &(arr);                                                    \
-        u64 __i__ = (u64)(idx);                                                           \
-        __i__ < __arr__->count ? &__arr__->ptr[__i__] : (typeof(__arr__->ptr[0]) *)oob(); \
+#define A(arr, idx)                                                             \
+    (*({                                                                        \
+        typeof(arr) *_arr_ = &(arr);                                            \
+        u64 _i_ = (u64)(idx);                                                   \
+        _i_ < _arr_->count ? &_arr_->ptr[_i_] : (typeof(_arr_->ptr[0]) *)oob(); \
     }))
 
-struct Str {
-    u8 *ptr;
-    u64 count;
-};
-derive_struct(Str);
-
-#define STR_EMPTY ((Str){})
+typedef Arr_u8 Str;
+derive_type(Str);
 
 #define S(s) ((Str){.ptr = (u8 *)(s), .count = (sizeof(s)) - 1})
 #define SF(s) (int)(s).count, (char *)(s).ptr
@@ -147,6 +143,7 @@ derive_struct(Str);
 #define ARR(a) ((Arr<u8>){.ptr = (a), .count = sizeof((a)) / sizeof((a)[0])})
 
 Str str_from_c(const char *cstr);
+char *str_to_c(Arena *arena, Str str);
 Str str_from_c_len(const char *cstr);
 bool char_is_whitespace(u8 c);
 Str str_trim(Str s);
@@ -157,26 +154,91 @@ bool str_starts_with(Str s, Str prefix);
 __attribute__((format(printf, 2, 3))) Str str_format(Arena *arena, const char *format, ...);
 Str str_format_v(Arena *arena, const char *format, va_list args);
 bool str_is_valid_utf8(Arr_u8 s);
-bool str_is_empty(Str s);
 bool str_find(Str haystack, Str needle, u64 *pos);
 bool str_contains(Str haystack, Str needle);
 Str str_slice(Str s, u64 start, u64 end);
 
 // Certainly possible to do this simply and w/o an iterator object, but just messin around
-typedef struct StrLineIter {
+struct StrLineIter {
     Str base;
     u64 pos;
-} StrLineIter;
+};
+derive_struct(StrLineIter);
 
-typedef struct Pair_Str {
+struct Pair_Str {
     Str left;
     Str right;
-} Pair_Str;
+};
+derive_struct(Pair_Str);
 
 StrLineIter str_lines(Str s);
 bool str_lines_next(StrLineIter *iter, Str *line);
 u64 str_count_lines(Str s);
 Pair_Str str_split2(Str base, u8 delim);
+
+//
+// Arrays
+//
+
+#define is_empty(arr) ((arr).count == 0)
+
+#define c_arr_count(a) (sizeof((a)) / sizeof((a)[0]))
+
+#define arr_eq(a, b)                                                      \
+    ({                                                                    \
+        typeof(a) _a_ = (a);                                              \
+        typeof(b) _b_ = (b);                                              \
+        (_a_.count == _b_.count &&                                        \
+         SDL_memcmp(_a_.ptr, _b_.ptr, _a_.count * sizeof(*_a_.ptr)) == 0) \
+    })
+
+#define arr_slice(arr, start, end)          \
+    ({                                      \
+        typeof(arr) _arr_ = (arr);          \
+        u64 _start_ = (start);              \
+        u64 _end_ = (end);                  \
+        log_assert(_start_ <= _arr_.count); \
+        log_assert(_end_ <= _arr_.count);   \
+        log_assert(_start_ <= _end_);       \
+        ((typeof(_arr_)){                   \
+            .ptr = _arr_.ptr + _start_,     \
+            .count = _end_ - _start_,       \
+        });                                 \
+    })
+
+// #define arr_last(v) A(v, ((v).count - 1))
+
+// For non-overlapping arrays
+#define arr_copy(dest, source)                                                          \
+    ({                                                                                  \
+        typeof(dest) _dest_ = (dest);                                                   \
+        typeof(dest) _source_ = (source);                                               \
+        log_assert(_dest_.count == _source_.count);                                     \
+        if (_dest_.count > 0) {                                                         \
+            SDL_memcpy(_dest_.ptr, _source_.ptr, _dest_.count * sizeof(*(_dest_.ptr))); \
+        }                                                                               \
+    })
+
+// For potentially overlapping arrays
+#define arr_move(dest, source)                                                           \
+    ({                                                                                   \
+        typeof(dest) _dest_ = (dest);                                                    \
+        typeof(dest) _source_ = (source);                                                \
+        log_assert(_dest_.count == _source_.count);                                      \
+        if (_dest_.count > 0) {                                                          \
+            SDL_memmove(_dest_.ptr, _source_.ptr, _dest_.count * sizeof(*(_dest_.ptr))); \
+        }                                                                                \
+    })
+
+#define arr_clone(arena, arr)                                                                    \
+    ({                                                                                           \
+        typeof(arena) _arena_ = (arena);                                                         \
+        typeof(arr) _arr_ = (arr);                                                               \
+        typeof(_arr_.ptr) new_ptr = arena__push_bytes(_arena_, _arr_.count * sizeof(*_arr_.ptr), \
+                                                      alignof(typeof(*_arr_.ptr)));              \
+        SDL_memcpy(new_ptr, _arr_.ptr, _arr_.count * sizeof(*_arr_.ptr));                        \
+        (typeof(_arr_)){.ptr = new_ptr, .count = _arr_.count};                                   \
+    })
 
 //
 // Vec
@@ -185,74 +247,92 @@ Pair_Str str_split2(Str base, u8 delim);
 // void vec_push(Arena *arena, Vec<T> *vec, T val) {
 #define vec_push(arena, vec, val)         \
     ({                                    \
-        (vec)->ptr[(vec)->count] = (val); \
-        (vec)->count++;                   \
+        typeof(vec) _vec_ = (vec);        \
+        typeof(val) _val_ = (val);        \
+        _vec_->ptr[_vec_->count] = _val_; \
+        _vec_->count++;                   \
     })
 
 // vec__grow(arena, vec, vec->count + 1);
-#define vec_push_zero(arena, vec) (&(vec)->ptr[(vec)->count++])
+#define vec_push_zero(arena, vec)      \
+    ({                                 \
+        typeof(vec) _vec_ = (vec);     \
+        (&_vec_->ptr[_vec_->count++]); \
+    })
 
-#define vec_pop(vec)                  \
-    ({                                \
-        log_assert((vec)->count > 0); \
-        (vec)->count--;               \
+#define vec_pop(vec)                                          \
+    ({                                                        \
+        typeof(vec) _vec_ = (vec);                            \
+        log_assert(_vec_->count > 0);                         \
+        _vec_->ptr[--_vec_->count] = (typeof(*_vec_->ptr)){}; \
     })
 
 // vec__grow(arena, vec, vec->count + arr.count);
-#define vec_extend(arena, vec, arr)                            \
-    ({                                                         \
-        u64 start = (vec)->count;                              \
-        (vec)->count += (arr).count;                           \
-        auto a = arr_slice(vec_arr(vec), start, (vec)->count); \
-        arr_copy(a, (arr));                                    \
+#define vec_extend(arena, vec, arr)        \
+    ({                                     \
+        typeof(vec) _vec_ = (vec);         \
+        typeof(arr) _arr_ = (arr);         \
+        u64 start = _vec_->count;          \
+        _vec_->count += _arr_.count;       \
+        typeof(arr) a = {                  \
+            .ptr = _vec_->ptr + start,     \
+            .count = _vec_->count - start, \
+        };                                 \
+        arr_copy(a, _arr_);                \
     })
 
-// template <typename T>
-// Arr<T> vec_extend_zero(Arena *arena, Vec<T> *vec, u64 count) {
-//     vec__grow(arena, vec, vec->count + count);
-//
-//     u64 start = vec->count;
-//     vec->count += count;
-//     Arr<T> a = arr_slice(vec_arr(vec), start, vec->count);
-//
-//     return a;
-// }
-
-#define vec_arr(vec, t) ((CONCAT(Arr_, t)){.ptr = (vec)->ptr, .count = (vec)->count})
+#define vec_arr(vec)                                                                  \
+    ({                                                                                \
+        typeof(vec) _vec_ = (vec);                                                    \
+        (typeof((_vec_)->__to_arr[0])){.ptr = (_vec_)->ptr, .count = (_vec_)->count}; \
+    })
 
 // vec__grow(arena, vec, vec->count + count);
-#define vec_extend_zero(arena, vec, t, count)              \
-    ({                                                     \
-        u64 start = (vec)->count;                          \
-        (vec)->count += (count);                           \
-        arr_slice(vec_arr(vec), start, (t), (vec)->count); \
+#define vec_extend_zero(arena, vec, new_count) \
+    ({                                         \
+        typeof(vec) _vec_ = (vec);             \
+        u64 _new_count_ = (new_count);         \
+        u64 start = _vec_->count;              \
+        _vec_->count += _new_count_;           \
+        (typeof(_vec_->__to_arr[0])){          \
+            .ptr = _vec_->ptr + start,         \
+            .count = _new_count_,              \
+        };                                     \
     })
 
-//
-// template <typename T>
-// void vec_prealloc(Arena *arena, Vec<T> *vec, u64 max_elems) {
-//     vec__grow(arena, vec, max_elems);
-// }
-//
-// template <typename T>
-// Arr<T> vec_arr(Vec<T> *vec) {
-//     return {.ptr = vec->ptr, .count = vec->count};
-// }
+#define vec_reset(vec)                                                 \
+    ({                                                                 \
+        typeof(vec) _vec_ = (vec);                                     \
+        SDL_memset(_vec_->ptr, 0, sizeof(*_vec_->ptr) * _vec_->count); \
+        _vec_->count = 0;                                              \
+    })
 
-//
-// template <typename T>
-// void vec_reset(Vec<T> *vec) {
-//     vec->count = 0;
-// }
-//
-// template <typename T>
-// bool vec_is_empty(Vec<T> *vec) {
-//     return vec->count == 0;
-// }
+#define vec_prealloc(arena, vec, reserve)                                                   \
+    ({                                                                                      \
+        typeof(arena) _arena_ = (arena);                                                    \
+        typeof(vec) _vec_ = (vec);                                                          \
+        typeof(reserve) _reserve_ = (reserve);                                              \
+        if (_vec_->capacity < _reserve_) {                                                  \
+            typeof(_vec_->ptr) new_ptr = arena__push_bytes(                                 \
+                _arena_, _vec_->count * sizeof(*_vec_->ptr), alignof(typeof(*_vec_->ptr))); \
+            if (_vec_->count > 0) {                                                         \
+                SDL_memcpy(new_ptr, _vec_->ptr, _vec_->count * sizeof(*_vec_->ptr));        \
+            }                                                                               \
+            _vec_->ptr = new_ptr;                                                           \
+        }                                                                                   \
+    })
+
+// #define vec_last(vec)               \
+//     ({                              \
+//         typeof(vec) _vec_ = (vec);  \
+//         A(_vec_, _vec_->count - 1); \
+//     })
 
 //
 // Logging
 //
+
+[[noreturn]] void crash(const char *why);
 
 #define log_trace(...) SDL_LogTrace(SDL_LOG_CATEGORY_APPLICATION, __VA_ARGS__)
 #define log_debug(...) SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION, __VA_ARGS__)
@@ -263,66 +343,16 @@ Pair_Str str_split2(Str base, u8 delim);
     SDL_LogCritical(SDL_LOG_CATEGORY_APPLICATION, __VA_ARGS__); \
     abort()
 
-#define unreachable() log__assert("unreachable", __FILE_NAME__, __LINE__)
-
-[[noreturn]] void log__assert(const char *cond, const char *file, int line);
 #define log_assert(cond) \
-    if ((cond) == false) log__assert(#cond, __FILE_NAME__, __LINE__)
+    if ((cond) == false) crash("assertion failed")
+
+#define unreachable() crash("assertion failed: unreachable")
 
 //
 // Idk
 //
 
 void thread_init();
-
-//
-// Arrays
-//
-
-#define c_arr_count(a) (sizeof((a)) / sizeof((a)[0]))
-
-#define arr_eq(a, b) \
-    ((a).count == (b).count && SDL_memcmp((a).ptr, (b).ptr, (a).count * sizeof(*(a).ptr)) == 0)
-
-#define arr_slice(arr, start, end)      \
-    ({                                  \
-        log_assert(start <= arr.count); \
-        log_assert(end <= arr.count);   \
-        log_assert(start <= end);       \
-        ((typeof(arr)){                 \
-            .ptr = arr.ptr + start,     \
-            .count = end - start,       \
-        })                              \
-    })
-
-#define arr_last(v) A(v, ((v).count - 1))
-
-// For non-overlapping arrays
-#define arr_copy(dest, source)                                                          \
-    ({                                                                                  \
-        log_assert((dest).count == (source).count);                                     \
-        if ((dest).count > 0) {                                                         \
-            SDL_memcpy((dest).ptr, (source).ptr, (dest).count * sizeof(*((dest).ptr))); \
-        }                                                                               \
-    })
-
-// For potentially overlapping arrays
-#define arr_move(dest, source)                                                           \
-    ({                                                                                   \
-        log_assert((dest).count == (source).count);                                      \
-        if ((dest).count > 0) {                                                          \
-            SDL_memmove((dest).ptr, (source).ptr, (dest).count * sizeof(*((dest).ptr))); \
-        }                                                                                \
-    })
-
-#define arr_is_empty(arr) ((arr).count == 0)
-
-#define arr_clone(arena, arr)                                                          \
-    ({                                                                                 \
-        typeof(arr) clone = arena_push_arr(arena, typeof(*((arr).ptr)), (arr).count)); \
-        arr_copy(clone, (arr));                                                        \
-        clone;                                                                         \
-    })
 
 //
 // Option
@@ -337,7 +367,7 @@ void thread_init();
 
 // Monotonic nanoseconds
 typedef i64 Duration;
-derive_primitive(Duration);
+derive_type(Duration);
 
 struct Instant {
     // Monotonic nanoseconds starting at program start

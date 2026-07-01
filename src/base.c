@@ -27,12 +27,12 @@ u64 next_pow2(u64 x) {
     return x;
 }
 
-[[noreturn]] void *oob() {
-    log_fatal("Array index out of bounds");
+[[noreturn]] void crash(const char *why) {
+    log_fatal("%s", why);
 }
 
-[[noreturn]] void log__assert(const char *cond, const char *file, int line) {
-    log_fatal("Assertion failed: %s:%d: %s", file, line, cond);
+[[noreturn]] void *oob() {
+    crash("Array index out of bounds");
 }
 
 void arena_pool_init() {
@@ -90,10 +90,6 @@ void str_copy(Str dest, Str source) {
     if (dest.count > 0) {
         SDL_memcpy(dest.ptr, source.ptr, dest.count);
     }
-}
-
-bool str_is_empty(Str str) {
-    return str.count == 0;
 }
 
 Str str_clone(Arena *arena, Str str) {
@@ -224,7 +220,7 @@ __attribute__((format(printf, 2, 3))) Str str_format(Arena *arena, const char *f
 bool str_find(Str haystack, Str needle, u64 *out) {
     *out = 0;
 
-    if (str_is_empty(needle)) {
+    if (is_empty(needle)) {
         // Found the non-existent needle at the start of the haystack
         return false;
     }
@@ -262,22 +258,13 @@ void thread_init() {
     arena_pool_init();
 }
 
-// char *str_to_c(Arena *arena, Str s) {
-//     Arr<char> cstr = arena_push_arr<char>(arena, s.count + 1);
-//     SDL_memcpy(cstr.ptr, s.ptr, s.count);
-//     return cstr.ptr;
-// }
-//
-// Str str_from_c(const char *cstr) {
-//     u64 count = 0;
-//     while (cstr[count] != '\0')
-//         count++;
-//     return (Str){.ptr = (u8 *)cstr, .count = count};
-// }
-//
-// Str str_from_c_len(const char *cstr, u64 len) {
-//     return {.ptr = (u8 *)cstr, .count = len};
-// }
+derive_prim(char);
+
+char *str_to_c(Arena *arena, Str s) {
+    Arr_char cstr = arena_push_arr(arena, char, s.count + 1);
+    SDL_memcpy(cstr.ptr, s.ptr, s.count);
+    return cstr.ptr;
+}
 
 //
 // Encoding/Decoding
@@ -286,7 +273,7 @@ void thread_init() {
 u64 parse_u64(ErrorContext *err, Str s) {
     Scope scope = scope_open(err);
 
-    if (str_is_empty(s)) {
+    if (is_empty(s)) {
         err_report(err, "Empty string");
     }
 
