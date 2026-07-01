@@ -74,6 +74,8 @@ pub fn build(b: *std.Build) !void {
         .root_module = b.createModule(.{
             .target = target,
             .optimize = optimize,
+            // We attempt to configure simdutf to not actually depend on linking against libc++, but
+            // it still needs std headers
             .link_libcpp = true,
         }),
     });
@@ -114,25 +116,6 @@ pub fn build(b: *std.Build) !void {
     blitter.root_module.linkLibrary(freetype.artifact("freetype"));
     try cdb_targets.append(b.allocator, blitter);
     b.installArtifact(blitter);
-
-    const codegen = b.addExecutable(.{
-        .name = "codegen",
-        .root_module = b.createModule(.{
-            .target = target,
-            .optimize = optimize,
-            .strip = false,
-            .link_libc = true,
-            .link_libcpp = false,
-        }),
-    });
-    codegen.root_module.addCSourceFiles(.{
-        .files = &.{ "src/tools/codegen.c", "src/bootstrap.c" },
-        .flags = c_flags ++ .{"-Werror"},
-        .language = .c,
-    });
-    codegen.root_module.linkLibrary(sdl.artifact("SDL3"));
-    try cdb_targets.append(b.allocator, codegen);
-    // b.installArtifact(codegen);
 
     const run_blitter = b.addRunArtifact(blitter);
     if (b.args) |args| {
