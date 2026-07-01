@@ -408,6 +408,23 @@ bool err_occurred(ErrorContext *err) {
     return err->ctx_stack.count > 0;
 }
 
+void err_log(ErrorContext *err) {
+    u64 count = err->ctx_stack.count;
+    if (count == 0) return;
+
+    Str root_cause = A(err->ctx_stack, count - 1);
+    log_error("Failed: %.*s", SF(root_cause));
+    if (count > 1) {
+        log_error("");
+        log_error("Caused By:");
+        log_error("");
+        for (u64 i = count - 1; i > 0; i--) {
+            Str cause = A(err->ctx_stack, i - 1);
+            log_error("  Failed: %.*s", SF(cause));
+        }
+    }
+}
+
 //
 // Encoding/decoding
 //

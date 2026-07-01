@@ -1178,6 +1178,7 @@ u64 make_icon_mesh(Arena *arena, SizePX window_size, Session *session, Atlas *at
 // MARK:Text rendering
 //
 
+// TODO check font for errors on load, but afterwards assume it's good
 // TODO cache shaping context
 // TODO arena allocate kbts stuff
 // TODO handling style/direction/face runs etc.
@@ -1217,8 +1218,7 @@ Arr_ShapedGlyph shape_text_naive(Arena *arena, Arr_u8 font, Str text) {
         // run_idx++;
     }
 
-end:
-    if (context != NULL) kbts_DestroyShapeContext(context);
+    kbts_DestroyShapeContext(context);
     return vec_arr(&output);
 }
 
@@ -1232,6 +1232,7 @@ Atlas *make_and_upload_atlas(ErrorContext *err,
                              SizePX atlas_size,
                              FilterType filter);
 
+// TODO split fallible font sanity check vs. infallible atlas creation
 GlyphAtlas make_and_upload_glyph_atlas(ErrorContext *err,
                                        Arena *arena,
                                        SDL_GPUDevice *device,
@@ -1245,17 +1246,19 @@ GlyphAtlas make_and_upload_glyph_atlas(ErrorContext *err,
     if (!freetype_handle) return (GlyphAtlas){};
 
     log_assert(face_size_px > 0);
-    Scope scope = scope_open(err);
     Arena *scratch = arena_acquire();
+    Scope scope = scope_open(err);
 
     FT_Face face = {};
     if (FT_New_Memory_Face(freetype_handle, font_file.ptr, (long)font_file.count, 0, &face) !=
         FT_Err_Ok) {
-        break;
+        // TODO
+        // break;
     }
 
     if (FT_Set_Pixel_Sizes(face, face_size_px, 0) != FT_Err_Ok) {
-        break;
+        // TODO
+        // break;
     }
 
     Arr_CPUTexture textures = arena_push_arr(scratch, CPUTexture, (u64)face->num_glyphs);
@@ -1296,6 +1299,7 @@ GlyphAtlas make_and_upload_glyph_atlas(ErrorContext *err,
     };
 
     FT_Done_Face(face);
+    scope_close(scope, "Create and upload glyph atlas");
     arena_release(arena);
     return ret;
 }
@@ -1700,6 +1704,7 @@ SDL_GPUBuffer *sdl_create_gpu_buffer(ErrorContext *err,
 
     arena_release(scratch);
     scope_close(scope, "Create buffer '%.*s'", SF(name));
+    return gpu_buffer;
 }
 
 SDL_GPUTransferBuffer *sdl_create_gpu_transfer_buffer(ErrorContext *err,
@@ -2010,6 +2015,7 @@ SDL_Window *sdl_create_window(ErrorContext *err,
 
     arena_release(scratch);
     scope_close(scope, "Create window");
+    return window;
 }
 
 SDL_Window *init_window(ErrorContext *err) {
@@ -2052,45 +2058,48 @@ App *init_app(ErrorContext *err, Str path) {
 
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     thread_init();
-
     if (argc < 2) {
         log_info("Usage: blitter <path-to-splits-file>");
         return SDL_APP_FAILURE;
     }
 
-    ErrorContext err_base = {.arena = arena_acquire()};
+    Arena *err_arena = arena_acquire();
+    ErrorContext err_base = {.arena = err_arena};
     ErrorContext *err = &err_base;
-    defer(arena_release(err_base.arena));
 
-    App *app = init_app(err, str_from_c(argv[1]));
-    if (err_occurred(err)) {
+    Scope scope = scope_open(err);
+    *appstate = init_app(err, str_from_c(argv[1]));
+    scope_close(scope, "Init app");
+
+    bool did_error = err_occurred(err);
+    if (did_error) {
         err_log(err);
-        return SDL_APP_FAILURE;
     }
-    *appstate = app;
 
-    return SDL_APP_CONTINUE;
+    arena_release(err_arena);
+    return did_error ? SDL_APP_FAILURE : SDL_APP_CONTINUE;
 }
 
-void try_load_new_session(App *app, Str lss_path) {
-    ErrorContext err_base = {.arena = arena_acquire()};
-    ErrorContext *err = &err_base;
-    defer(arena_release(err_base.arena));
-
-    Arena *session_arena = arena_acquire();
-    Session *session = make_session(err, session_arena, app, lss_path);
-    if (err_occurred(err)) {
-        err_log(err);
-        arena_release(session_arena);
-        return;
-    }
-
-    if (app->session_arena != nullptr) {
-        arena_release(app->session_arena);
-    }
-    app->session_arena = session_arena;
-    app->session = session;
-}
+// TODO audit session arena/resource/memory usage
+// void try_load_new_session(App *app, Str lss_path) {
+//     ErrorContext err_base = {.arena = arena_acquire()};
+//     ErrorContext *err = &err_base;
+//     defer(arena_release(err_base.arena));
+//
+//     Arena *session_arena = arena_acquire();
+//     Session *session = make_session(err, session_arena, app, lss_path);
+//     if (err_occurred(err)) {
+//         err_log(err);
+//         arena_release(session_arena);
+//         return;
+//     }
+//
+//     if (app->session_arena != nullptr) {
+//         arena_release(app->session_arena);
+//     }
+//     app->session_arena = session_arena;
+//     app->session = session;
+// }
 
 SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
     App *app = (App *)appstate;
@@ -2160,7 +2169,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
             char *clipboard_cstr = SDL_GetClipboardText();
             Str clipboard = str_trim(str_from_c(clipboard_cstr));
             if (!is_empty(clipboard)) {  // Empty iff SDL failed to allocate it
-                try_load_new_session(app, clipboard);
+                // try_load_new_session(app, clipboard);
             }
             SDL_free(clipboard_cstr);
         }

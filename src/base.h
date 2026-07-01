@@ -402,6 +402,7 @@ Scope scope_open(ErrorContext *err);
 __attribute__((format(printf, 2, 3))) void err_report(ErrorContext *err, const char *format, ...);
 __attribute__((format(printf, 2, 3))) void scope_close(Scope scope, const char *format, ...);
 bool err_occurred(ErrorContext *err);
+void err_log(ErrorContext *ctx);
 
 //
 // Encoding/Decoding
