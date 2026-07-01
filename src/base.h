@@ -97,11 +97,12 @@ u64 next_pow2(u64 x);
 // Arenas
 //
 
-typedef struct Arena {
+struct Arena {
     void *data;
     u64 reserved;
     u64 offset;
-} Arena;
+};
+derive_struct(Arena);
 
 // TODO use comptime alignment
 void *arena__push_bytes(Arena *arena, u64 size, u64 alignment);
@@ -110,12 +111,15 @@ void arena_pool_init();
 Arena *arena_acquire();
 void arena_release(Arena *arena);
 
-#define arena_push(arena, t) (t *)(arena__push_bytes(arena, sizeof(t), alignof(t)))
+#define arena_push(arena, t) (t *)(arena__push_bytes((arena), sizeof(t), alignof(t)))
 
-#define arena_push_arr(arena, t, c)                                        \
-    ((CONCAT(Arr_, t)){                                                    \
-        .ptr = (t *)(arena__push_bytes(arena, sizeof(t) * c, alignof(t))), \
-        .count = c,                                                        \
+#define arena_push_arr(arena, t, c)                                              \
+    ({                                                                           \
+        u64 _c_ = (c);                                                           \
+        ((CONCAT(Arr_, t)){                                                      \
+            .ptr = (t *)(arena__push_bytes(arena, sizeof(t) * _c_, alignof(t))), \
+            .count = _c_,                                                        \
+        });                                                                      \
     })
 
 constexpr u64 MIN_VEC_CAPACITY = 8;
@@ -346,7 +350,7 @@ Pair_Str str_split2(Str base, u8 delim);
 #define log_assert(cond) \
     if ((cond) == false) crash("assertion failed")
 
-#define unreachable() crash("assertion failed: unreachable")
+#define log_unreachable() crash("assertion failed: unreachable")
 
 //
 // Idk

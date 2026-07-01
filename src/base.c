@@ -5,7 +5,13 @@
 #include <SDL3/SDL_iostream.h>
 #include <SDL3/SDL_log.h>
 #include <SDL3/SDL_timer.h>
+
+// Not sure why these defines are necessary, looks like the header ought to define them?
+#define char16_t uint16_t
+#define char32_t uint32_t
 #include <simdutf_c.h>
+#undef char32_t
+#undef char16_t
 
 // TODO sane arena sizing/lifetime scheme
 static constexpr u64 ARENA_POOL_MAX = 16;
@@ -258,12 +264,16 @@ void thread_init() {
     arena_pool_init();
 }
 
-derive_prim(char);
+derive_type(char);
 
 char *str_to_c(Arena *arena, Str s) {
     Arr_char cstr = arena_push_arr(arena, char, s.count + 1);
     SDL_memcpy(cstr.ptr, s.ptr, s.count);
     return cstr.ptr;
+}
+
+Str str_from_c(const char *cstr) {
+    return (Str){.ptr = (u8 *)cstr, .count = SDL_strlen(cstr)};
 }
 
 //
@@ -393,7 +403,7 @@ __attribute__((format(printf, 2, 3))) void err_report(ErrorContext *err, const c
     }
 }
 
-__attribute__((format(printf, 2, 3))) void err_ctx(Scope scope, const char *format, ...) {
+__attribute__((format(printf, 2, 3))) void scope_close(Scope scope, const char *format, ...) {
     log_assert(scope.err != nullptr);
     if (scope.err->ctx_stack.count > scope.last_err_stack_pos) {
         va_list args;

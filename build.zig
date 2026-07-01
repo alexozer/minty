@@ -95,7 +95,7 @@ pub fn build(b: *std.Build) !void {
             .target = target,
             .optimize = optimize,
             .strip = false,
-            .link_libc = true,
+            .link_libc = false, // Does SDL pull it in anyway?
             .link_libcpp = false,
         }),
     });
