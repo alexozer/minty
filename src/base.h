@@ -105,21 +105,21 @@ struct Arena {
 derive_struct(Arena);
 
 // TODO use comptime alignment
-void *arena__push_bytes(Arena *arena, u64 size, u64 alignment);
+void *arena_push_bytes(Arena *arena, u64 size, u64 alignment);
 
 void arena_pool_init();
 Arena *arena_acquire();
 void arena_release(Arena *arena);
 
-#define arena_push(arena, t) (t *)(arena__push_bytes((arena), sizeof(t), alignof(t)))
+#define arena_push(arena, t) (t *)(arena_push_bytes((arena), sizeof(t), alignof(t)))
 
-#define arena_push_arr(arena, t, c)                                              \
-    ({                                                                           \
-        u64 _c_ = (c);                                                           \
-        ((CONCAT(Arr_, t)){                                                      \
-            .ptr = (t *)(arena__push_bytes(arena, sizeof(t) * _c_, alignof(t))), \
-            .count = _c_,                                                        \
-        });                                                                      \
+#define arena_push_arr(arena, t, c)                                             \
+    ({                                                                          \
+        u64 _c_ = (c);                                                          \
+        ((CONCAT(Arr_, t)){                                                     \
+            .ptr = (t *)(arena_push_bytes(arena, sizeof(t) * _c_, alignof(t))), \
+            .count = _c_,                                                       \
+        });                                                                     \
     })
 
 constexpr u64 MIN_VEC_CAPACITY = 8;
@@ -234,14 +234,14 @@ Pair_Str str_split2(Str base, u8 delim);
         }                                                                                \
     })
 
-#define arr_clone(arena, arr)                                                                    \
-    ({                                                                                           \
-        typeof(arena) _arena_ = (arena);                                                         \
-        typeof(arr) _arr_ = (arr);                                                               \
-        typeof(_arr_.ptr) new_ptr = arena__push_bytes(_arena_, _arr_.count * sizeof(*_arr_.ptr), \
-                                                      alignof(typeof(*_arr_.ptr)));              \
-        SDL_memcpy(new_ptr, _arr_.ptr, _arr_.count * sizeof(*_arr_.ptr));                        \
-        (typeof(_arr_)){.ptr = new_ptr, .count = _arr_.count};                                   \
+#define arr_clone(arena, arr)                                                                   \
+    ({                                                                                          \
+        typeof(arena) _arena_ = (arena);                                                        \
+        typeof(arr) _arr_ = (arr);                                                              \
+        typeof(_arr_.ptr) new_ptr = arena_push_bytes(_arena_, _arr_.count * sizeof(*_arr_.ptr), \
+                                                     alignof(typeof(*_arr_.ptr)));              \
+        SDL_memcpy(new_ptr, _arr_.ptr, _arr_.count * sizeof(*_arr_.ptr));                       \
+        (typeof(_arr_)){.ptr = new_ptr, .count = _arr_.count};                                  \
     })
 
 //
@@ -317,7 +317,7 @@ Pair_Str str_split2(Str base, u8 delim);
         typeof(vec) _vec_ = (vec);                                                          \
         typeof(reserve) _reserve_ = (reserve);                                              \
         if (_vec_->capacity < _reserve_) {                                                  \
-            typeof(_vec_->ptr) new_ptr = arena__push_bytes(                                 \
+            typeof(_vec_->ptr) new_ptr = arena_push_bytes(                                  \
                 _arena_, _vec_->count * sizeof(*_vec_->ptr), alignof(typeof(*_vec_->ptr))); \
             if (_vec_->count > 0) {                                                         \
                 SDL_memcpy(new_ptr, _vec_->ptr, _vec_->count * sizeof(*_vec_->ptr));        \

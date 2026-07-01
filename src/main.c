@@ -297,7 +297,7 @@ CPUTexture convert_srgb_surface_to_rgba(Arena *arena, SDL_Surface *surface) {
     u64 dest_size = (u64)(surface->w * surface->h * 4);
     Arr_u8 buffer = {
         // TODO don't use "private" arena API for alignment
-        .ptr = (u8 *)arena__push_bytes(arena, dest_size, 8),
+        .ptr = (u8 *)arena_push_bytes(arena, dest_size, 8),
         .count = dest_size,
     };
     CPUTexture texture = {

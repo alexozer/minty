@@ -50,7 +50,7 @@ void arena_pool_init() {
 }
 
 // TODO use comptime alignment
-void *arena__push_bytes(Arena *arena, u64 size, u64 alignment) {
+void *arena_push_bytes(Arena *arena, u64 size, u64 alignment) {
     arena->offset = align_to(arena->offset, alignment);
     void *pos = (void *)((u64)arena->data + arena->offset);
     arena->offset += align_to(size, alignment);
@@ -99,7 +99,7 @@ void str_copy(Str dest, Str source) {
 }
 
 Str str_clone(Arena *arena, Str str) {
-    Str clone = {.ptr = (u8 *)arena__push_bytes(arena, str.count, 1), .count = str.count};
+    Str clone = {.ptr = (u8 *)arena_push_bytes(arena, str.count, 1), .count = str.count};
     str_copy(clone, str);
     return clone;
 }
