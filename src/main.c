@@ -1647,13 +1647,12 @@ Atlas *make_and_upload_atlas(ErrorContext *err,
     return atlas;
 }
 
-SDL_GPUShader *load_shader(ErrorContext *err, SDL_GPUDevice *device, Str name, ShaderType type) {
+SDL_GPUShader *load_shader(ErrorContext *err,
+                           SDL_GPUDevice *device,
+                           Arr_u8 source,
+                           ShaderType type) {
     Scope scope = scope_open(err);
     Arena *scratch = arena_acquire();
-
-    Str shader_path =
-        str_format(scratch, "src/shaders/%.*s.%.*s", SF(name), SF(OS_SHADER_EXTENSION));
-    Arr_u8 source = os_read_file(err, scratch, shader_path);
 
     SDL_GPUShaderCreateInfo info = {};
     switch (type) {
@@ -1661,7 +1660,7 @@ SDL_GPUShader *load_shader(ErrorContext *err, SDL_GPUDevice *device, Str name, S
         info = (SDL_GPUShaderCreateInfo){
             .code_size = source.count,
             .code = (u8 *)source.ptr,
-            .format = OS_SHADER_FORMAT,
+            .format = OS_SHADERS.format,
             .stage = SDL_GPU_SHADERSTAGE_VERTEX,
             .num_samplers = 0,
             .num_storage_textures = 0,
@@ -1675,7 +1674,7 @@ SDL_GPUShader *load_shader(ErrorContext *err, SDL_GPUDevice *device, Str name, S
         info = (SDL_GPUShaderCreateInfo){
             .code_size = source.count,
             .code = (u8 *)source.ptr,
-            .format = OS_SHADER_FORMAT,
+            .format = OS_SHADERS.format,
             .stage = SDL_GPU_SHADERSTAGE_FRAGMENT,
             .num_samplers = 1,
             .num_storage_textures = 0,
@@ -1692,7 +1691,7 @@ SDL_GPUShader *load_shader(ErrorContext *err, SDL_GPUDevice *device, Str name, S
     }
 
     arena_release(scratch);
-    scope_close(scope, "Load shader '%.*s'", SF(name));
+    scope_close(scope, "Load shader");
     return shader;
 }
 
@@ -1777,9 +1776,11 @@ void make_and_upload_icon_atlas(ErrorContext *err, App *app, SDL_GPUCommandBuffe
 
 void init_render_pipelines(ErrorContext *err, App *app) {
     // Load shaders
-    app->vert_shader = load_shader(err, app->device, S("vert"), ShaderType_Vertex);
-    app->icon_frag_shader = load_shader(err, app->device, S("frag_icon"), ShaderType_Fragment);
-    app->glyph_frag_shader = load_shader(err, app->device, S("frag_glyph"), ShaderType_Fragment);
+    app->vert_shader = load_shader(err, app->device, OS_SHADERS.vert_shader, ShaderType_Vertex);
+    app->icon_frag_shader =
+        load_shader(err, app->device, OS_SHADERS.frag_icon_shader, ShaderType_Fragment);
+    app->glyph_frag_shader =
+        load_shader(err, app->device, OS_SHADERS.frag_glyph_shader, ShaderType_Fragment);
     if (err_occurred(err)) return;
 
     if (SDL_WindowSupportsGPUPresentMode(app->device, app->window, SDL_GPU_PRESENTMODE_MAILBOX)) {
@@ -1845,7 +1846,7 @@ void init_renderer(ErrorContext *err, App *app) {
     }
     app->font_file = os_read_file(err, app->app_arena, FONT_PATH);
 
-    app->device = SDL_CreateGPUDevice(OS_SHADER_FORMAT, RENDERER_DEBUG_MODE_ENABLED, nullptr);
+    app->device = SDL_CreateGPUDevice(OS_SHADERS.format, RENDERER_DEBUG_MODE_ENABLED, nullptr);
     if (!app->device) {
         err_report(err, "%s", SDL_GetError());
     } else {

@@ -8,5 +8,12 @@ void *os_alloc(u64 size);
 void os_free(void *buf, u64 size);
 Arr_u8 os_read_file(ErrorContext *err, Arena *arena, Str path);
 
-extern const SDL_GPUShaderFormat OS_SHADER_FORMAT;
-extern const Str OS_SHADER_EXTENSION;
+struct OS_Shaders {
+    SDL_GPUShaderFormat format;
+    Arr_u8 vert_shader;
+    Arr_u8 frag_icon_shader;
+    Arr_u8 frag_glyph_shader;
+};
+derive_struct(OS_Shaders);
+
+extern OS_Shaders OS_SHADERS;
