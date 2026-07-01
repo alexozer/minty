@@ -39,8 +39,8 @@ struct SizePX {
 };
 derive_struct(SizePX);
 
-constexpr SizePX DEFAULT_WINDOW_SIZE = {.w = 360, .h = 600};
-constexpr SizePX MIN_WINDOW_SIZE = {.w = 200, .h = 100};
+constexpr SizePX DEFAULT_WINDOW_SIZE = {360, 600};
+constexpr SizePX MIN_WINDOW_SIZE = {200, 100};
 
 // TODO thread through program properly
 Str FONT_PATH = S("data/Roboto-Medium.ttf");

@@ -256,14 +256,6 @@ bool str_contains(Str haystack, Str needle) {
     return str_find(haystack, needle, &dummy);
 }
 
-//
-// Idk
-//
-
-void thread_init() {
-    arena_pool_init();
-}
-
 derive_type(char);
 
 char *str_to_c(Arena *arena, Str s) {
@@ -274,6 +266,18 @@ char *str_to_c(Arena *arena, Str s) {
 
 Str str_from_c(const char *cstr) {
     return (Str){.ptr = (u8 *)cstr, .count = SDL_strlen(cstr)};
+}
+
+bool str_is_valid_utf8(Str s) {
+    return simdutf_validate_utf8((const char *)s.ptr, s.count);
+}
+
+//
+// Idk
+//
+
+void thread_init() {
+    arena_pool_init();
 }
 
 //
