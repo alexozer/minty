@@ -201,8 +201,8 @@ u64 str_count_lines(Str s) {
     return line_count;
 }
 
-Pair_Str str_split2(Str base, u8 delim) {
-    Pair_Str pair = {};
+StrPair str_split2(Str base, u8 delim) {
+    StrPair pair = {};
 
     u64 delim_idx = 0;
     while (delim_idx < base.count && A(base, delim_idx) != delim) {

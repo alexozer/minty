@@ -190,16 +190,16 @@ struct StrLineIter {
 };
 derive_struct(StrLineIter);
 
-struct Pair_Str {
+struct StrPair {
     Str left;
     Str right;
 };
-derive_struct(Pair_Str);
+derive_struct(StrPair);
 
 StrLineIter str_lines(Str s);
 bool str_lines_next(StrLineIter *iter, Str *line);
 u64 str_count_lines(Str s);
-Pair_Str str_split2(Str base, u8 delim);
+StrPair str_split2(Str base, u8 delim);
 
 //
 // Arrays

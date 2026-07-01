@@ -29,7 +29,6 @@
 // TODO toggle through build system or something
 constexpr bool RENDERER_DEBUG_MODE_ENABLED = true;
 
-// TODO define these in a more principled way
 constexpr u64 MAX_QUAD_COUNT = 512;
 constexpr u64 MAX_VERTEX_COUNT = MAX_QUAD_COUNT * 4;
 constexpr u64 MAX_INDEX_COUNT = MAX_QUAD_COUNT * 6;
@@ -161,11 +160,11 @@ struct PxPos {
 };
 derive_struct(PxPos);
 
-struct PxRect {
+struct RectPX {
     u16 x, y;
     u16 w, h;
 };
-derive_struct(PxRect);
+derive_struct(RectPX);
 
 derive_struct(stbrp_node);
 derive_struct(stbrp_rect);
@@ -174,7 +173,7 @@ struct Atlas {
     SizePX size;
     SDL_GPUTexture *texture;
     SDL_GPUSampler *sampler;
-    Arr_PxRect placements;
+    Arr_RectPX placements;
     // Not sure if it's ever worth coalescing transfer buffers
     SDL_GPUTransferBuffer *transfer_buffer;
 
@@ -296,7 +295,6 @@ CPUTexture convert_srgb_surface_to_rgba(Arena *arena, SDL_Surface *surface) {
 
     u64 dest_size = (u64)(surface->w * surface->h * 4);
     Arr_u8 buffer = {
-        // TODO don't use "private" arena API for alignment
         .ptr = (u8 *)arena_push_bytes(arena, dest_size, 8),
         .count = dest_size,
     };
@@ -322,9 +320,7 @@ Arr_SegSummary calc_seg_summary(Arena *arena, Session *session) {
     Timer *timer = &session->timer;
     FileDef *file = &session->file;
 
-    // TODO fix
-    // Arr_SegSummary summary = arena_push_arr<SegSummary>(arena, timer->live_splits.count);
-    Arr_SegSummary summary = {};
+    Arr_SegSummary summary = arena_push_arr(arena, SegSummary, timer->live_splits.count);
 
     // Calc PB splits
     Arr_Opt_Duration pb_splits = file->personal_best.splits;
@@ -1015,8 +1011,6 @@ Box *prerender(Arena *arena, Session *session, SizePX window_size) {
     return timer;
 }
 
-// TODO for pixel-perfect rendering, need to understand rounding/UV mapping
-// w.r.t. pixel center better
 void window_to_ndc(Vertex *vertex, SizePX window_size) {
     vertex->x = (vertex->x / (f32)window_size.w) * 2.f - 1.f;
     vertex->y = -((vertex->y / (f32)window_size.h) * 2.f - 1.f);
@@ -1026,8 +1020,8 @@ void push_atlas_quad(Arena *arena,
                      SizePX window_size,
                      Atlas *atlas,
                      Mesh *mesh,
-                     PxRect src,
-                     PxRect dst,
+                     RectPX src,
+                     RectPX dst,
                      Color color) {
     Arr_u16 indices = vec_extend_zero(arena, &mesh->indices, 6);
     A(indices, 0) = (u16)(mesh->vertices.count + 0);
@@ -1131,13 +1125,13 @@ void make_icon_mesh_inner(Arena *arena,
         break;
     }
     case BoxType_Texture: {
-        PxRect src = A(atlas->placements, box->texture_idx);
+        RectPX src = A(atlas->placements, box->texture_idx);
 
         f32 src_ratio = (f32)src.w / (f32)src.h;
         f32 dst_ratio = (f32)box->bbox.opt.w / (f32)box->bbox.opt.h;
 
         // Scale to fit
-        PxRect dest = {};
+        RectPX dest = {};
         if (src_ratio > dst_ratio) {
             f32 scale = (f32)box->bbox.opt.w / (f32)src.w;
             dest.w = box->bbox.opt.w;
@@ -1333,8 +1327,8 @@ u64 make_glyph_mesh(Arena *arena,
         u16 dest_px_y = (u16)SDL_lroundf(200.f - bitmap_px_y);
 
         u32 shaped_id = A(shaped_glyphs, i).glyph_id;
-        PxRect src = A(atlas->atlas->placements, shaped_id);
-        PxRect dst = {.x = dest_px_x, .y = dest_px_y, .w = src.w, .h = src.h};
+        RectPX src = A(atlas->atlas->placements, shaped_id);
+        RectPX dst = {.x = dest_px_x, .y = dest_px_y, .w = src.w, .h = src.h};
         Color color = {.r = 255, .g = 255, .b = 255, .a = 255};
         push_atlas_quad(arena, window_size, atlas->atlas, mesh, src, dst, color);
     }
@@ -1520,7 +1514,7 @@ Atlas *make_and_upload_atlas(ErrorContext *err,
 
     log_assert(stbrp_pack_rects(&packer_ctx, packer_rects.ptr, (i32)packer_rects.count) == 1);
 
-    Arr_PxRect placements = arena_push_arr(arena, PxRect, textures.count);
+    Arr_RectPX placements = arena_push_arr(arena, RectPX, textures.count);
     for (u64 i = 0; i < textures.count; i++) {
         if (A(textures, i).dims.w > 0 && A(textures, i).dims.h > 0) {
             A(placements, i).x = (u16)A(packer_rects, i).x + 1;
