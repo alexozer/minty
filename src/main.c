@@ -1027,14 +1027,14 @@ void window_to_ndc(Vertex *vertex, SizePX window_size) {
     vertex->y = -((vertex->y / (f32)window_size.h) * 2.f - 1.f);
 }
 
-void push_atlas_quad(Arena *arena,
+void push_atlas_quad(Arena *frame_arena,
                      SizePX window_size,
                      Atlas *atlas,
                      Mesh *mesh,
                      RectPX src,
                      RectPX dst,
                      Color color) {
-    Arr_u16 indices = vec_extend_zero(arena, &mesh->indices, 6);
+    Arr_u16 indices = vec_extend_zero(frame_arena, &mesh->indices, 6);
     A(indices, 0) = (u16)(mesh->vertices.count + 0);
     A(indices, 1) = (u16)(mesh->vertices.count + 1);
     A(indices, 2) = (u16)(mesh->vertices.count + 2);
@@ -1042,7 +1042,7 @@ void push_atlas_quad(Arena *arena,
     A(indices, 4) = (u16)(mesh->vertices.count + 1);
     A(indices, 5) = (u16)(mesh->vertices.count + 3);
 
-    Arr_Vertex vertices = vec_extend_zero(arena, &mesh->vertices, 4);
+    Arr_Vertex vertices = vec_extend_zero(frame_arena, &mesh->vertices, 4);
     // Top left
     A(vertices, 0) = (Vertex){
         .x = (f32)dst.x,
@@ -1099,7 +1099,7 @@ void push_atlas_quad(Arena *arena,
     window_to_ndc(&A(vertices, 3), window_size);
 }
 
-void make_icon_mesh_inner(Arena *arena,
+void make_icon_mesh_inner(Arena *frame_arena,
                           SizePX window_size,
                           Box *box,
                           PxPos where,
@@ -1112,7 +1112,7 @@ void make_icon_mesh_inner(Arena *arena,
     case BoxType_LeftToRightStack: {
         for (u64 i = 0; i < box->children.count; i++) {
             SizePX child_bbox = compute_box_bbox(A(box->children, i));
-            make_icon_mesh_inner(arena, window_size, A(box->children, i), where, atlas, mesh);
+            make_icon_mesh_inner(frame_arena, window_size, A(box->children, i), where, atlas, mesh);
             where.x += child_bbox.w;
         }
         break;
@@ -1120,14 +1120,14 @@ void make_icon_mesh_inner(Arena *arena,
     case BoxType_TopToBottomStack: {
         for (u64 i = 0; i < box->children.count; i++) {
             SizePX child_bbox = compute_box_bbox(A(box->children, i));
-            make_icon_mesh_inner(arena, window_size, A(box->children, i), where, atlas, mesh);
+            make_icon_mesh_inner(frame_arena, window_size, A(box->children, i), where, atlas, mesh);
             where.y += child_bbox.h;
         }
         break;
     }
     case BoxType_BackToFrontStack: {
         for (u64 i = 0; i < box->children.count; i++) {
-            make_icon_mesh_inner(arena, window_size, A(box->children, i), where, atlas, mesh);
+            make_icon_mesh_inner(frame_arena, window_size, A(box->children, i), where, atlas, mesh);
         }
         break;
     }
@@ -1157,7 +1157,7 @@ void make_icon_mesh_inner(Arena *arena,
             dest.y = where.y;
         }
         Color color = {.r = 255, .g = 255, .b = 255, .a = 255};
-        push_atlas_quad(arena, window_size, atlas, mesh, src, dest, color);
+        push_atlas_quad(frame_arena, window_size, atlas, mesh, src, dest, color);
         break;
     }
     case BoxType_SolidColor: {
@@ -1170,11 +1170,15 @@ void make_icon_mesh_inner(Arena *arena,
     }
 }
 
-u64 make_icon_mesh(Arena *arena, SizePX window_size, Session *session, Atlas *atlas, Mesh *mesh) {
-    Box *box = prerender(arena, session, window_size);
+u64 make_icon_mesh(Arena *frame_arena,
+                   SizePX window_size,
+                   Session *session,
+                   Atlas *atlas,
+                   Mesh *mesh) {
+    Box *box = prerender(frame_arena, session, window_size);
     u64 start_vertex_count = mesh->vertices.count;
     PxPos where = {.x = 0, .y = 0};
-    make_icon_mesh_inner(arena, window_size, box, where, atlas, mesh);
+    make_icon_mesh_inner(frame_arena, window_size, box, where, atlas, mesh);
     u64 end_vertex_count = mesh->vertices.count;
     return (end_vertex_count - start_vertex_count) / 4;
 }
@@ -1309,7 +1313,7 @@ GlyphAtlas make_and_upload_glyph_atlas(ErrorContext *err,
     return ret;
 }
 
-u64 make_glyph_mesh(Arena *arena,
+u64 make_glyph_mesh(Arena *frame_arena,
                     SizePX window_size,
                     Arr_u8 font_file,
                     GlyphAtlas *atlas,
@@ -1341,13 +1345,13 @@ u64 make_glyph_mesh(Arena *arena,
         RectPX src = A(atlas->atlas->placements, shaped_id);
         RectPX dst = {.x = dest_px_x, .y = dest_px_y, .w = src.w, .h = src.h};
         Color color = {.r = 255, .g = 255, .b = 255, .a = 255};
-        push_atlas_quad(arena, window_size, atlas->atlas, mesh, src, dst, color);
+        push_atlas_quad(frame_arena, window_size, atlas->atlas, mesh, src, dst, color);
     }
 
     u64 end_vertex_count = mesh->vertices.count;
     u64 quad_count = (end_vertex_count - start_vertex_count) / 4;
 
-    arena_release(arena);
+    arena_release(scratch);
     return quad_count;
 }
 
