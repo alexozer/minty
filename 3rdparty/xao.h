@@ -112,6 +112,7 @@ top: {
             res.end = r->curr++;
             return res;
         }
+        if (*r->curr == '=') { r->error = "unexpected ="; goto top; }
 
         // Attr name
         res.type = XAO_ATTR_NAME;
