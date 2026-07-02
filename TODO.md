@@ -112,8 +112,8 @@ texture upload to pack them on GPU at runtime!
 <!--     Upload to new positions in a copy pass -->
 
 <!-- For a first pass: just rect pack, transfer buffer pack, and upload in one go -->
-Make basic UI engine use atlas
-    Box renderer just appends to list of verts/indices for now
+<!-- Make basic UI engine use atlas -->
+    <!-- Box renderer just appends to list of verts/indices for now -->
 
 <!-- Scroll to see icons! -->
 
@@ -190,13 +190,13 @@ Issues:
 <!--     - Occasionally appears on Mac too -->
 - Window not resizable
 - Window size seems to be measured in real pixels on Linux and Windows, even in hidpi mode, unlike macos
-- Shoulnd't be able to maximize on Windows
+- Shouldn't be able to maximize on Windows
 
 # C port
 
 Very, very close w/ the macro approach
 
 TODO:
-Implement vec__grow()
-    Pass it a "generic" vec struct type to avoid passing a bajillion parameters?
-    Implement using arena_realloc()?
+<!-- Implement vec__grow() -->
+    <!-- Pass it a "generic" vec struct type to avoid passing a bajillion parameters? -->
+    <!-- Implement using arena_realloc()? -->
