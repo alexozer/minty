@@ -1092,7 +1092,7 @@ void push_atlas_quad(Arena *frame_arena,
         .a = color.a,
     };
 
-    // TODO less awkward way to do this?
+    // Kinda awkward but whatever
     window_to_ndc(&A(vertices, 0), window_size);
     window_to_ndc(&A(vertices, 1), window_size);
     window_to_ndc(&A(vertices, 2), window_size);

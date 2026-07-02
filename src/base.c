@@ -218,15 +218,17 @@ StrPair str_split2(Str base, u8 delim) {
 }
 
 Str str_format_v(Arena *arena, const char *format, va_list args) {
-    char buf[kilobytes(8)];
-    int n = SDL_vsnprintf(buf, sizeof(buf), format, args);
+    u64 init_arena_offset = arena->offset;
+    Arr_u8 buf = arena_push_arr(arena, u8, kilobytes(8));
+    int n = SDL_vsnprintf((char *)buf.ptr, buf.count, format, args);
     if (n < 0) {
+        SDL_memset(buf.ptr, 0, buf.count);
+        arena->offset = init_arena_offset;
         return S("<formatting error>");
+    } else {
+        arena->offset = init_arena_offset + (u64)n;
+        return (Str){.ptr = buf.ptr, .count = (u64)n};
     }
-
-    Str s = {.ptr = (u8 *)buf, .count = (u64)n};
-    // TODO try to allocate directly on tip of arena?
-    return str_clone(arena, s);
 }
 
 __attribute__((format(printf, 2, 3))) Str str_format(Arena *arena, const char *format, ...) {

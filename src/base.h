@@ -114,13 +114,14 @@ void arena_release(Arena *arena);
 
 #define arena_push(arena, t) (t *)(arena_push_bytes((arena), sizeof(t), alignof(t)))
 
-#define arena_push_arr(arena, t, c)                                             \
-    ({                                                                          \
-        u64 _c_ = (c);                                                          \
-        ((CONCAT(Arr_, t)){                                                     \
-            .ptr = (t *)(arena_push_bytes(arena, sizeof(t) * _c_, alignof(t))), \
-            .count = _c_,                                                       \
-        });                                                                     \
+#define arena_push_arr(arena, t, c)                                               \
+    ({                                                                            \
+        typeof(arena) _arena_ = (arena);                                          \
+        u64 _c_ = (c);                                                            \
+        ((CONCAT(Arr_, t)){                                                       \
+            .ptr = (t *)(arena_push_bytes(_arena_, sizeof(t) * _c_, alignof(t))), \
+            .count = _c_,                                                         \
+        });                                                                       \
     })
 
 constexpr u64 MIN_VEC_CAPACITY = 8;
@@ -384,7 +385,6 @@ void thread_init();
 // Option
 //
 
-// TODO codegen to avoid passing type
 #define some(v, t) ((CONCAT(Opt_, t)){.opt = (v), .present = true})
 #define none(t) ((CONCAT(Opt_, t)){.present = false})
 
