@@ -306,7 +306,7 @@ derive_enum(UI_Flag);
 
 derive_struct_pre(UI_Box);
 struct UI_Box {
-    UI_Size size_input;
+    UI_Size input_size;
     Str text_content;
     UI_Flag flags;
     u32 texture_id;
@@ -314,7 +314,7 @@ struct UI_Box {
     UI_Box *parent;
     Vec_P_UI_Box childs;
 
-    RectF size_output;
+    RectF output_size;
 };
 derive_struct_post(UI_Box);
 
@@ -1262,27 +1262,27 @@ u64 make_icon_mesh(Arena *frame_arena,
 //
 
 void ui_flex_x(UI_Box *box, f32 ratio) {
-    box->size_input.w = (UI_Dim){
+    box->input_size.w = (UI_Dim){
         .type = UI_DimType_Flex,
         .value = ratio,
     };
 }
 
 void ui_flex_y(UI_Box *box, f32 ratio) {
-    box->size_input.h = (UI_Dim){
+    box->input_size.h = (UI_Dim){
         .type = UI_DimType_Flex,
         .value = ratio,
     };
 }
 
 void ui_fixed_x(UI_Box *box, f32 size_px) {
-    box->size_input.w = (UI_Dim){
+    box->input_size.w = (UI_Dim){
         .type = UI_DimType_FixedPX,
         .value = size_px,
     };
 }
 void ui_fixed_y(UI_Box *box, f32 size_px) {
-    box->size_input.h = (UI_Dim){
+    box->input_size.h = (UI_Dim){
         .type = UI_DimType_FixedPX,
         .value = size_px,
     };
@@ -1295,7 +1295,7 @@ UI_Box *ui_box(Arena *arena) {
 UI_Box *ui_template(Arena *arena, UI_Box *template) {
     // TODO do this in a more principled way
     UI_Box *box = ui_box(arena);
-    box->size_input = template->size_input;
+    box->input_size = template->input_size;
     box->text_content = template->text_content;
     box->flags = template->flags;
     box->texture_id = template->texture_id;
@@ -1336,34 +1336,34 @@ UI_Box *build_ui(Arena *frame_arena, Session *session, SizePX size) {
 
 void layout_ui_impl(UI_Box *box);
 
-void layout_ui_main_axis(UI_Box *box, u64 axis) {
+void layout_ui_main_axis(UI_Box *parent, u64 axis) {
     // Uh oh, unbounded array access?!? Call the safety police
-    log_assert(axis < c_arr_count(box->size_output.size.dims));
+    log_assert(axis < c_arr_count(parent->output_size.size.dims));
 
-    f32 avail_px = (f32)box->size_output.size.dims[axis];
+    f32 avail_px = (f32)parent->output_size.size.dims[axis];
 
     f32 total_fixed_px = 0;
-    for (u64 i = 0; i < box->childs.count; i++) {
-        UI_Box *child = A(box->childs, i);
+    for (u64 i = 0; i < parent->childs.count; i++) {
+        UI_Box *child = A(parent->childs, i);
 
-        if (child->size_input.dims[axis].type == UI_DimType_FixedPX) {
-            total_fixed_px += child->size_input.dims[axis].value;
+        if (child->input_size.dims[axis].type == UI_DimType_FixedPX) {
+            total_fixed_px += child->input_size.dims[axis].value;
         }
     }
     if (total_fixed_px > avail_px) {
         // Out of room! Make 'em flex instead!
         total_fixed_px = 0;
-        for (u64 i = 0; i < box->childs.count; i++) {
-            UI_Box *child = A(box->childs, i);
+        for (u64 i = 0; i < parent->childs.count; i++) {
+            UI_Box *child = A(parent->childs, i);
 
-            switch (child->size_input.dims[axis].type) {
+            switch (child->input_size.dims[axis].type) {
             case UI_DimType_FixedPX: {
-                child->size_input.dims[axis].type = UI_DimType_Flex;
-                child->size_input.dims[axis].value /= total_fixed_px;
+                child->input_size.dims[axis].type = UI_DimType_Flex;
+                child->input_size.dims[axis].value /= total_fixed_px;
                 break;
             }
             case UI_DimType_Flex: {
-                child->size_input.dims[axis].value = 0;
+                child->input_size.dims[axis].value = 0;
                 break;
             }
             }
@@ -1372,57 +1372,58 @@ void layout_ui_main_axis(UI_Box *box, u64 axis) {
 
     // Compute total flex units
     f32 total_flex_units = 0;
-    for (u64 i = 0; i < box->childs.count; i++) {
-        UI_Box *child = A(box->childs, i);
+    for (u64 i = 0; i < parent->childs.count; i++) {
+        UI_Box *child = A(parent->childs, i);
 
-        if (child->size_input.dims[axis].type == UI_DimType_Flex) {
-            total_flex_units += child->size_input.dims[axis].value;
+        if (child->input_size.dims[axis].type == UI_DimType_Flex) {
+            total_flex_units += child->input_size.dims[axis].value;
         }
     }
 
     // Compute all children pos/size
     f32 total_flex_px = avail_px - total_fixed_px;
     f32 current_pos_px = 0;
-    for (u64 i = 0; i < box->childs.count; i++) {
-        UI_Box *child = A(box->childs, i);
-        child->size_output.pos.dims[axis] = current_pos_px;
+    for (u64 i = 0; i < parent->childs.count; i++) {
+        UI_Box *child = A(parent->childs, i);
+        child->output_size.pos.dims[axis] = current_pos_px + parent->output_size.pos.dims[axis];
 
-        switch (child->size_input.dims[axis].type) {
+        switch (child->input_size.dims[axis].type) {
         case UI_DimType_FixedPX: {
-            child->size_output.size.dims[axis] = child->size_input.dims[axis].value;
+            child->output_size.size.dims[axis] = child->input_size.dims[axis].value;
             break;
         }
         case UI_DimType_Flex: {
-            child->size_output.size.dims[axis] =
-                child->size_input.dims[axis].value / total_flex_units * total_flex_px;
+            child->output_size.size.dims[axis] =
+                child->input_size.dims[axis].value / total_flex_units * total_flex_px;
             break;
         }
         }
 
-        current_pos_px += child->size_output.size.dims[axis];
+        current_pos_px += child->output_size.size.dims[axis];
     }
 
     // Recursively compute child layouts
-    for (u64 i = 0; i < box->childs.count; i++) {
-        UI_Box *child = A(box->childs, i);
+    for (u64 i = 0; i < parent->childs.count; i++) {
+        UI_Box *child = A(parent->childs, i);
         layout_ui_impl(child);
     }
 }
 
-void layout_ui_cross_axis(UI_Box *box, u64 axis) {
+void layout_ui_cross_axis(UI_Box *parent, u64 axis) {
     // Uh oh, unbounded array access?!? Call the safety police
-    log_assert(axis < c_arr_count(box->size_output.size.dims));
+    log_assert(axis < c_arr_count(parent->output_size.size.dims));
 
-    for (u64 i = 0; i < box->childs.count; i++) {
-        UI_Box *child = A(box->childs, i);
+    for (u64 i = 0; i < parent->childs.count; i++) {
+        UI_Box *child = A(parent->childs, i);
+        child->output_size.pos.dims[axis] = parent->output_size.pos.dims[axis];
 
-        switch (child->size_input.dims[axis].type) {
+        switch (child->input_size.dims[axis].type) {
         case UI_DimType_FixedPX: {
-            child->size_output.size.dims[axis] = child->size_input.dims[axis].value;
+            child->output_size.size.dims[axis] = child->input_size.dims[axis].value;
             break;
         }
         case UI_DimType_Flex: {
-            child->size_output.size.dims[axis] = box->size_output.size.dims[axis];
+            child->output_size.size.dims[axis] = parent->output_size.size.dims[axis];
             break;
         }
         }
@@ -1444,12 +1445,12 @@ void layout_ui_impl(UI_Box *box) {
 }
 
 void layout_ui(UI_Box *root) {
-    log_assert(root->size_input.w.type == UI_DimType_FixedPX);
-    log_assert(root->size_input.h.type == UI_DimType_FixedPX);
-    root->size_output.x = 0;
-    root->size_output.y = 0;
-    root->size_output.w = root->size_input.w.value;
-    root->size_output.h = root->size_input.h.value;
+    log_assert(root->input_size.w.type == UI_DimType_FixedPX);
+    log_assert(root->input_size.h.type == UI_DimType_FixedPX);
+    root->output_size.x = 0;
+    root->output_size.y = 0;
+    root->output_size.w = root->input_size.w.value;
+    root->output_size.h = root->input_size.h.value;
     layout_ui_impl(root);
 }
 
@@ -1459,10 +1460,10 @@ u64 make_ui_mesh(Arena *frame_arena, SizePX window_size, UI_Box *box, Mesh *mesh
     // Fake atlas for now
     Atlas atlas = {.size = window_size};
     RectPX rect_px = {
-        .x = (u16)SDL_lroundf(box->size_output.x),
-        .y = (u16)SDL_lroundf(box->size_output.y),
-        .w = (u16)SDL_lroundf(box->size_output.w),
-        .h = (u16)SDL_lroundf(box->size_output.h),
+        .x = (u16)SDL_lroundf(box->output_size.x),
+        .y = (u16)SDL_lroundf(box->output_size.y),
+        .w = (u16)SDL_lroundf(box->output_size.w),
+        .h = (u16)SDL_lroundf(box->output_size.h),
     };
     push_atlas_quad(frame_arena, window_size, &atlas, mesh, rect_px, rect_px, (Color){});
 
