@@ -25,7 +25,7 @@ static u8 FRAG_ICON_SHADER[] = {
 };
 
 static u8 FRAG_GLYPH_SHADER[] = {
-#embed "src/shaders/frag_icon.dxil"
+#embed "src/shaders/frag_glyph.dxil"
 };
 
 OS_Shaders OS_SHADERS = {

@@ -9,7 +9,7 @@ static u8 FRAG_ICON_SHADER[] = {
 };
 
 static u8 FRAG_GLYPH_SHADER[] = {
-#embed "src/shaders/frag_icon.spv"
+#embed "src/shaders/frag_glyph.spv"
 };
 
 OS_Shaders OS_SHADERS = {
