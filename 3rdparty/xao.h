@@ -1,4 +1,4 @@
-// xao.h v0.1 - Alex Ozer
+// xao.h v0.2 - Alex Ozer
 // Public domain - no warranty implied, use at your own risk
 
 #ifndef XAO_H
