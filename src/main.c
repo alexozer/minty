@@ -674,7 +674,7 @@ void parse_livesplit_lss(ErrorContext *err, Arena *arena, FileDef *file, Arr_u8 
     Scope scope = scope_open(err);
 
     if (!str_is_valid_utf8(xml)) {
-        err_report(err, "Invalid UTF_8");
+        err_report(err, "Invalid UTF-8");
     }
 
     xao_Reader r = xao_reader((char *)xml.ptr, xml.count);
