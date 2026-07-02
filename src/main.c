@@ -155,16 +155,44 @@ struct Color {
 };
 derive_struct(Color);
 
-struct PxPos {
+struct PosPX {
     u16 x, y;
 };
-derive_struct(PxPos);
+derive_struct(PosPX);
 
 struct RectPX {
     u16 x, y;
     u16 w, h;
 };
 derive_struct(RectPX);
+
+union PosF {
+    f32 dims[2];
+    struct {
+        f32 x, y;
+    };
+};
+derive_union(PosF);
+
+union SizeF {
+    f32 dims[2];
+    struct {
+        f32 w, h;
+    };
+};
+derive_union(SizeF);
+
+union RectF {
+    struct {
+        PosF pos;
+        SizeF size;
+    };
+    struct {
+        f32 x, y;
+        f32 w, h;
+    };
+};
+derive_union(RectF);
 
 derive_struct(stbrp_node);
 derive_struct(stbrp_rect);
@@ -243,6 +271,52 @@ struct Box {
     Vec_P_Box children;
 };
 derive_struct_post(Box);
+
+// New UI stuff
+
+enum UI_DimType : u8 {
+    UI_DimType_FixedPX,
+    UI_DimType_Flex,
+};
+derive_enum(UI_DimType);
+
+struct UI_Dim {
+    UI_DimType type;
+    f32 value;  // Might be absolute size in pixels, flex ratio, etc.
+};
+derive_struct(UI_Dim);
+
+union UI_Size {
+    struct {
+        UI_Dim w, h;
+    };
+    UI_Dim dims[2];
+};
+derive_union(UI_Size);
+
+enum UI_Flag : u16 {
+    UI_Flag_ChildLayoutX = bit(0),
+    UI_Flag_ChildLayoutY = bit(1),
+    UI_Flag_DrawText = bit(2),
+    UI_Flag_DrawTexture = bit(3),
+    UI_Flag_TextAlignLeft = bit(4),
+    UI_Flag_TextAlignRight = bit(5),
+};
+derive_enum(UI_Flag);
+
+derive_struct_pre(UI_Box);
+struct UI_Box {
+    UI_Size size_input;
+    Str text_content;
+    UI_Flag flags;
+    u32 texture_id;
+
+    UI_Box *parent;
+    Vec_P_UI_Box childs;
+
+    RectF size_output;
+};
+derive_struct_post(UI_Box);
 
 struct App {
     Arena *app_arena;  // Lives for duration of application
@@ -735,7 +809,7 @@ void load_livesplit_lss(Arena *arena, ErrorContext *err, Str lss_path, FileDef *
 }
 
 //
-// MARK:UI
+// MARK:UI v1
 //
 
 Box *make_text_box(Arena *arena, Str content, Color color) {
@@ -1102,7 +1176,7 @@ void push_atlas_quad(Arena *frame_arena,
 void make_icon_mesh_inner(Arena *frame_arena,
                           SizePX window_size,
                           Box *box,
-                          PxPos where,
+                          PosPX where,
                           Atlas *atlas,
                           Mesh *mesh) {
     switch (box->type) {
@@ -1177,10 +1251,228 @@ u64 make_icon_mesh(Arena *frame_arena,
                    Mesh *mesh) {
     Box *box = prerender(frame_arena, session, window_size);
     u64 start_vertex_count = mesh->vertices.count;
-    PxPos where = {.x = 0, .y = 0};
+    PosPX where = {0, 0};
     make_icon_mesh_inner(frame_arena, window_size, box, where, atlas, mesh);
     u64 end_vertex_count = mesh->vertices.count;
     return (end_vertex_count - start_vertex_count) / 4;
+}
+
+//
+// MARK:UI v2
+//
+
+void ui_flex_x(UI_Box *box, f32 ratio) {
+    box->size_input.w = (UI_Dim){
+        .type = UI_DimType_Flex,
+        .value = ratio,
+    };
+}
+
+void ui_flex_y(UI_Box *box, f32 ratio) {
+    box->size_input.h = (UI_Dim){
+        .type = UI_DimType_Flex,
+        .value = ratio,
+    };
+}
+
+void ui_fixed_x(UI_Box *box, f32 size_px) {
+    box->size_input.w = (UI_Dim){
+        .type = UI_DimType_FixedPX,
+        .value = size_px,
+    };
+}
+void ui_fixed_y(UI_Box *box, f32 size_px) {
+    box->size_input.h = (UI_Dim){
+        .type = UI_DimType_FixedPX,
+        .value = size_px,
+    };
+}
+
+UI_Box *ui_box(Arena *arena) {
+    return arena_push(arena, UI_Box);
+}
+
+UI_Box *ui_template(Arena *arena, UI_Box *template) {
+    // TODO do this in a more principled way
+    UI_Box *box = ui_box(arena);
+    box->size_input = template->size_input;
+    box->text_content = template->text_content;
+    box->flags = template->flags;
+    box->texture_id = template->texture_id;
+    if (template->parent) {
+        box->parent = template->parent;
+        vec_push(arena, &template->parent->childs, box);
+    }
+    return box;
+}
+
+UI_Box *build_ui(Arena *frame_arena, Session *session, SizePX size) {
+    UI_Box *root = ui_box(frame_arena);
+    ui_fixed_x(root, size.w);
+    ui_fixed_y(root, size.h);
+    root->flags |= UI_Flag_ChildLayoutY;
+
+    UI_Box *child_template = ui_box(frame_arena);
+    ui_flex_x(child_template, 1);
+    ui_fixed_y(child_template, 40);
+    child_template->parent = root;
+
+    // Game name
+    UI_Box *game_name = ui_template(frame_arena, child_template);
+    game_name->flags |= UI_Flag_DrawText;
+    game_name->text_content = session->file.game_name;
+
+    // Category name
+    UI_Box *category_name = ui_template(frame_arena, child_template);
+    category_name->flags |= UI_Flag_DrawText;
+    category_name->text_content = session->file.game_name;
+
+    // Bottom space
+    UI_Box *space = ui_template(frame_arena, child_template);
+    ui_flex_y(space, 1);
+
+    return root;
+}
+
+void layout_ui_impl(UI_Box *box);
+
+void layout_ui_main_axis(UI_Box *box, u64 axis) {
+    // Uh oh, unbounded array access?!? Call the safety police
+    log_assert(axis < c_arr_count(box->size_output.size.dims));
+
+    f32 avail_px = (f32)box->size_output.size.dims[axis];
+
+    f32 total_fixed_px = 0;
+    for (u64 i = 0; i < box->childs.count; i++) {
+        UI_Box *child = A(box->childs, i);
+
+        if (child->size_input.dims[axis].type == UI_DimType_FixedPX) {
+            total_fixed_px += child->size_input.dims[axis].value;
+        }
+    }
+    if (total_fixed_px > avail_px) {
+        // Out of room! Make 'em flex instead!
+        total_fixed_px = 0;
+        for (u64 i = 0; i < box->childs.count; i++) {
+            UI_Box *child = A(box->childs, i);
+
+            switch (child->size_input.dims[axis].type) {
+            case UI_DimType_FixedPX: {
+                child->size_input.dims[axis].type = UI_DimType_Flex;
+                child->size_input.dims[axis].value /= total_fixed_px;
+                break;
+            }
+            case UI_DimType_Flex: {
+                child->size_input.dims[axis].value = 0;
+                break;
+            }
+            }
+        }
+    }
+
+    // Compute total flex units
+    f32 total_flex_units = 0;
+    for (u64 i = 0; i < box->childs.count; i++) {
+        UI_Box *child = A(box->childs, i);
+
+        if (child->size_input.dims[axis].type == UI_DimType_Flex) {
+            total_flex_units += child->size_input.dims[axis].value;
+        }
+    }
+
+    // Compute all children pos/size
+    f32 total_flex_px = avail_px - total_fixed_px;
+    f32 current_pos_px = 0;
+    for (u64 i = 0; i < box->childs.count; i++) {
+        UI_Box *child = A(box->childs, i);
+        child->size_output.pos.dims[axis] = current_pos_px;
+
+        switch (child->size_input.dims[axis].type) {
+        case UI_DimType_FixedPX: {
+            child->size_output.size.dims[axis] = child->size_input.dims[axis].value;
+            break;
+        }
+        case UI_DimType_Flex: {
+            child->size_output.size.dims[axis] =
+                child->size_input.dims[axis].value / total_flex_units * total_flex_px;
+            break;
+        }
+        }
+
+        current_pos_px += child->size_output.size.dims[axis];
+    }
+
+    // Recursively compute child layouts
+    for (u64 i = 0; i < box->childs.count; i++) {
+        UI_Box *child = A(box->childs, i);
+        layout_ui_impl(child);
+    }
+}
+
+void layout_ui_cross_axis(UI_Box *box, u64 axis) {
+    // Uh oh, unbounded array access?!? Call the safety police
+    log_assert(axis < c_arr_count(box->size_output.size.dims));
+
+    for (u64 i = 0; i < box->childs.count; i++) {
+        UI_Box *child = A(box->childs, i);
+
+        switch (child->size_input.dims[axis].type) {
+        case UI_DimType_FixedPX: {
+            child->size_output.size.dims[axis] = child->size_input.dims[axis].value;
+            break;
+        }
+        case UI_DimType_Flex: {
+            child->size_output.size.dims[axis] = box->size_output.size.dims[axis];
+            break;
+        }
+        }
+    }
+}
+
+// Compute layout of children, assuming root pos/size is computed
+void layout_ui_impl(UI_Box *box) {
+    u64 main_axis = 0;
+    if (box->flags & UI_Flag_ChildLayoutX) {
+        main_axis = 0;
+    } else if (box->flags & UI_Flag_ChildLayoutY) {
+        main_axis = 1;
+    } else {
+        log_assert(is_empty(box->childs));
+    }
+    layout_ui_main_axis(box, main_axis);
+    layout_ui_cross_axis(box, main_axis == 0 ? 1 : 0);
+}
+
+void layout_ui(UI_Box *root) {
+    log_assert(root->size_input.w.type == UI_DimType_FixedPX);
+    log_assert(root->size_input.h.type == UI_DimType_FixedPX);
+    root->size_output.x = 0;
+    root->size_output.y = 0;
+    root->size_output.w = root->size_input.w.value;
+    root->size_output.h = root->size_input.h.value;
+    layout_ui_impl(root);
+}
+
+u64 make_ui_mesh(Arena *frame_arena, SizePX window_size, UI_Box *box, Mesh *mesh) {
+    u64 start_quad_count = mesh->vertices.count / 4;
+
+    // Fake atlas for now
+    Atlas atlas = {.size = window_size};
+    RectPX rect_px = {
+        .x = (u16)SDL_lroundf(box->size_output.x),
+        .y = (u16)SDL_lroundf(box->size_output.y),
+        .w = (u16)SDL_lroundf(box->size_output.w),
+        .h = (u16)SDL_lroundf(box->size_output.h),
+    };
+    push_atlas_quad(frame_arena, window_size, &atlas, mesh, rect_px, rect_px, (Color){});
+
+    for (u64 i = 0; i < box->childs.count; i++) {
+        UI_Box *child = A(box->childs, i);
+        make_ui_mesh(frame_arena, window_size, child, mesh);
+    }
+
+    u64 end_quad_count = mesh->vertices.count / 4;
+    return end_quad_count - start_quad_count;
 }
 
 //
@@ -1975,10 +2267,19 @@ void render(App *app) {
         vec_prealloc(frame_arena, &mesh.vertices, MAX_VERTEX_COUNT);
         vec_prealloc(frame_arena, &mesh.indices, MAX_INDEX_COUNT);
 
-        u64 icon_quad_count =
-            make_icon_mesh(frame_arena, window_size, app->session, app->icon_atlas, &mesh);
-        u64 glyph_quad_count = make_glyph_mesh(frame_arena, window_size, app->font_file,
-                                               &app->glyph_atlas, vec_arr(&app->typed_text), &mesh);
+        // TODO: switch to new layout
+        UI_Box *box = build_ui(frame_arena, app->session, window_size);
+        layout_ui(box);
+        u64 ui_quad_count = make_ui_mesh(frame_arena, window_size, box, &mesh);
+
+        // TODO get rid of ui_quad_count
+        // u64 icon_quad_count = make_icon_mesh(frame_arena, window_size, app->session,
+        //                                                      app->icon_atlas, &mesh);
+        // u64 glyph_quad_count = make_glyph_mesh(frame_arena, window_size, app->font_file,
+        //                                        &app->glyph_atlas, vec_arr(&app->typed_text),
+        //                                        &mesh);
+        u64 icon_quad_count = ui_quad_count;
+        u64 glyph_quad_count = 0;
         log_assert(mesh.vertices.count <= MAX_VERTEX_COUNT);
         log_assert(mesh.indices.count <= MAX_INDEX_COUNT);
 

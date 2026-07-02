@@ -67,6 +67,10 @@ typedef double f64;
     typedef enum name name; \
     derive_containers(name)
 
+#define derive_union(name)   \
+    typedef union name name; \
+    derive_containers(name)
+
 //
 // Basic
 //
@@ -92,6 +96,8 @@ u64 next_pow2(u64 x);
 #define max(a, b) ((a) > (b) ? (a) : (b))
 
 #define c_arr_count(a) (sizeof((a)) / sizeof((a)[0]))
+
+#define bit(x) (1 << (x))
 
 //
 // Arenas
