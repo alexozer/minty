@@ -104,9 +104,9 @@ u64 next_pow2(u64 x);
 //
 
 struct Arena {
-    void *data;
-    u64 reserved;
     u64 offset;
+    u8 *data __attribute__((counted_by(offset)));
+    u64 reserved;
 };
 derive_struct(Arena);
 
