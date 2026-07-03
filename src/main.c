@@ -315,6 +315,8 @@ struct UI_Box {
     Vec_P_UI_Box childs;
 
     RectF output_size;
+
+    Str id;
 };
 derive_struct_post(UI_Box);
 
@@ -1101,14 +1103,14 @@ void window_to_ndc(Vertex *vertex, SizePX window_size) {
     vertex->y = -((vertex->y / (f32)window_size.h) * 2.f - 1.f);
 }
 
-void push_atlas_quad(Arena *frame_arena,
+void push_atlas_quad(Arena *arena,
                      SizePX window_size,
                      Atlas *atlas,
                      Mesh *mesh,
                      RectPX src,
                      RectPX dst,
                      Color color) {
-    Arr_u16 indices = vec_extend_zero(frame_arena, &mesh->indices, 6);
+    Arr_u16 indices = vec_extend_zero(arena, &mesh->indices, 6);
     A(indices, 0) = (u16)(mesh->vertices.count + 0);
     A(indices, 1) = (u16)(mesh->vertices.count + 1);
     A(indices, 2) = (u16)(mesh->vertices.count + 2);
@@ -1116,7 +1118,7 @@ void push_atlas_quad(Arena *frame_arena,
     A(indices, 4) = (u16)(mesh->vertices.count + 1);
     A(indices, 5) = (u16)(mesh->vertices.count + 3);
 
-    Arr_Vertex vertices = vec_extend_zero(frame_arena, &mesh->vertices, 4);
+    Arr_Vertex vertices = vec_extend_zero(arena, &mesh->vertices, 4);
     // Top left
     A(vertices, 0) = (Vertex){
         .x = (f32)dst.x,
@@ -1173,7 +1175,7 @@ void push_atlas_quad(Arena *frame_arena,
     window_to_ndc(&A(vertices, 3), window_size);
 }
 
-void make_icon_mesh_inner(Arena *frame_arena,
+void make_icon_mesh_inner(Arena *arena,
                           SizePX window_size,
                           Box *box,
                           PosPX where,
@@ -1186,7 +1188,7 @@ void make_icon_mesh_inner(Arena *frame_arena,
     case BoxType_LeftToRightStack: {
         for (u64 i = 0; i < box->children.count; i++) {
             SizePX child_bbox = compute_box_bbox(A(box->children, i));
-            make_icon_mesh_inner(frame_arena, window_size, A(box->children, i), where, atlas, mesh);
+            make_icon_mesh_inner(arena, window_size, A(box->children, i), where, atlas, mesh);
             where.x += child_bbox.w;
         }
         break;
@@ -1194,14 +1196,14 @@ void make_icon_mesh_inner(Arena *frame_arena,
     case BoxType_TopToBottomStack: {
         for (u64 i = 0; i < box->children.count; i++) {
             SizePX child_bbox = compute_box_bbox(A(box->children, i));
-            make_icon_mesh_inner(frame_arena, window_size, A(box->children, i), where, atlas, mesh);
+            make_icon_mesh_inner(arena, window_size, A(box->children, i), where, atlas, mesh);
             where.y += child_bbox.h;
         }
         break;
     }
     case BoxType_BackToFrontStack: {
         for (u64 i = 0; i < box->children.count; i++) {
-            make_icon_mesh_inner(frame_arena, window_size, A(box->children, i), where, atlas, mesh);
+            make_icon_mesh_inner(arena, window_size, A(box->children, i), where, atlas, mesh);
         }
         break;
     }
@@ -1231,7 +1233,7 @@ void make_icon_mesh_inner(Arena *frame_arena,
             dest.y = where.y;
         }
         Color color = {.r = 255, .g = 255, .b = 255, .a = 255};
-        push_atlas_quad(frame_arena, window_size, atlas, mesh, src, dest, color);
+        push_atlas_quad(arena, window_size, atlas, mesh, src, dest, color);
         break;
     }
     case BoxType_SolidColor: {
@@ -1244,15 +1246,11 @@ void make_icon_mesh_inner(Arena *frame_arena,
     }
 }
 
-u64 make_icon_mesh(Arena *frame_arena,
-                   SizePX window_size,
-                   Session *session,
-                   Atlas *atlas,
-                   Mesh *mesh) {
-    Box *box = prerender(frame_arena, session, window_size);
+u64 make_icon_mesh(Arena *arena, SizePX window_size, Session *session, Atlas *atlas, Mesh *mesh) {
+    Box *box = prerender(arena, session, window_size);
     u64 start_vertex_count = mesh->vertices.count;
     PosPX where = {0, 0};
-    make_icon_mesh_inner(frame_arena, window_size, box, where, atlas, mesh);
+    make_icon_mesh_inner(arena, window_size, box, where, atlas, mesh);
     u64 end_vertex_count = mesh->vertices.count;
     return (end_vertex_count - start_vertex_count) / 4;
 }
@@ -1288,48 +1286,92 @@ void ui_fixed_y(UI_Box *box, f32 size_px) {
     };
 }
 
-UI_Box *ui_box(Arena *arena) {
-    return arena_push(arena, UI_Box);
+void ui_parent(Arena *arena, UI_Box *child, UI_Box *parent) {
+    child->parent = parent;
+    vec_push(arena, &parent->childs, child);
 }
 
-UI_Box *ui_template(Arena *arena, UI_Box *template) {
+// TODO don't require ID for every box
+UI_Box *ui_box(Arena *arena, Str id) {
+    UI_Box *box = arena_push(arena, UI_Box);
+    box->id = id;
+    return box;
+}
+
+UI_Box *ui_template(Arena *arena, UI_Box *template, Str id) {
     // TODO do this in a more principled way
-    UI_Box *box = ui_box(arena);
+    UI_Box *box = ui_box(arena, id);
     box->input_size = template->input_size;
     box->text_content = template->text_content;
     box->flags = template->flags;
     box->texture_id = template->texture_id;
     if (template->parent) {
-        box->parent = template->parent;
-        vec_push(arena, &template->parent->childs, box);
+        ui_parent(arena, box, template->parent);
     }
     return box;
 }
 
-UI_Box *build_ui(Arena *frame_arena, Session *session, SizePX size) {
-    UI_Box *root = ui_box(frame_arena);
+UI_Box *build_ui_segment(Arena *arena, Session *session, u64 idx) {
+    UI_Box *row = ui_box(arena, str_format(arena, "row%" PRIu64, idx));
+    // ui_flex_x(row, 1);
+    ui_flex_x(row, 1);
+    ui_fixed_y(row, 80);
+    row->flags |= UI_Flag_ChildLayoutX;
+    row->id = str_format(arena, "icon%" PRIu64, idx);
+
+    // UI_Box *icon = ui_box(arena);
+    // ui_parent(arena, icon, row);
+    // ui_fixed_x(icon, 80);
+    // ui_flex_y(icon, 1);
+    // icon->flags |= UI_Flag_DrawTexture;
+    //
+    // for (u64 i = 0; i < 3; i++) {
+    //     UI_Box *col = ui_box(arena);
+    //     ui_parent(arena, col, row);
+    //     ui_flex_x(col, 1);
+    //     ui_flex_y(col, 1);
+    // }
+
+    return row;
+}
+
+UI_Box *build_ui_segments(Arena *arena, Session *session) {
+    UI_Box *parent = ui_box(arena, S("segments parent"));
+    parent->flags |= UI_Flag_ChildLayoutY;
+    ui_flex_x(parent, 1);
+    ui_flex_y(parent, 1);
+
+    // for (u64 i = 0; i < session->file.segments.count; i++) {
+    UI_Box *row = build_ui_segment(arena, session, 0);
+    ui_parent(arena, row, parent);
+    // }
+
+    return parent;
+}
+
+UI_Box *build_ui(Arena *arena, Session *session, SizePX size) {
+    UI_Box *root = ui_box(arena, S("root"));
     ui_fixed_x(root, size.w);
     ui_fixed_y(root, size.h);
     root->flags |= UI_Flag_ChildLayoutY;
 
-    UI_Box *child_template = ui_box(frame_arena);
+    UI_Box *child_template = ui_box(arena, S("child template"));
     ui_flex_x(child_template, 1);
     ui_fixed_y(child_template, 40);
     child_template->parent = root;
 
     // Game name
-    UI_Box *game_name = ui_template(frame_arena, child_template);
+    UI_Box *game_name = ui_template(arena, child_template, S("game name"));
     game_name->flags |= UI_Flag_DrawText;
     game_name->text_content = session->file.game_name;
 
     // Category name
-    UI_Box *category_name = ui_template(frame_arena, child_template);
+    UI_Box *category_name = ui_template(arena, child_template, S("category name"));
     category_name->flags |= UI_Flag_DrawText;
     category_name->text_content = session->file.game_name;
 
-    // Bottom space
-    UI_Box *space = ui_template(frame_arena, child_template);
-    ui_flex_y(space, 1);
+    UI_Box *segments = build_ui_segments(arena, session);
+    ui_parent(arena, segments, root);
 
     return root;
 }
@@ -1432,6 +1474,13 @@ void layout_ui_cross_axis(UI_Box *parent, u64 axis) {
 
 // Compute layout of children, assuming root pos/size is computed
 void layout_ui_impl(UI_Box *box) {
+    for (u64 axis = 0; axis < c_arr_count(box->input_size.dims); axis++) {
+        log_assert(box->input_size.dims[axis].value > 0);
+    }
+    if (str_eq(box->id, S("icon0"))) {
+        log_info("Breakpoint");
+    }
+
     u64 main_axis = 0;
     if (box->flags & UI_Flag_ChildLayoutX) {
         main_axis = 0;
@@ -1454,7 +1503,7 @@ void layout_ui(UI_Box *root) {
     layout_ui_impl(root);
 }
 
-u64 make_ui_mesh(Arena *frame_arena, SizePX window_size, UI_Box *box, Mesh *mesh) {
+u64 make_ui_mesh(Arena *arena, SizePX window_size, UI_Box *box, Mesh *mesh) {
     u64 start_quad_count = mesh->vertices.count / 4;
 
     // Fake atlas for now
@@ -1465,11 +1514,11 @@ u64 make_ui_mesh(Arena *frame_arena, SizePX window_size, UI_Box *box, Mesh *mesh
         .w = (u16)SDL_lroundf(box->output_size.w),
         .h = (u16)SDL_lroundf(box->output_size.h),
     };
-    push_atlas_quad(frame_arena, window_size, &atlas, mesh, rect_px, rect_px, (Color){});
+    push_atlas_quad(arena, window_size, &atlas, mesh, rect_px, rect_px, (Color){});
 
     for (u64 i = 0; i < box->childs.count; i++) {
         UI_Box *child = A(box->childs, i);
-        make_ui_mesh(frame_arena, window_size, child, mesh);
+        make_ui_mesh(arena, window_size, child, mesh);
     }
 
     u64 end_quad_count = mesh->vertices.count / 4;
@@ -1606,7 +1655,7 @@ GlyphAtlas make_and_upload_glyph_atlas(ErrorContext *err,
     return ret;
 }
 
-u64 make_glyph_mesh(Arena *frame_arena,
+u64 make_glyph_mesh(Arena *arena,
                     SizePX window_size,
                     Arr_u8 font_file,
                     GlyphAtlas *atlas,
@@ -1638,7 +1687,7 @@ u64 make_glyph_mesh(Arena *frame_arena,
         RectPX src = A(atlas->atlas->placements, shaped_id);
         RectPX dst = {.x = dest_px_x, .y = dest_px_y, .w = src.w, .h = src.h};
         Color color = {.r = 255, .g = 255, .b = 255, .a = 255};
-        push_atlas_quad(frame_arena, window_size, atlas->atlas, mesh, src, dst, color);
+        push_atlas_quad(arena, window_size, atlas->atlas, mesh, src, dst, color);
     }
 
     u64 end_vertex_count = mesh->vertices.count;
@@ -2269,18 +2318,18 @@ void render(App *app) {
         vec_prealloc(frame_arena, &mesh.indices, MAX_INDEX_COUNT);
 
         // TODO: switch to new layout
-        UI_Box *box = build_ui(frame_arena, app->session, window_size);
-        layout_ui(box);
-        u64 ui_quad_count = make_ui_mesh(frame_arena, window_size, box, &mesh);
+        // UI_Box *box = build_ui(frame_arena, app->session, window_size);
+        // layout_ui(box);
+        // u64 ui_quad_count = make_ui_mesh(frame_arena, window_size, box, &mesh);
+        // u64 icon_quad_count = ui_quad_count;
+        // u64 glyph_quad_count = 0;
 
         // TODO get rid of ui_quad_count
-        // u64 icon_quad_count = make_icon_mesh(frame_arena, window_size, app->session,
-        //                                                      app->icon_atlas, &mesh);
-        // u64 glyph_quad_count = make_glyph_mesh(frame_arena, window_size, app->font_file,
-        //                                        &app->glyph_atlas, vec_arr(&app->typed_text),
-        //                                        &mesh);
-        u64 icon_quad_count = ui_quad_count;
-        u64 glyph_quad_count = 0;
+        u64 icon_quad_count =
+            make_icon_mesh(frame_arena, window_size, app->session, app->icon_atlas, &mesh);
+        u64 glyph_quad_count = make_glyph_mesh(frame_arena, window_size, app->font_file,
+                                               &app->glyph_atlas, vec_arr(&app->typed_text), &mesh);
+
         log_assert(mesh.vertices.count <= MAX_VERTEX_COUNT);
         log_assert(mesh.indices.count <= MAX_INDEX_COUNT);
 

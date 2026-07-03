@@ -31,22 +31,22 @@ typedef double f64;
 #define CONCAT_IMPL(a, b) a##b
 #define CONCAT(a, b) CONCAT_IMPL(a, b)
 
-#define derive_containers(name)         \
-    typedef struct CONCAT(Arr_, name) { \
-        name *ptr;                      \
-        u64 count;                      \
-    } CONCAT(Arr_, name);               \
-                                        \
-    typedef struct CONCAT(Vec_, name) { \
-        name *ptr;                      \
-        u64 count;                      \
-        u64 capacity;                   \
-        CONCAT(Arr_, name) __to_arr[0]; \
-    } CONCAT(Vec_, name);               \
-                                        \
-    typedef struct CONCAT(Opt_, name) { \
-        bool present;                   \
-        name opt;                       \
+#define derive_containers(name)                       \
+    typedef struct CONCAT(Arr_, name) {               \
+        u64 count;                                    \
+        name *ptr __attribute__((counted_by(count))); \
+    } CONCAT(Arr_, name);                             \
+                                                      \
+    typedef struct CONCAT(Vec_, name) {               \
+        u64 count;                                    \
+        name *ptr __attribute__((counted_by(count))); \
+        u64 capacity;                                 \
+        CONCAT(Arr_, name) __to_arr[0];               \
+    } CONCAT(Vec_, name);                             \
+                                                      \
+    typedef struct CONCAT(Opt_, name) {               \
+        bool present;                                 \
+        name opt;                                     \
     } CONCAT(Opt_, name)
 
 #define derive_type(name) derive_containers(name)
@@ -262,14 +262,14 @@ StrPair str_split2(Str base, u8 delim);
         }                                                                                \
     })
 
-#define arr_clone(arena, arr)                                                                   \
-    ({                                                                                          \
-        typeof(arena) _arena_ = (arena);                                                        \
-        typeof(arr) _arr_ = (arr);                                                              \
-        typeof(_arr_.ptr) new_ptr = arena_push_bytes(_arena_, _arr_.count * sizeof(*_arr_.ptr), \
-                                                     alignof(typeof(*_arr_.ptr)));              \
-        SDL_memcpy(new_ptr, _arr_.ptr, _arr_.count * sizeof(*_arr_.ptr));                       \
-        (typeof(_arr_)){.ptr = new_ptr, .count = _arr_.count};                                  \
+#define arr_clone(arena, arr)                                                       \
+    ({                                                                              \
+        typeof(arena) _arena_ = (arena);                                            \
+        typeof(arr) _arr_ = (arr);                                                  \
+        void *new_ptr = arena_push_bytes(_arena_, _arr_.count * sizeof(*_arr_.ptr), \
+                                         alignof(typeof(*_arr_.ptr)));              \
+        SDL_memcpy(new_ptr, _arr_.ptr, _arr_.count * sizeof(*_arr_.ptr));           \
+        (typeof(_arr_)){.ptr = new_ptr, .count = _arr_.count};                      \
     })
 
 //
@@ -277,8 +277,8 @@ StrPair str_split2(Str base, u8 delim);
 //
 
 struct GenericVec {
-    void *ptr;
     u64 count;
+    void *ptr;
     u64 capacity;
 };
 derive_struct(GenericVec);
@@ -294,8 +294,8 @@ void vec__grow(Arena *arena, GenericVec *vec, u64 elem_size, u64 elem_align, u64
             vec__grow(_arena_, (GenericVec *)_vec_, sizeof(*_vec_->ptr), \
                       alignof(typeof(*_vec_->ptr)), _vec_->count + 1);   \
         }                                                                \
-        _vec_->ptr[_vec_->count] = _val_;                                \
         _vec_->count++;                                                  \
+        _vec_->ptr[_vec_->count - 1] = _val_;                            \
     })
 
 #define vec_push_zero(arena, vec)                                        \
@@ -306,14 +306,16 @@ void vec__grow(Arena *arena, GenericVec *vec, u64 elem_size, u64 elem_align, u64
             vec__grow(_arena_, (GenericVec *)_vec_, sizeof(*_vec_->ptr), \
                       alignof(typeof(*_vec_->ptr)), _vec_->count + 1);   \
         }                                                                \
-        (&_vec_->ptr[_vec_->count++]);                                   \
+        _vec_->count++;                                                  \
+        (&_vec_->ptr[_vec_->count - 1]);                                 \
     })
 
-#define vec_pop(vec)                                          \
-    ({                                                        \
-        typeof(vec) _vec_ = (vec);                            \
-        log_assert(_vec_->count > 0);                         \
-        _vec_->ptr[--_vec_->count] = (typeof(*_vec_->ptr)){}; \
+#define vec_pop(vec)                                            \
+    ({                                                          \
+        typeof(vec) _vec_ = (vec);                              \
+        log_assert(_vec_->count > 0);                           \
+        _vec_->ptr[_vec_->count - 1] = (typeof(*_vec_->ptr)){}; \
+        _vec_->count--;                                         \
     })
 
 #define vec_extend(arena, vec, arr)                                              \
