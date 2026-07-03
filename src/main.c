@@ -1382,30 +1382,29 @@ void layout_ui_main_axis(UI_Box *parent, u64 axis) {
     // Uh oh, unbounded array access?!? Call the safety police
     log_assert(axis < c_arr_count(parent->output_size.size.dims));
 
-    f32 avail_px = (f32)parent->output_size.size.dims[axis];
-
+    f32 parent_size = parent->output_size.size.dims[axis];
     f32 total_fixed_px = 0;
     for (u64 i = 0; i < parent->childs.count; i++) {
-        UI_Box *child = A(parent->childs, i);
+        UI_Dim *child_input = &A(parent->childs, i)->input_size.dims[axis];
 
-        if (child->input_size.dims[axis].type == UI_DimType_FixedPX) {
-            total_fixed_px += child->input_size.dims[axis].value;
+        if (child_input->type == UI_DimType_FixedPX) {
+            total_fixed_px += child_input->value;
         }
     }
-    if (total_fixed_px > avail_px) {
+    if (total_fixed_px > parent_size) {
         // Out of room! Make 'em flex instead!
         total_fixed_px = 0;
         for (u64 i = 0; i < parent->childs.count; i++) {
-            UI_Box *child = A(parent->childs, i);
+            UI_Dim *in_size = &A(parent->childs, i)->input_size.dims[axis];
 
-            switch (child->input_size.dims[axis].type) {
+            switch (in_size->type) {
             case UI_DimType_FixedPX: {
-                child->input_size.dims[axis].type = UI_DimType_Flex;
-                child->input_size.dims[axis].value /= total_fixed_px;
+                in_size->type = UI_DimType_Flex;
+                in_size->value /= total_fixed_px;
                 break;
             }
             case UI_DimType_Flex: {
-                child->input_size.dims[axis].value = 0;
+                in_size->value = 0;
                 break;
             }
             }
@@ -1415,33 +1414,35 @@ void layout_ui_main_axis(UI_Box *parent, u64 axis) {
     // Compute total flex units
     f32 total_flex_units = 0;
     for (u64 i = 0; i < parent->childs.count; i++) {
-        UI_Box *child = A(parent->childs, i);
+        UI_Dim *in_size = &A(parent->childs, i)->input_size.dims[axis];
 
-        if (child->input_size.dims[axis].type == UI_DimType_Flex) {
-            total_flex_units += child->input_size.dims[axis].value;
+        if (in_size->type == UI_DimType_Flex) {
+            total_flex_units += in_size->value;
         }
     }
 
     // Compute all children pos/size
-    f32 total_flex_px = avail_px - total_fixed_px;
+    f32 total_flex_px = parent_size - total_fixed_px;
     f32 current_pos_px = 0;
     for (u64 i = 0; i < parent->childs.count; i++) {
-        UI_Box *child = A(parent->childs, i);
-        child->output_size.pos.dims[axis] = current_pos_px + parent->output_size.pos.dims[axis];
+        UI_Dim *in_size = &A(parent->childs, i)->input_size.dims[axis];
+        f32 *out_size = &A(parent->childs, i)->output_size.size.dims[axis];
+        f32 *out_pos = &A(parent->childs, i)->output_size.pos.dims[axis];
 
-        switch (child->input_size.dims[axis].type) {
+        *out_pos = current_pos_px + parent_size;
+
+        switch (in_size->type) {
         case UI_DimType_FixedPX: {
-            child->output_size.size.dims[axis] = child->input_size.dims[axis].value;
+            *out_size = in_size->value;
             break;
         }
         case UI_DimType_Flex: {
-            child->output_size.size.dims[axis] =
-                child->input_size.dims[axis].value / total_flex_units * total_flex_px;
+            *out_size = in_size->value / total_flex_units * total_flex_px;
             break;
         }
         }
 
-        current_pos_px += child->output_size.size.dims[axis];
+        current_pos_px += *out_size;
     }
 
     // Recursively compute child layouts
@@ -1455,17 +1456,22 @@ void layout_ui_cross_axis(UI_Box *parent, u64 axis) {
     // Uh oh, unbounded array access?!? Call the safety police
     log_assert(axis < c_arr_count(parent->output_size.size.dims));
 
-    for (u64 i = 0; i < parent->childs.count; i++) {
-        UI_Box *child = A(parent->childs, i);
-        child->output_size.pos.dims[axis] = parent->output_size.pos.dims[axis];
+    f32 parent_size = parent->output_size.size.dims[axis];
 
-        switch (child->input_size.dims[axis].type) {
+    for (u64 i = 0; i < parent->childs.count; i++) {
+        UI_Dim *in_size = &A(parent->childs, i)->input_size.dims[axis];
+        f32 *out_size = &A(parent->childs, i)->output_size.size.dims[axis];
+        f32 *out_pos = &A(parent->childs, i)->output_size.pos.dims[axis];
+
+        *out_pos = parent->output_size.pos.dims[axis];
+
+        switch (in_size->type) {
         case UI_DimType_FixedPX: {
-            child->output_size.size.dims[axis] = child->input_size.dims[axis].value;
+            *out_size = in_size->value;
             break;
         }
         case UI_DimType_Flex: {
-            child->output_size.size.dims[axis] = parent->output_size.size.dims[axis];
+            *out_size = parent_size;
             break;
         }
         }
@@ -1477,9 +1483,9 @@ void layout_ui_impl(UI_Box *box) {
     for (u64 axis = 0; axis < c_arr_count(box->input_size.dims); axis++) {
         log_assert(box->input_size.dims[axis].value > 0);
     }
-    if (str_eq(box->id, S("icon0"))) {
-        log_info("Breakpoint");
-    }
+    // if (str_eq(box->id, S("icon0"))) {
+    //     log_info("Breakpoint");
+    // }
 
     u64 main_axis = 0;
     if (box->flags & UI_Flag_ChildLayoutX) {
@@ -2318,17 +2324,18 @@ void render(App *app) {
         vec_prealloc(frame_arena, &mesh.indices, MAX_INDEX_COUNT);
 
         // TODO: switch to new layout
-        // UI_Box *box = build_ui(frame_arena, app->session, window_size);
-        // layout_ui(box);
-        // u64 ui_quad_count = make_ui_mesh(frame_arena, window_size, box, &mesh);
-        // u64 icon_quad_count = ui_quad_count;
-        // u64 glyph_quad_count = 0;
+        UI_Box *box = build_ui(frame_arena, app->session, window_size);
+        layout_ui(box);
+        u64 ui_quad_count = make_ui_mesh(frame_arena, window_size, box, &mesh);
+        u64 icon_quad_count = ui_quad_count;
+        u64 glyph_quad_count = 0;
 
         // TODO get rid of ui_quad_count
-        u64 icon_quad_count =
-            make_icon_mesh(frame_arena, window_size, app->session, app->icon_atlas, &mesh);
-        u64 glyph_quad_count = make_glyph_mesh(frame_arena, window_size, app->font_file,
-                                               &app->glyph_atlas, vec_arr(&app->typed_text), &mesh);
+        // u64 icon_quad_count =
+        //     make_icon_mesh(frame_arena, window_size, app->session, app->icon_atlas, &mesh);
+        // u64 glyph_quad_count = make_glyph_mesh(frame_arena, window_size, app->font_file,
+        //                                        &app->glyph_atlas, vec_arr(&app->typed_text),
+        //                                        &mesh);
 
         log_assert(mesh.vertices.count <= MAX_VERTEX_COUNT);
         log_assert(mesh.indices.count <= MAX_INDEX_COUNT);
