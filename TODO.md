@@ -49,10 +49,10 @@ Smooth resize
 Global hotkeys
     See how OBS does it?
 Permanent split history / rollback / undo
-Clearer error handling strategy
-    I can't think of good invariants for "just let garbage data propagate through the system and
-    only check for problems at key points where the outcome could matter"
-    Maybe the issue is: trading control flow combinatorics for state combinatorics
+<!-- Clearer error handling strategy -->
+<!--     I can't think of good invariants for "just let garbage data propagate through the system and -->
+<!--     only check for problems at key points where the outcome could matter" -->
+<!--     Maybe the issue is: trading control flow combinatorics for state combinatorics -->
 Font gradients
     Simplest solution for now within my exp. level is:
     Vertex colors picked out by fragment shader, interpolated in good colorspace on CPU
@@ -200,3 +200,5 @@ TODO:
 <!-- Implement vec__grow() -->
     <!-- Pass it a "generic" vec struct type to avoid passing a bajillion parameters? -->
     <!-- Implement using arena_realloc()? -->
+
+We did it! And it's pretty nice! Yay!

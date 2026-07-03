@@ -799,15 +799,15 @@ void parse_livesplit_lss(ErrorContext *err, Arena *arena, FileDef *file, Arr_u8 
     scope_close(scope, "Parse LiveSplit LSS");
 }
 
-void load_livesplit_lss(Arena *arena, ErrorContext *err, Str lss_path, FileDef *file) {
+void load_livesplit_lss(ErrorContext *err, Arena *arena, Str lss_path, FileDef *file) {
+    Arena *scratch = arena_acquire();
     Scope scope = scope_open(err);
 
-    Arena *scratch = arena_acquire();
     Arr_u8 xml = os_read_file(err, scratch, lss_path);
     parse_livesplit_lss(err, arena, file, xml);
-    arena_release(scratch);
 
     scope_close(scope, "Load LiveSplit LSS file '%.*s'", SF(lss_path));
+    arena_release(scratch);
 }
 
 //
@@ -2403,7 +2403,7 @@ SDL_Window *init_window(ErrorContext *err) {
 
 Session *make_session(ErrorContext *err, Arena *arena, App *app, Str path) {
     Session *session = arena_push(arena, Session);
-    load_livesplit_lss(arena, err, path, &session->file);
+    load_livesplit_lss(err, arena, path, &session->file);
     return session;
 }
 
