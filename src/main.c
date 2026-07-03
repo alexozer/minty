@@ -1313,24 +1313,23 @@ UI_Box *ui_template(Arena *arena, UI_Box *template, Str id) {
 
 UI_Box *build_ui_segment(Arena *arena, Session *session, u64 idx) {
     UI_Box *row = ui_box(arena, str_format(arena, "row%" PRIu64, idx));
-    // ui_flex_x(row, 1);
     ui_flex_x(row, 1);
     ui_fixed_y(row, 80);
     row->flags |= UI_Flag_ChildLayoutX;
     row->id = str_format(arena, "icon%" PRIu64, idx);
 
-    // UI_Box *icon = ui_box(arena);
-    // ui_parent(arena, icon, row);
-    // ui_fixed_x(icon, 80);
-    // ui_flex_y(icon, 1);
-    // icon->flags |= UI_Flag_DrawTexture;
-    //
-    // for (u64 i = 0; i < 3; i++) {
-    //     UI_Box *col = ui_box(arena);
-    //     ui_parent(arena, col, row);
-    //     ui_flex_x(col, 1);
-    //     ui_flex_y(col, 1);
-    // }
+    UI_Box *icon = ui_box(arena, S("space1"));
+    ui_parent(arena, icon, row);
+    ui_fixed_x(icon, 80);
+    ui_flex_y(icon, 1);
+    icon->flags |= UI_Flag_DrawTexture;
+
+    for (u64 i = 0; i < 3; i++) {
+        UI_Box *col = ui_box(arena, S("space"));
+        ui_parent(arena, col, row);
+        ui_flex_x(col, 1);
+        ui_flex_y(col, 1);
+    }
 
     return row;
 }
@@ -1478,9 +1477,6 @@ void layout_ui_impl(UI_Box *box) {
     for (u64 axis = 0; axis < c_arr_count(box->input_size.dims); axis++) {
         log_assert(box->input_size.dims[axis].value > 0);
     }
-    // if (str_eq(box->id, S("icon0"))) {
-    //     log_info("Breakpoint");
-    // }
 
     u64 main_axis = 0;
     if (box->flags & UI_Flag_ChildLayoutX) {
