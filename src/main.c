@@ -1382,6 +1382,7 @@ void layout_ui_main_axis(UI_Box *parent, u64 axis) {
     // Uh oh, unbounded array access?!? Call the safety police
     log_assert(axis < c_arr_count(parent->output_size.size.dims));
 
+    f32 parent_pos = parent->output_size.pos.dims[axis];
     f32 parent_size = parent->output_size.size.dims[axis];
     f32 total_fixed_px = 0;
     for (u64 i = 0; i < parent->childs.count; i++) {
@@ -1429,7 +1430,7 @@ void layout_ui_main_axis(UI_Box *parent, u64 axis) {
         f32 *out_size = &A(parent->childs, i)->output_size.size.dims[axis];
         f32 *out_pos = &A(parent->childs, i)->output_size.pos.dims[axis];
 
-        *out_pos = current_pos_px + parent_size;
+        *out_pos = current_pos_px + parent_pos;
 
         switch (in_size->type) {
         case UI_DimType_FixedPX: {
