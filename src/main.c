@@ -1445,12 +1445,6 @@ void layout_ui_main_axis(UI_Box *parent, u64 axis) {
 
         current_pos_px += *out_size;
     }
-
-    // Recursively compute child layouts
-    for (u64 i = 0; i < parent->childs.count; i++) {
-        UI_Box *child = A(parent->childs, i);
-        layout_ui_impl(child);
-    }
 }
 
 void layout_ui_cross_axis(UI_Box *parent, u64 axis) {
@@ -1498,6 +1492,12 @@ void layout_ui_impl(UI_Box *box) {
     }
     layout_ui_main_axis(box, main_axis);
     layout_ui_cross_axis(box, main_axis == 0 ? 1 : 0);
+
+    // Recursively compute child layouts
+    for (u64 i = 0; i < box->childs.count; i++) {
+        UI_Box *child = A(box->childs, i);
+        layout_ui_impl(child);
+    }
 }
 
 void layout_ui(UI_Box *root) {
