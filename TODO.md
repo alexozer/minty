@@ -202,3 +202,33 @@ TODO:
     <!-- Implement using arena_realloc()? -->
 
 We did it! And it's pretty nice! Yay!
+
+# New UI system
+
+<!-- Basic UI Box data structure -->
+<!-- Basic UI builder API -->
+<!-- Basic layout algorithm -->
+Render icons with new UI system
+
+Before trying to show more stuff on the screen... maybe it'd be more productive to think through
+caching a bit more first.
+
+How about a "cache graph" concept? I _think_ maybe you want an immediate mode-style API throughout
+each graph layer/node. The part after UI layout which "renders" the layout probably wants to use an
+API like:
+
+```
+render_text("my text", font, pos, size)
+render_texture(CPUTexture, pos, size)
+```
+
+# Texture cache
+
+<!-- Test that stbrp supports incremental repacking -->
+Init texture system
+    Allocate starter textures + atlases
+Function to enqueue texture draw request
+Function to "render" requests
+    Pack + upload textures
+    Btw - perhaps glyph system can cache text bitmaps in CPU memory indefinitely? Font count +
+    glyph count + font size can only get so big, and this is easier with arenas?

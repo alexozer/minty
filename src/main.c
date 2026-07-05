@@ -54,10 +54,17 @@ constexpr u32 FONT_SIZE_PX = 40;
 
 derive_containers(Opt_Duration);
 
+struct TextureHandle {
+    u16 idx;
+    u16 generation;
+};
+derive_struct(TextureHandle);
+
 struct CPUTexture {
     SDL_GPUTextureFormat format;
     Arr_u8 buffer;
     SizePX dims;
+    TextureHandle handle;  // Automatically populated/replaced by texture cache
 };
 derive_struct(CPUTexture);
 
@@ -155,6 +162,12 @@ struct Color {
 };
 derive_struct(Color);
 
+enum Axis {
+    Axis_X,
+    Axis_Y,
+};
+derive_enum(Axis);
+
 struct PosPX {
     u16 x, y;
 };
@@ -202,12 +215,13 @@ struct Atlas {
     SDL_GPUTexture *texture;
     SDL_GPUSampler *sampler;
     Arr_RectPX placements;
-    // Not sure if it's ever worth coalescing transfer buffers
     SDL_GPUTransferBuffer *transfer_buffer;
+    u64 transfer_buffer_size;
 
-    // Rect packer state, useful for online repacking
+    // Rect packer state for incremental repacking
+    stbrp_context packer_ctx;
     Arr_stbrp_node packer_nodes;
-    Arr_stbrp_rect packer_rects;
+    Vec_stbrp_rect packer_rects;
 };
 derive_struct(Atlas);
 
@@ -237,6 +251,18 @@ struct ShapedGlyph {
     i32 glyph_y_fu;
 };
 derive_struct(ShapedGlyph);
+
+struct TextureSystem {
+    Atlas *icon_atlas;
+    Atlas *glyph_atlas;
+};
+derive_struct(TextureSystem);
+
+struct TextureRequest {
+    CPUTexture *texture;
+    RectF transform;
+};
+derive_struct(TextureRequest);
 
 enum BlendType {
     BlendType_None,
@@ -1377,7 +1403,7 @@ UI_Box *build_ui(Arena *arena, Session *session, SizePX size) {
 
 void layout_ui_impl(UI_Box *box);
 
-void layout_ui_main_axis(UI_Box *parent, u64 axis) {
+void layout_ui_main_axis(UI_Box *parent, Axis axis) {
     // Uh oh, unbounded array access?!? Call the safety police
     log_assert(axis < c_arr_count(parent->output_size.size.dims));
 
@@ -1446,7 +1472,7 @@ void layout_ui_main_axis(UI_Box *parent, u64 axis) {
     }
 }
 
-void layout_ui_cross_axis(UI_Box *parent, u64 axis) {
+void layout_ui_cross_axis(UI_Box *parent, Axis axis) {
     // Uh oh, unbounded array access?!? Call the safety police
     log_assert(axis < c_arr_count(parent->output_size.size.dims));
 
@@ -1474,20 +1500,19 @@ void layout_ui_cross_axis(UI_Box *parent, u64 axis) {
 
 // Compute layout of children, assuming root pos/size is computed
 void layout_ui_impl(UI_Box *box) {
-    for (u64 axis = 0; axis < c_arr_count(box->input_size.dims); axis++) {
-        log_assert(box->input_size.dims[axis].value > 0);
-    }
+    log_assert(box->input_size.dims[Axis_X].value > 0);
+    log_assert(box->input_size.dims[Axis_Y].value > 0);
 
-    u64 main_axis = 0;
+    Axis main_axis = Axis_X;
     if (box->flags & UI_Flag_ChildLayoutX) {
-        main_axis = 0;
+        main_axis = Axis_X;
     } else if (box->flags & UI_Flag_ChildLayoutY) {
-        main_axis = 1;
+        main_axis = Axis_Y;
     } else {
         log_assert(is_empty(box->childs));
     }
     layout_ui_main_axis(box, main_axis);
-    layout_ui_cross_axis(box, main_axis == 0 ? 1 : 0);
+    layout_ui_cross_axis(box, main_axis == Axis_X ? Axis_Y : Axis_X);
 
     // Recursively compute child layouts
     for (u64 i = 0; i < box->childs.count; i++) {
@@ -1575,16 +1600,6 @@ Arr_ShapedGlyph shape_text_naive(Arena *arena, Arr_u8 font, Str text) {
     kbts_DestroyShapeContext(context);
     return vec_arr(&output);
 }
-
-Atlas *make_and_upload_atlas(ErrorContext *err,
-                             Arena *arena,
-                             SDL_GPUDevice *device,
-                             SDL_GPUCommandBuffer *command_buffer,
-                             SDL_GPUGraphicsPipeline *clear_texture_pipeline,
-                             Str name,
-                             Arr_CPUTexture textures,
-                             SizePX atlas_size,
-                             FilterType filter);
 
 // TODO split fallible font sanity check vs. infallible atlas creation
 GlyphAtlas make_and_upload_glyph_atlas(ErrorContext *err,
@@ -1807,38 +1822,17 @@ void clear_texture(ErrorContext *err,
     SDL_EndGPURenderPass(pass);
 }
 
-Atlas *make_and_upload_atlas(ErrorContext *err,
-                             Arena *arena,
-                             SDL_GPUDevice *device,
-                             SDL_GPUCommandBuffer *command_buffer,
-                             SDL_GPUGraphicsPipeline *clear_texture_pipeline,
-                             Str name,
-                             Arr_CPUTexture textures,
-                             SizePX atlas_size,
-                             FilterType filter) {
+Atlas *init_atlas(ErrorContext *err,
+                  Arena *arena,
+                  SDL_GPUDevice *device,
+                  Str name,
+                  SizePX atlas_size,
+                  SDL_GPUTextureFormat texture_format,
+                  FilterType filter) {
     Atlas *atlas = arena_push(arena, Atlas);
-    if (!command_buffer) return atlas;
-    if (!clear_texture_pipeline) return atlas;
-
     Arena *scratch = arena_acquire();
 
-    // Texture formats must be equal
-    SDL_GPUTextureFormat texture_format = SDL_GPU_TEXTUREFORMAT_INVALID;
-    for (u64 i = 0; i < textures.count; i++) {
-        if (A(textures, i).dims.w > 0 && A(textures, i).dims.h > 0) {
-            if (texture_format == SDL_GPU_TEXTUREFORMAT_INVALID) {
-                texture_format = A(textures, i).format;
-            } else {
-                log_assert(texture_format == A(textures, i).format);
-            }
-        }
-    }
-    // There must be at least one non-empty texture
-    log_assert(texture_format != SDL_GPU_TEXTUREFORMAT_INVALID);
-
-    //
     // Allocate and clear GPU texture
-    //
 
     SDL_GPUTextureCreateInfo gpu_texture_info = {
         .type = SDL_GPU_TEXTURETYPE_2D,
@@ -1850,103 +1844,24 @@ Atlas *make_and_upload_atlas(ErrorContext *err,
         .num_levels = 1,
     };
     SDL_GPUTexture *texture = SDL_CreateGPUTexture(device, &gpu_texture_info);
-    char *name_cstr = str_to_c(scratch, name);
-    SDL_SetGPUTextureName(device, texture, name_cstr);
-    clear_texture(err, command_buffer, clear_texture_pipeline, texture);
-
-    //
-    // Compute atlas packing
-    //
-
-    stbrp_context packer_ctx = {};
-    Arr_stbrp_node packer_nodes = arena_push_arr(arena, stbrp_node, atlas_size.w);
-    stbrp_init_target(&packer_ctx, (i32)atlas_size.w, (i32)atlas_size.h, packer_nodes.ptr,
-                      (i32)packer_nodes.count);
-
-    Arr_stbrp_rect packer_rects = arena_push_arr(arena, stbrp_rect, textures.count);
-    for (u64 i = 0; i < textures.count; i++) {
-        A(packer_rects, i).id = (i32)i;
-        if (A(textures, i).dims.w > 0 && A(textures, i).dims.h > 0) {
-            A(packer_rects, i).w = A(textures, i).dims.w + 2;
-            A(packer_rects, i).h = A(textures, i).dims.h + 2;
-        }
+    if (!texture) {
+        err_report(err, "%s", SDL_GetError());
+    } else {
+        char *name_cstr = str_to_c(scratch, name);
+        SDL_SetGPUTextureName(device, texture, name_cstr);
     }
 
-    log_assert(stbrp_pack_rects(&packer_ctx, packer_rects.ptr, (i32)packer_rects.count) == 1);
-
-    Arr_RectPX placements = arena_push_arr(arena, RectPX, textures.count);
-    for (u64 i = 0; i < textures.count; i++) {
-        if (A(textures, i).dims.w > 0 && A(textures, i).dims.h > 0) {
-            A(placements, i).x = (u16)A(packer_rects, i).x + 1;
-            A(placements, i).y = (u16)A(packer_rects, i).y + 1;
-            A(placements, i).w = A(textures, i).dims.w;
-            A(placements, i).h = A(textures, i).dims.h;
-        }
-    }
-
-    //
-    // Pack textures into transfer buffer
-    //
-
-    // Compute transfer buffer size
-    Arr_u32 offsets = arena_push_arr(scratch, u32, textures.count);
-    for (u64 i = 0; i < textures.count; i++) {
-        if (i > 0) {
-            u32 prev_offset = A(offsets, i - 1);
-            u32 prev_size = (u32)A(textures, i - 1).buffer.count;
-            A(offsets, i) = align_to(prev_offset + prev_size, (u32)512);
-        }
-    }
-    u32 transfer_buffer_size =
-        A(offsets, offsets.count - 1) + (u32)A(textures, textures.count - 1).buffer.count;
-
+    // Make transfer buffer.
+    // Note that we can't just size it to the size of the atlas due rect alignment bloating the
+    // size.
     SDL_GPUTransferBufferCreateInfo transfer_buffer_info = {
         .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-        .size = transfer_buffer_size,
+        .size = atlas_size.w * atlas_size.h / 2,
     };
     SDL_GPUTransferBuffer *transfer_buffer =
         SDL_CreateGPUTransferBuffer(device, &transfer_buffer_info);
 
-    void *buf = SDL_MapGPUTransferBuffer(device, transfer_buffer, false);
-    for (u64 i = 0; i < textures.count; i++) {
-        u64 size = A(textures, i).buffer.count;
-        SDL_memcpy((u8 *)buf + A(offsets, i), A(textures, i).buffer.ptr, size);
-    }
-    SDL_UnmapGPUTransferBuffer(device, transfer_buffer);
-
-    //
-    // Upload textures
-    //
-
-    // TODO coalesce atlas-related copy and render passes
-    SDL_GPUCopyPass *copy_pass = SDL_BeginGPUCopyPass(command_buffer);
-
-    for (u64 i = 0; i < textures.count; i++) {
-        if (A(textures, i).dims.w > 0 && A(textures, i).dims.h > 0) {
-            SDL_GPUTextureTransferInfo src = {
-                .transfer_buffer = transfer_buffer,
-                .offset = A(offsets, i),
-            };
-            SDL_GPUTextureRegion dest = {
-                .texture = texture,
-                .mip_level = 0,
-                .layer = 0,
-                .x = (u32)A(placements, i).x,
-                .y = (u32)A(placements, i).y,
-                .z = 0,
-                .w = (u32)A(placements, i).w,
-                .h = (u32)A(placements, i).h,
-                .d = 1,
-            };
-            SDL_UploadToGPUTexture(copy_pass, &src, &dest, false);
-        }
-    }
-
-    SDL_EndGPUCopyPass(copy_pass);
-
-    //
-    // Make sampler (doesn't super duper need to happen here but w/e)
-    //
+    // Make sampler
 
     SDL_GPUSamplerCreateInfo sampler_info = {};
     switch (filter) {
@@ -1976,20 +1891,102 @@ Atlas *make_and_upload_atlas(ErrorContext *err,
 
     SDL_GPUSampler *sampler = SDL_CreateGPUSampler(device, &sampler_info);
 
-    //
-    // Return atlas descriptor
-    //
+    // Init rect packer state
+    Arr_stbrp_node packer_nodes = arena_push_arr(arena, stbrp_node, atlas_size.w);
+    stbrp_init_target(&atlas->packer_ctx, (i32)atlas_size.w, (i32)atlas_size.h, packer_nodes.ptr,
+                      (i32)packer_nodes.count);
 
+    // Fill atlas descriptor
     atlas->size = atlas_size;
     atlas->texture = texture;
     atlas->sampler = sampler;
     atlas->transfer_buffer = transfer_buffer;
-    atlas->placements = placements;
+    atlas->transfer_buffer_size = transfer_buffer_info.size;
     atlas->packer_nodes = packer_nodes;
-    atlas->packer_rects = packer_rects;
 
     arena_release(scratch);
     return atlas;
+}
+
+void pack_textures_into_existing_atlas(Atlas *atlas,
+                                       SDL_GPUDevice *device,
+                                       SDL_GPUCommandBuffer *command_buffer,
+                                       Arr_CPUTexture textures) {
+    Arena *scratch = arena_acquire();
+
+    //
+    // Compute packing (on top of existing packing skyline)
+    //
+
+    Arr_stbrp_rect packer_rects = arena_push_arr(scratch, stbrp_rect, textures.count);
+    for (u64 i = 0; i < textures.count; i++) {
+        A(packer_rects, i).id = (i32)i;
+        A(packer_rects, i).w = A(textures, i).dims.w + 2;
+        A(packer_rects, i).h = A(textures, i).dims.h + 2;
+    }
+
+    log_assert(stbrp_pack_rects(&atlas->packer_ctx, packer_rects.ptr, (i32)packer_rects.count) ==
+               1);
+
+    // TODO use only 1px of padding, not 2px
+    Arr_RectPX placements = arena_push_arr(scratch, RectPX, textures.count);
+    for (u64 i = 0; i < textures.count; i++) {
+        if (A(textures, i).dims.w > 0 && A(textures, i).dims.h > 0) {
+            A(placements, i).x = (u16)A(packer_rects, i).x + 1;
+            A(placements, i).y = (u16)A(packer_rects, i).y + 1;
+            A(placements, i).w = A(textures, i).dims.w;
+            A(placements, i).h = A(textures, i).dims.h;
+        }
+    }
+
+    //
+    // Pack textures into transfer buffer
+    //
+
+    void *ptr = SDL_MapGPUTransferBuffer(device, atlas->transfer_buffer, true);
+    Arr_u8 arr = {.ptr = ptr, .count = atlas->transfer_buffer_size};
+    Packer packer = packer_from_arr(arr);
+
+    Vec_u32 offsets = {};
+    vec_prealloc(scratch, &offsets, textures.count);
+
+    for (u64 i = 0; i < textures.count; i++) {
+        Opt_u64 offset = packer_try_push(&packer, A(textures, i).buffer, 512);
+        log_assert(offset.present);  // TODO
+        vec_push(scratch, &offsets, (u32)offset.opt);
+    }
+    SDL_UnmapGPUTransferBuffer(device, atlas->transfer_buffer);
+
+    //
+    // Upload textures
+    //
+
+    // TODO coalesce atlas-related copy and render passes
+    SDL_GPUCopyPass *copy_pass = SDL_BeginGPUCopyPass(command_buffer);
+
+    for (u64 i = 0; i < offsets.count; i++) {
+        if (A(textures, i).dims.w > 0 && A(textures, i).dims.h > 0) {
+            SDL_GPUTextureTransferInfo src = {
+                .transfer_buffer = atlas->transfer_buffer,
+                .offset = A(offsets, i),
+            };
+            SDL_GPUTextureRegion dest = {
+                .texture = atlas->texture,
+                .mip_level = 0,
+                .layer = 0,
+                .x = (u32)A(placements, i).x,
+                .y = (u32)A(placements, i).y,
+                .z = 0,
+                .w = (u32)A(placements, i).w,
+                .h = (u32)A(placements, i).h,
+                .d = 1,
+            };
+            SDL_UploadToGPUTexture(copy_pass, &src, &dest, false);
+        }
+    }
+
+    SDL_EndGPUCopyPass(copy_pass);
+    arena_release(scratch);
 }
 
 SDL_GPUShader *load_shader(ErrorContext *err,
@@ -2113,7 +2110,7 @@ void make_and_upload_icon_atlas(ErrorContext *err, App *app, SDL_GPUCommandBuffe
     }
     app->icon_atlas = make_and_upload_atlas(err, app->session_arena, app->device, command_buffer,
                                             app->clear_icon_pipeline, S("Icon atlas"),
-                                            icon_textures, (SizePX){1024, 1024}, FilterType_Linear);
+                                            icon_textures, (SizePX){2048, 2048}, FilterType_Linear);
 
     arena_release(scratch);
     scope_close(scope, "Make and upload icon atlas");
@@ -2348,6 +2345,21 @@ void render(App *app) {
     SDL_SubmitGPUCommandBuffer(command_buffer);
     arena_release(frame_arena);
 }
+
+//
+// MARK:Texture system
+//
+
+TextureSystem *tex_init(ErrorContext *err, Arena *arena, SDL_GPUDevice *device) {
+    TextureSystem *ctx = arena_push(arena, TextureSystem);
+    ctx->icon_atlas = init_atlas(err, arena, device, S("Icon Atlas"), (SizePX){2048, 2048},
+                                 SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM_SRGB, FilterType_Linear);
+    ctx->glyph_atlas = init_atlas(err, arena, device, S("Glyph Atlas"), (SizePX){1024, 1024},
+                                  SDL_GPU_TEXTUREFORMAT_R8_UNORM, FilterType_Nearest);
+    return ctx;
+}
+
+void tex_request(TextureSystem *ctx, CPUTexture *texture, RectF where) {}
 
 //
 // MARK:Main

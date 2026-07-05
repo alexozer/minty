@@ -461,3 +461,18 @@ void sdl_close_io(SDL_IOStream *stream);
         }                                    \
         ret;                                 \
     })
+
+//
+// Packer
+//
+
+struct Packer {
+    u64 offset;
+    u8 *ptr __attribute__((sized_by(offset)));
+    u64 capacity;
+};
+derive_struct(Packer);
+
+Packer packer_from_arr(Arr_u8 arr);
+// Returns offset iff packed
+Opt_u64 packer_try_push(Packer *packer, Arr_u8 buf, u64 alignment);

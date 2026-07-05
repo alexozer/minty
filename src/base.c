@@ -303,6 +303,26 @@ void vec__grow(Arena *arena, GenericVec *vec, u64 elem_size, u64 elem_align, u64
     vec->capacity = new_capacity;
 }
 
+Packer packer_from_arr(Arr_u8 arr) {
+    return (Packer){
+        .ptr = arr.ptr,
+        .offset = 0,
+        .capacity = arr.count,
+    };
+}
+
+// Returns offset iff packed
+Opt_u64 packer_try_push(Packer *packer, Arr_u8 buf, u64 alignment) {
+    u64 start = align_to(packer->offset, alignment);
+    u64 end = start + buf.count;
+    if (end > packer->capacity) {
+        return none(u64);
+    }
+    SDL_memcpy(packer->ptr + start, buf.ptr, end - start);
+    packer->offset = end;
+    return some(start, u64);
+}
+
 //
 // Idk
 //
