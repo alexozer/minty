@@ -240,8 +240,8 @@ struct GlyphAtlas {
 derive_struct(GlyphAtlas);
 
 struct Mesh {
-    Vec_Vertex vertices;
-    Vec_u16 indices;
+    FixedVec_Vertex vertices;
+    FixedVec_u16 indices;
 };
 derive_struct(Mesh);
 
@@ -252,9 +252,21 @@ struct ShapedGlyph {
 };
 derive_struct(ShapedGlyph);
 
+struct TextureCacheEntry {
+    TextureHandle handle;
+    u32 atlas_rect_idx;
+    bool is_icon;
+};
+derive_struct(TextureCacheEntry);
+
 struct TextureSystem {
     Atlas *icon_atlas;
     Atlas *glyph_atlas;
+    // TODO use fixed-size array or prealloc
+    Vec_P_CPUTexture requests;
+
+    Arr_TextureCacheEntry entries;
+    Vec_TextureHandle free_handles;
 };
 derive_struct(TextureSystem);
 
@@ -1129,14 +1141,13 @@ void window_to_ndc(Vertex *vertex, SizePX window_size) {
     vertex->y = -((vertex->y / (f32)window_size.h) * 2.f - 1.f);
 }
 
-void push_atlas_quad(Arena *arena,
-                     SizePX window_size,
+void push_atlas_quad(SizePX window_size,
                      Atlas *atlas,
                      Mesh *mesh,
                      RectPX src,
                      RectPX dst,
                      Color color) {
-    Arr_u16 indices = vec_extend_zero(arena, &mesh->indices, 6);
+    Arr_u16 indices = fvec_extend_zero(&mesh->indices, 6);
     A(indices, 0) = (u16)(mesh->vertices.count + 0);
     A(indices, 1) = (u16)(mesh->vertices.count + 1);
     A(indices, 2) = (u16)(mesh->vertices.count + 2);
@@ -1144,7 +1155,7 @@ void push_atlas_quad(Arena *arena,
     A(indices, 4) = (u16)(mesh->vertices.count + 1);
     A(indices, 5) = (u16)(mesh->vertices.count + 3);
 
-    Arr_Vertex vertices = vec_extend_zero(arena, &mesh->vertices, 4);
+    Arr_Vertex vertices = fvec_extend_zero(&mesh->vertices, 4);
     // Top left
     A(vertices, 0) = (Vertex){
         .x = (f32)dst.x,
@@ -1201,12 +1212,7 @@ void push_atlas_quad(Arena *arena,
     window_to_ndc(&A(vertices, 3), window_size);
 }
 
-void make_icon_mesh_inner(Arena *arena,
-                          SizePX window_size,
-                          Box *box,
-                          PosPX where,
-                          Atlas *atlas,
-                          Mesh *mesh) {
+void make_icon_mesh_inner(SizePX window_size, Box *box, PosPX where, Atlas *atlas, Mesh *mesh) {
     switch (box->type) {
     case BoxType_Empty: {
         break;
@@ -1214,7 +1220,7 @@ void make_icon_mesh_inner(Arena *arena,
     case BoxType_LeftToRightStack: {
         for (u64 i = 0; i < box->children.count; i++) {
             SizePX child_bbox = compute_box_bbox(A(box->children, i));
-            make_icon_mesh_inner(arena, window_size, A(box->children, i), where, atlas, mesh);
+            make_icon_mesh_inner(window_size, A(box->children, i), where, atlas, mesh);
             where.x += child_bbox.w;
         }
         break;
@@ -1222,14 +1228,14 @@ void make_icon_mesh_inner(Arena *arena,
     case BoxType_TopToBottomStack: {
         for (u64 i = 0; i < box->children.count; i++) {
             SizePX child_bbox = compute_box_bbox(A(box->children, i));
-            make_icon_mesh_inner(arena, window_size, A(box->children, i), where, atlas, mesh);
+            make_icon_mesh_inner(window_size, A(box->children, i), where, atlas, mesh);
             where.y += child_bbox.h;
         }
         break;
     }
     case BoxType_BackToFrontStack: {
         for (u64 i = 0; i < box->children.count; i++) {
-            make_icon_mesh_inner(arena, window_size, A(box->children, i), where, atlas, mesh);
+            make_icon_mesh_inner(window_size, A(box->children, i), where, atlas, mesh);
         }
         break;
     }
@@ -1259,7 +1265,7 @@ void make_icon_mesh_inner(Arena *arena,
             dest.y = where.y;
         }
         Color color = {.r = 255, .g = 255, .b = 255, .a = 255};
-        push_atlas_quad(arena, window_size, atlas, mesh, src, dest, color);
+        push_atlas_quad(window_size, atlas, mesh, src, dest, color);
         break;
     }
     case BoxType_SolidColor: {
@@ -1272,12 +1278,16 @@ void make_icon_mesh_inner(Arena *arena,
     }
 }
 
-u64 make_icon_mesh(Arena *arena, SizePX window_size, Session *session, Atlas *atlas, Mesh *mesh) {
-    Box *box = prerender(arena, session, window_size);
+u64 make_icon_mesh(SizePX window_size, Session *session, Atlas *atlas, Mesh *mesh) {
+    Arena *scratch = arena_acquire();
+
+    Box *box = prerender(scratch, session, window_size);
     u64 start_vertex_count = mesh->vertices.count;
     PosPX where = {0, 0};
-    make_icon_mesh_inner(arena, window_size, box, where, atlas, mesh);
+    make_icon_mesh_inner(window_size, box, where, atlas, mesh);
     u64 end_vertex_count = mesh->vertices.count;
+
+    arena_release(scratch);
     return (end_vertex_count - start_vertex_count) / 4;
 }
 
@@ -1542,7 +1552,7 @@ u64 make_ui_mesh(Arena *arena, SizePX window_size, UI_Box *box, Mesh *mesh) {
         .w = (u16)SDL_lroundf(box->output_size.w),
         .h = (u16)SDL_lroundf(box->output_size.h),
     };
-    push_atlas_quad(arena, window_size, &atlas, mesh, rect_px, rect_px, (Color){});
+    push_atlas_quad(window_size, &atlas, mesh, rect_px, rect_px, (Color){});
 
     for (u64 i = 0; i < box->childs.count; i++) {
         UI_Box *child = A(box->childs, i);
@@ -1673,12 +1683,7 @@ GlyphAtlas make_and_upload_glyph_atlas(ErrorContext *err,
     return ret;
 }
 
-u64 make_glyph_mesh(Arena *arena,
-                    SizePX window_size,
-                    Arr_u8 font_file,
-                    GlyphAtlas *atlas,
-                    Str text,
-                    Mesh *mesh) {
+u64 make_glyph_mesh(SizePX window_size, Arr_u8 font_file, GlyphAtlas *atlas, Str text, Mesh *mesh) {
     Arena *scratch = arena_acquire();
 
     u64 start_vertex_count = mesh->vertices.count;
@@ -1705,7 +1710,7 @@ u64 make_glyph_mesh(Arena *arena,
         RectPX src = A(atlas->atlas->placements, shaped_id);
         RectPX dst = {.x = dest_px_x, .y = dest_px_y, .w = src.w, .h = src.h};
         Color color = {.r = 255, .g = 255, .b = 255, .a = 255};
-        push_atlas_quad(arena, window_size, atlas->atlas, mesh, src, dst, color);
+        push_atlas_quad(window_size, atlas->atlas, mesh, src, dst, color);
     }
 
     u64 end_vertex_count = mesh->vertices.count;
@@ -2020,19 +2025,8 @@ void init_renderer(ErrorContext *err, App *app) {
 }
 
 void do_geometry_upload_pass(App *app, SDL_GPUCommandBuffer *command_buffer, Mesh *mesh) {
-    log_assert(mesh->vertices.count <= MAX_VERTEX_COUNT);
-    log_assert(mesh->indices.count <= MAX_INDEX_COUNT);
-
     u64 vertex_data_size = mesh->vertices.count * sizeof(A(mesh->vertices, 0));
     u64 index_data_size = mesh->indices.count * sizeof(A(mesh->indices, 0));
-
-    void *transfer_data =
-        (Vertex *)SDL_MapGPUTransferBuffer(app->device, app->vertex_transfer_buffer, true);
-
-    SDL_memcpy(transfer_data, mesh->vertices.ptr, vertex_data_size);
-    SDL_memcpy((u8 *)transfer_data + vertex_data_size, mesh->indices.ptr, index_data_size);
-
-    SDL_UnmapGPUTransferBuffer(app->device, app->vertex_transfer_buffer);
 
     SDL_GPUCopyPass *pass = SDL_BeginGPUCopyPass(command_buffer);
 
@@ -2053,7 +2047,7 @@ void do_geometry_upload_pass(App *app, SDL_GPUCommandBuffer *command_buffer, Mes
     };
     SDL_GPUBufferRegion index_dest = {
         .buffer = app->index_buffer,
-        .offset = 0,
+        .offset = (u32)((u64)mesh->indices.ptr - (u64)mesh->vertices.ptr),
         .size = (u32)index_data_size,
     };
     SDL_UploadToGPUBuffer(pass, &index_src, &index_dest, true);
@@ -2130,13 +2124,22 @@ void render(App *app) {
     if (texture) {  // Apparently can be null if window is minimized
         SizePX window_size = {.w = (u16)width, .h = (u16)height};
 
-        Mesh mesh = {};
-        vec_prealloc(frame_arena, &mesh.vertices, MAX_VERTEX_COUNT);
-        vec_prealloc(frame_arena, &mesh.indices, MAX_INDEX_COUNT);
-
         // TODO: switch to new layout
         UI_Box *box = build_ui(frame_arena, app->session, window_size);
         layout_ui(box);
+
+        void *transfer_data =
+            (Vertex *)SDL_MapGPUTransferBuffer(app->device, app->vertex_transfer_buffer, true);
+        Mesh mesh = {};
+        mesh.vertices = (FixedVec_Vertex){
+            .ptr = transfer_data,
+            .capacity = MAX_VERTEX_COUNT,
+        };
+        mesh.indices = (FixedVec_u16){
+            .ptr = (u16 *)((Vertex *)transfer_data + MAX_VERTEX_COUNT),
+            .capacity = MAX_INDEX_COUNT,
+        };
+
         u64 ui_quad_count = make_ui_mesh(frame_arena, window_size, box, &mesh);
         u64 icon_quad_count = ui_quad_count;
         u64 glyph_quad_count = 0;
@@ -2148,13 +2151,11 @@ void render(App *app) {
         //                                        &app->glyph_atlas, vec_arr(&app->typed_text),
         //                                        &mesh);
 
-        log_assert(mesh.vertices.count <= MAX_VERTEX_COUNT);
-        log_assert(mesh.indices.count <= MAX_INDEX_COUNT);
-
         for (u64 i = 0; i < mesh.vertices.count; i++) {
             A(mesh.vertices, i).y -= app->scroll * 0.1f;
         }
 
+        SDL_UnmapGPUTransferBuffer(app->device, app->vertex_transfer_buffer);
         do_geometry_upload_pass(app, command_buffer, &mesh);
         render_main_color_pass(app, command_buffer, texture, icon_quad_count, glyph_quad_count);
     }

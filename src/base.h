@@ -41,8 +41,17 @@ typedef double f64;
         u64 count;                                    \
         name *ptr __attribute__((counted_by(count))); \
         u64 capacity;                                 \
+        void *__typeid_vec[0];                        \
         CONCAT(Arr_, name) __to_arr[0];               \
     } CONCAT(Vec_, name);                             \
+                                                      \
+    typedef struct CONCAT(FixedVec_, name) {          \
+        u64 count;                                    \
+        name *ptr __attribute__((counted_by(count))); \
+        u64 capacity;                                 \
+        void *__typeid_fixed_vec[0];                  \
+        CONCAT(Arr_, name) __to_arr[0];               \
+    } CONCAT(FixedVec_, name);                        \
                                                       \
     typedef struct CONCAT(Opt_, name) {               \
         bool present;                                 \
@@ -290,6 +299,7 @@ void vec__grow(Arena *arena, GenericVec *vec, u64 elem_size, u64 elem_align, u64
         typeof(arena) _arena_ = (arena);                                 \
         typeof(vec) _vec_ = (vec);                                       \
         typeof(val) _val_ = (val);                                       \
+        _vec_->__typeid_vec;                                             \
         if (_vec_->count == _vec_->capacity) {                           \
             vec__grow(_arena_, (GenericVec *)_vec_, sizeof(*_vec_->ptr), \
                       alignof(typeof(*_vec_->ptr)), _vec_->count + 1);   \
@@ -302,6 +312,7 @@ void vec__grow(Arena *arena, GenericVec *vec, u64 elem_size, u64 elem_align, u64
     ({                                                                   \
         typeof(arena) _arena_ = (arena);                                 \
         typeof(vec) _vec_ = (vec);                                       \
+        _vec_->__typeid_vec;                                             \
         if (_vec_->count == _vec_->capacity) {                           \
             vec__grow(_arena_, (GenericVec *)_vec_, sizeof(*_vec_->ptr), \
                       alignof(typeof(*_vec_->ptr)), _vec_->count + 1);   \
@@ -313,6 +324,7 @@ void vec__grow(Arena *arena, GenericVec *vec, u64 elem_size, u64 elem_align, u64
 #define vec_pop(vec)                                            \
     ({                                                          \
         typeof(vec) _vec_ = (vec);                              \
+        _vec_->__typeid_vec;                                    \
         log_assert(_vec_->count > 0);                           \
         _vec_->ptr[_vec_->count - 1] = (typeof(*_vec_->ptr)){}; \
         _vec_->count--;                                         \
@@ -323,6 +335,7 @@ void vec__grow(Arena *arena, GenericVec *vec, u64 elem_size, u64 elem_align, u64
         typeof(arena) _arena_ = (arena);                                         \
         typeof(vec) _vec_ = (vec);                                               \
         typeof(arr) _arr_ = (arr);                                               \
+        _vec_->__typeid_vec;                                                     \
         if (_vec_->count + _arr_.count > _vec_->capacity) {                      \
             vec__grow(_arena_, (GenericVec *)_vec_, sizeof(*_vec_->ptr),         \
                       alignof(typeof(*_vec_->ptr)), _vec_->count + _arr_.count); \
@@ -340,6 +353,7 @@ void vec__grow(Arena *arena, GenericVec *vec, u64 elem_size, u64 elem_align, u64
     ({                                                                           \
         typeof(arena) _arena_ = (arena);                                         \
         typeof(vec) _vec_ = (vec);                                               \
+        _vec_->__typeid_vec;                                                     \
         u64 _new_count_ = (new_count);                                           \
         if (_vec_->count + _new_count_ > _vec_->capacity) {                      \
             vec__grow(_arena_, (GenericVec *)_vec_, sizeof(*_vec_->ptr),         \
@@ -356,6 +370,7 @@ void vec__grow(Arena *arena, GenericVec *vec, u64 elem_size, u64 elem_align, u64
 #define vec_arr(vec)                    \
     ({                                  \
         typeof(vec) _vec_ = (vec);      \
+        _vec_->__typeid_vec;            \
         (typeof((_vec_)->__to_arr[0])){ \
             .ptr = (_vec_)->ptr,        \
             .count = (_vec_)->count,    \
@@ -365,6 +380,7 @@ void vec__grow(Arena *arena, GenericVec *vec, u64 elem_size, u64 elem_align, u64
 #define vec_reset(vec)                                                 \
     ({                                                                 \
         typeof(vec) _vec_ = (vec);                                     \
+        _vec_->__typeid_vec;                                           \
         SDL_memset(_vec_->ptr, 0, sizeof(*_vec_->ptr) * _vec_->count); \
         _vec_->count = 0;                                              \
     })
@@ -374,6 +390,7 @@ void vec__grow(Arena *arena, GenericVec *vec, u64 elem_size, u64 elem_align, u64
         typeof(arena) _arena_ = (arena);                                                      \
         typeof(vec) _vec_ = (vec);                                                            \
         typeof(reserve) _reserve_ = (reserve);                                                \
+        _vec_->__typeid_vec;                                                                  \
         if (_vec_->capacity < _reserve_) {                                                    \
             u64 old_size = _vec_->capacity * sizeof(*_vec_->ptr);                             \
             u64 new_size = _reserve_ * sizeof(*_vec_->ptr);                                   \
@@ -381,6 +398,100 @@ void vec__grow(Arena *arena, GenericVec *vec, u64 elem_size, u64 elem_align, u64
             _vec_->ptr = arena_realloc_bytes(_arena_, _vec_->ptr, old_size, new_size, align); \
             _vec_->capacity = _reserve_;                                                      \
         }                                                                                     \
+    })
+
+//
+// FixedVec
+//
+
+#define fvec_alloc(arena, t, count)                                                           \
+    ({                                                                                        \
+        typeof(arena) _arena_ = (arena);                                                      \
+        typeof(vec) _vec_ = (vec);                                                            \
+        typeof(count) _count_ = (count);                                                      \
+        _vec_->__typeid_fixed_vec;                                                            \
+        if (_vec_->capacity < _count_) {                                                      \
+            u64 old_size = _vec_->capacity * sizeof(*_vec_->ptr);                             \
+            u64 new_size = _count_ * sizeof(*_vec_->ptr);                                     \
+            u64 align = alignof(typeof(*_vec_->ptr));                                         \
+            _vec_->ptr = arena_realloc_bytes(_arena_, _vec_->ptr, old_size, new_size, align); \
+            _vec_->capacity = _count_;                                                        \
+        }                                                                                     \
+    })
+
+#define fvec_push(vec, val)                       \
+    ({                                            \
+        typeof(vec) _vec_ = (vec);                \
+        typeof(val) _val_ = (val);                \
+        _vec_->__typeid_fixed_vec;                \
+        log_assert(_vec_.count < _vec_.capacity); \
+        _vec_->count++;                           \
+        _vec_->ptr[_vec_->count - 1] = _val_;     \
+    })
+
+#define fvec_push_zero(vec)                       \
+    ({                                            \
+        typeof(vec) _vec_ = (vec);                \
+        _vec_->__typeid_fixed_vec;                \
+        log_assert(_vec_.count < _vec_.capacity); \
+        _vec_->count++;                           \
+        (&_vec_->ptr[_vec_->count - 1]);          \
+    })
+
+#define fvec_pop(vec)                                           \
+    ({                                                          \
+        typeof(vec) _vec_ = (vec);                              \
+        _vec_->__typeid_fixed_vec;                              \
+        log_assert(_vec_->count > 0);                           \
+        _vec_->ptr[_vec_->count - 1] = (typeof(*_vec_->ptr)){}; \
+        _vec_->count--;                                         \
+    })
+
+#define fvec_extend(vec, arr)                                      \
+    ({                                                             \
+        typeof(vec) _vec_ = (vec);                                 \
+        typeof(arr) _arr_ = (arr);                                 \
+        _vec_->__typeid_fixed_vec;                                 \
+        log_assert(_vec_->count + _arr_.count <= _vec_->capacity); \
+        u64 start = _vec_->count;                                  \
+        _vec_->count += _arr_.count;                               \
+        typeof(_arr_) a = {                                        \
+            .ptr = _vec_->ptr + start,                             \
+            .count = _vec_->count - start,                         \
+        };                                                         \
+        SDL_memcpy(a.ptr, arr.ptr, a.count * sizeof(*a.ptr));      \
+    })
+
+#define fvec_extend_zero(vec, new_count)                           \
+    ({                                                             \
+        typeof(vec) _vec_ = (vec);                                 \
+        _vec_->__typeid_fixed_vec;                                 \
+        u64 _new_count_ = (new_count);                             \
+        log_assert(_vec_->count + _new_count_ <= _vec_->capacity); \
+        u64 start = _vec_->count;                                  \
+        _vec_->count += _new_count_;                               \
+        (typeof(_vec_->__to_arr[0])){                              \
+            .ptr = _vec_->ptr + start,                             \
+            .count = _new_count_,                                  \
+        };                                                         \
+    })
+
+#define fvec_arr(vec)                   \
+    ({                                  \
+        typeof(vec) _vec_ = (vec);      \
+        _vec_->__typeid_fixed_vec;      \
+        (typeof((_vec_)->__to_arr[0])){ \
+            .ptr = (_vec_)->ptr,        \
+            .count = (_vec_)->count,    \
+        };                              \
+    })
+
+#define fvec_reset(vec)                                                \
+    ({                                                                 \
+        typeof(vec) _vec_ = (vec);                                     \
+        _vec_->__typeid_fixed_vec;                                     \
+        SDL_memset(_vec_->ptr, 0, sizeof(*_vec_->ptr) * _vec_->count); \
+        _vec_->count = 0;                                              \
     })
 
 //
