@@ -225,10 +225,11 @@ render_texture(CPUTexture, pos, size)
 # Texture cache
 
 <!-- Test that stbrp supports incremental repacking -->
-Init texture system
-    Allocate starter textures + atlases
+<!-- Init texture system -->
+    <!-- Allocate starter textures + atlases -->
 Function to enqueue texture draw request
 Function to "render" requests
+    Clear texture on first render
     Pack + upload textures
     Btw - perhaps glyph system can cache text bitmaps in CPU memory indefinitely? Font count +
     glyph count + font size can only get so big, and this is easier with arenas?

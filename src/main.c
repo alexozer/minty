@@ -23,7 +23,7 @@
 #include <yyjson.h>
 
 //
-// MARK:Constants
+// ::Constants
 //
 
 // TODO toggle through build system or something
@@ -49,7 +49,7 @@ Str FONT_PATH = S("data/Roboto-Medium.ttf");
 constexpr u32 FONT_SIZE_PX = 40;
 
 //
-// MARK:Types
+// ::Types
 //
 
 derive_containers(Opt_Duration);
@@ -389,7 +389,7 @@ struct App {
 derive_struct(App);
 
 //
-// MARK:Timer
+// ::Timer
 //
 
 CPUTexture convert_srgb_surface_to_rgba(Arena *arena, SDL_Surface *surface) {
@@ -837,7 +837,7 @@ void load_livesplit_lss(ErrorContext *err, Arena *arena, Str lss_path, FileDef *
 }
 
 //
-// MARK:UI v1
+// ::UI v1
 //
 
 Box *make_text_box(Arena *arena, Str content, Color color) {
@@ -1282,7 +1282,7 @@ u64 make_icon_mesh(Arena *arena, SizePX window_size, Session *session, Atlas *at
 }
 
 //
-// MARK:UI v2
+// ::UI v2
 //
 
 void ui_flex_x(UI_Box *box, f32 ratio) {
@@ -1554,7 +1554,7 @@ u64 make_ui_mesh(Arena *arena, SizePX window_size, UI_Box *box, Mesh *mesh) {
 }
 
 //
-// MARK:Text rendering
+// ::Glyph system
 //
 
 // TODO check font for errors on load, but afterwards assume it's good
@@ -1716,7 +1716,7 @@ u64 make_glyph_mesh(Arena *arena,
 }
 
 //
-// MARK:Rendering
+// ::Rendering
 //
 
 SDL_GPUGraphicsPipeline *make_render_pipeline(ErrorContext *err,
@@ -1804,189 +1804,6 @@ SDL_GPUGraphicsPipeline *make_render_pipeline(ErrorContext *err,
 
     scope_close(scope, "Create render pipeline");
     return pipeline;
-}
-
-void clear_texture(ErrorContext *err,
-                   SDL_GPUCommandBuffer *command_buffer,
-                   SDL_GPUGraphicsPipeline *pipeline,
-                   SDL_GPUTexture *texture) {
-    SDL_GPUColorTargetInfo color_target_infos[] = {{
-        .texture = texture,
-        .clear_color = {0.f, 0.f, 0.f, 1.f},
-        .load_op = SDL_GPU_LOADOP_CLEAR,
-        .store_op = SDL_GPU_STOREOP_STORE,
-    }};
-    SDL_GPURenderPass *pass = SDL_BeginGPURenderPass(command_buffer, color_target_infos,
-                                                     c_arr_count(color_target_infos), nullptr);
-    SDL_BindGPUGraphicsPipeline(pass, pipeline);
-    SDL_EndGPURenderPass(pass);
-}
-
-Atlas *init_atlas(ErrorContext *err,
-                  Arena *arena,
-                  SDL_GPUDevice *device,
-                  Str name,
-                  SizePX atlas_size,
-                  SDL_GPUTextureFormat texture_format,
-                  FilterType filter) {
-    Atlas *atlas = arena_push(arena, Atlas);
-    Arena *scratch = arena_acquire();
-
-    // Allocate and clear GPU texture
-
-    SDL_GPUTextureCreateInfo gpu_texture_info = {
-        .type = SDL_GPU_TEXTURETYPE_2D,
-        .format = texture_format,
-        .usage = SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COLOR_TARGET,
-        .width = (u32)atlas_size.w,
-        .height = (u32)atlas_size.h,
-        .layer_count_or_depth = 1,
-        .num_levels = 1,
-    };
-    SDL_GPUTexture *texture = SDL_CreateGPUTexture(device, &gpu_texture_info);
-    if (!texture) {
-        err_report(err, "%s", SDL_GetError());
-    } else {
-        char *name_cstr = str_to_c(scratch, name);
-        SDL_SetGPUTextureName(device, texture, name_cstr);
-    }
-
-    // Make transfer buffer.
-    // Note that we can't just size it to the size of the atlas due rect alignment bloating the
-    // size.
-    SDL_GPUTransferBufferCreateInfo transfer_buffer_info = {
-        .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-        .size = atlas_size.w * atlas_size.h / 2,
-    };
-    SDL_GPUTransferBuffer *transfer_buffer =
-        SDL_CreateGPUTransferBuffer(device, &transfer_buffer_info);
-
-    // Make sampler
-
-    SDL_GPUSamplerCreateInfo sampler_info = {};
-    switch (filter) {
-    case FilterType_Linear: {
-        sampler_info = (SDL_GPUSamplerCreateInfo){
-            .min_filter = SDL_GPU_FILTER_LINEAR,
-            .mag_filter = SDL_GPU_FILTER_LINEAR,
-            .mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_LINEAR,
-            .address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
-            .address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
-            .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
-        };
-        break;
-    }
-    case FilterType_Nearest: {
-        sampler_info = (SDL_GPUSamplerCreateInfo){
-            .min_filter = SDL_GPU_FILTER_NEAREST,
-            .mag_filter = SDL_GPU_FILTER_NEAREST,
-            .mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_NEAREST,
-            .address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
-            .address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
-            .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
-        };
-        break;
-    }
-    }
-
-    SDL_GPUSampler *sampler = SDL_CreateGPUSampler(device, &sampler_info);
-
-    // Init rect packer state
-    Arr_stbrp_node packer_nodes = arena_push_arr(arena, stbrp_node, atlas_size.w);
-    stbrp_init_target(&atlas->packer_ctx, (i32)atlas_size.w, (i32)atlas_size.h, packer_nodes.ptr,
-                      (i32)packer_nodes.count);
-
-    // Fill atlas descriptor
-    atlas->size = atlas_size;
-    atlas->texture = texture;
-    atlas->sampler = sampler;
-    atlas->transfer_buffer = transfer_buffer;
-    atlas->transfer_buffer_size = transfer_buffer_info.size;
-    atlas->packer_nodes = packer_nodes;
-
-    arena_release(scratch);
-    return atlas;
-}
-
-void pack_textures_into_existing_atlas(Atlas *atlas,
-                                       SDL_GPUDevice *device,
-                                       SDL_GPUCommandBuffer *command_buffer,
-                                       Arr_CPUTexture textures) {
-    Arena *scratch = arena_acquire();
-
-    //
-    // Compute packing (on top of existing packing skyline)
-    //
-
-    Arr_stbrp_rect packer_rects = arena_push_arr(scratch, stbrp_rect, textures.count);
-    for (u64 i = 0; i < textures.count; i++) {
-        A(packer_rects, i).id = (i32)i;
-        A(packer_rects, i).w = A(textures, i).dims.w + 2;
-        A(packer_rects, i).h = A(textures, i).dims.h + 2;
-    }
-
-    log_assert(stbrp_pack_rects(&atlas->packer_ctx, packer_rects.ptr, (i32)packer_rects.count) ==
-               1);
-
-    // TODO use only 1px of padding, not 2px
-    Arr_RectPX placements = arena_push_arr(scratch, RectPX, textures.count);
-    for (u64 i = 0; i < textures.count; i++) {
-        if (A(textures, i).dims.w > 0 && A(textures, i).dims.h > 0) {
-            A(placements, i).x = (u16)A(packer_rects, i).x + 1;
-            A(placements, i).y = (u16)A(packer_rects, i).y + 1;
-            A(placements, i).w = A(textures, i).dims.w;
-            A(placements, i).h = A(textures, i).dims.h;
-        }
-    }
-
-    //
-    // Pack textures into transfer buffer
-    //
-
-    void *ptr = SDL_MapGPUTransferBuffer(device, atlas->transfer_buffer, true);
-    Arr_u8 arr = {.ptr = ptr, .count = atlas->transfer_buffer_size};
-    Packer packer = packer_from_arr(arr);
-
-    Vec_u32 offsets = {};
-    vec_prealloc(scratch, &offsets, textures.count);
-
-    for (u64 i = 0; i < textures.count; i++) {
-        Opt_u64 offset = packer_try_push(&packer, A(textures, i).buffer, 512);
-        log_assert(offset.present);  // TODO
-        vec_push(scratch, &offsets, (u32)offset.opt);
-    }
-    SDL_UnmapGPUTransferBuffer(device, atlas->transfer_buffer);
-
-    //
-    // Upload textures
-    //
-
-    // TODO coalesce atlas-related copy and render passes
-    SDL_GPUCopyPass *copy_pass = SDL_BeginGPUCopyPass(command_buffer);
-
-    for (u64 i = 0; i < offsets.count; i++) {
-        if (A(textures, i).dims.w > 0 && A(textures, i).dims.h > 0) {
-            SDL_GPUTextureTransferInfo src = {
-                .transfer_buffer = atlas->transfer_buffer,
-                .offset = A(offsets, i),
-            };
-            SDL_GPUTextureRegion dest = {
-                .texture = atlas->texture,
-                .mip_level = 0,
-                .layer = 0,
-                .x = (u32)A(placements, i).x,
-                .y = (u32)A(placements, i).y,
-                .z = 0,
-                .w = (u32)A(placements, i).w,
-                .h = (u32)A(placements, i).h,
-                .d = 1,
-            };
-            SDL_UploadToGPUTexture(copy_pass, &src, &dest, false);
-        }
-    }
-
-    SDL_EndGPUCopyPass(copy_pass);
-    arena_release(scratch);
 }
 
 SDL_GPUShader *load_shader(ErrorContext *err,
@@ -2347,8 +2164,191 @@ void render(App *app) {
 }
 
 //
-// MARK:Texture system
+// ::Texture system
 //
+
+void clear_texture(ErrorContext *err,
+                   SDL_GPUCommandBuffer *command_buffer,
+                   SDL_GPUGraphicsPipeline *pipeline,
+                   SDL_GPUTexture *texture) {
+    SDL_GPUColorTargetInfo color_target_infos[] = {{
+        .texture = texture,
+        .clear_color = {0.f, 0.f, 0.f, 1.f},
+        .load_op = SDL_GPU_LOADOP_CLEAR,
+        .store_op = SDL_GPU_STOREOP_STORE,
+    }};
+    SDL_GPURenderPass *pass = SDL_BeginGPURenderPass(command_buffer, color_target_infos,
+                                                     c_arr_count(color_target_infos), nullptr);
+    SDL_BindGPUGraphicsPipeline(pass, pipeline);
+    SDL_EndGPURenderPass(pass);
+}
+
+Atlas *init_atlas(ErrorContext *err,
+                  Arena *arena,
+                  SDL_GPUDevice *device,
+                  Str name,
+                  SizePX atlas_size,
+                  SDL_GPUTextureFormat texture_format,
+                  FilterType filter) {
+    Atlas *atlas = arena_push(arena, Atlas);
+    Arena *scratch = arena_acquire();
+
+    // Allocate and clear GPU texture
+
+    SDL_GPUTextureCreateInfo gpu_texture_info = {
+        .type = SDL_GPU_TEXTURETYPE_2D,
+        .format = texture_format,
+        .usage = SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COLOR_TARGET,
+        .width = (u32)atlas_size.w,
+        .height = (u32)atlas_size.h,
+        .layer_count_or_depth = 1,
+        .num_levels = 1,
+    };
+    SDL_GPUTexture *texture = SDL_CreateGPUTexture(device, &gpu_texture_info);
+    if (!texture) {
+        err_report(err, "%s", SDL_GetError());
+    } else {
+        char *name_cstr = str_to_c(scratch, name);
+        SDL_SetGPUTextureName(device, texture, name_cstr);
+    }
+
+    // Make transfer buffer.
+    // Note that we can't just size it to the size of the atlas due rect alignment bloating the
+    // size.
+    SDL_GPUTransferBufferCreateInfo transfer_buffer_info = {
+        .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+        .size = atlas_size.w * atlas_size.h / 2,
+    };
+    SDL_GPUTransferBuffer *transfer_buffer =
+        SDL_CreateGPUTransferBuffer(device, &transfer_buffer_info);
+
+    // Make sampler
+
+    SDL_GPUSamplerCreateInfo sampler_info = {};
+    switch (filter) {
+    case FilterType_Linear: {
+        sampler_info = (SDL_GPUSamplerCreateInfo){
+            .min_filter = SDL_GPU_FILTER_LINEAR,
+            .mag_filter = SDL_GPU_FILTER_LINEAR,
+            .mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_LINEAR,
+            .address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+            .address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+            .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+        };
+        break;
+    }
+    case FilterType_Nearest: {
+        sampler_info = (SDL_GPUSamplerCreateInfo){
+            .min_filter = SDL_GPU_FILTER_NEAREST,
+            .mag_filter = SDL_GPU_FILTER_NEAREST,
+            .mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_NEAREST,
+            .address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+            .address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+            .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+        };
+        break;
+    }
+    }
+
+    SDL_GPUSampler *sampler = SDL_CreateGPUSampler(device, &sampler_info);
+
+    // Init rect packer state
+    Arr_stbrp_node packer_nodes = arena_push_arr(arena, stbrp_node, atlas_size.w);
+    stbrp_init_target(&atlas->packer_ctx, (i32)atlas_size.w, (i32)atlas_size.h, packer_nodes.ptr,
+                      (i32)packer_nodes.count);
+
+    // Fill atlas descriptor
+    atlas->size = atlas_size;
+    atlas->texture = texture;
+    atlas->sampler = sampler;
+    atlas->transfer_buffer = transfer_buffer;
+    atlas->transfer_buffer_size = transfer_buffer_info.size;
+    atlas->packer_nodes = packer_nodes;
+
+    arena_release(scratch);
+    return atlas;
+}
+
+void pack_textures_into_existing_atlas(Atlas *atlas,
+                                       SDL_GPUDevice *device,
+                                       SDL_GPUCommandBuffer *command_buffer,
+                                       Arr_CPUTexture textures) {
+    Arena *scratch = arena_acquire();
+
+    //
+    // Compute packing (on top of existing packing skyline)
+    //
+
+    Arr_stbrp_rect packer_rects = arena_push_arr(scratch, stbrp_rect, textures.count);
+    for (u64 i = 0; i < textures.count; i++) {
+        A(packer_rects, i).id = (i32)i;
+        A(packer_rects, i).w = A(textures, i).dims.w + 2;
+        A(packer_rects, i).h = A(textures, i).dims.h + 2;
+    }
+
+    log_assert(stbrp_pack_rects(&atlas->packer_ctx, packer_rects.ptr, (i32)packer_rects.count) ==
+               1);
+
+    // TODO use only 1px of padding, not 2px
+    Arr_RectPX placements = arena_push_arr(scratch, RectPX, textures.count);
+    for (u64 i = 0; i < textures.count; i++) {
+        if (A(textures, i).dims.w > 0 && A(textures, i).dims.h > 0) {
+            A(placements, i).x = (u16)A(packer_rects, i).x + 1;
+            A(placements, i).y = (u16)A(packer_rects, i).y + 1;
+            A(placements, i).w = A(textures, i).dims.w;
+            A(placements, i).h = A(textures, i).dims.h;
+        }
+    }
+
+    //
+    // Pack textures into transfer buffer
+    //
+
+    void *ptr = SDL_MapGPUTransferBuffer(device, atlas->transfer_buffer, true);
+    Arr_u8 arr = {.ptr = ptr, .count = atlas->transfer_buffer_size};
+    Packer packer = packer_from_arr(arr);
+
+    Vec_u32 offsets = {};
+    vec_prealloc(scratch, &offsets, textures.count);
+
+    for (u64 i = 0; i < textures.count; i++) {
+        Opt_u64 offset = packer_try_push(&packer, A(textures, i).buffer, 512);
+        log_assert(offset.present);  // TODO
+        vec_push(scratch, &offsets, (u32)offset.opt);
+    }
+    SDL_UnmapGPUTransferBuffer(device, atlas->transfer_buffer);
+
+    //
+    // Upload textures
+    //
+
+    // TODO coalesce atlas-related copy and render passes
+    SDL_GPUCopyPass *copy_pass = SDL_BeginGPUCopyPass(command_buffer);
+
+    for (u64 i = 0; i < offsets.count; i++) {
+        if (A(textures, i).dims.w > 0 && A(textures, i).dims.h > 0) {
+            SDL_GPUTextureTransferInfo src = {
+                .transfer_buffer = atlas->transfer_buffer,
+                .offset = A(offsets, i),
+            };
+            SDL_GPUTextureRegion dest = {
+                .texture = atlas->texture,
+                .mip_level = 0,
+                .layer = 0,
+                .x = (u32)A(placements, i).x,
+                .y = (u32)A(placements, i).y,
+                .z = 0,
+                .w = (u32)A(placements, i).w,
+                .h = (u32)A(placements, i).h,
+                .d = 1,
+            };
+            SDL_UploadToGPUTexture(copy_pass, &src, &dest, false);
+        }
+    }
+
+    SDL_EndGPUCopyPass(copy_pass);
+    arena_release(scratch);
+}
 
 TextureSystem *tex_init(ErrorContext *err, Arena *arena, SDL_GPUDevice *device) {
     TextureSystem *ctx = arena_push(arena, TextureSystem);
@@ -2362,7 +2362,7 @@ TextureSystem *tex_init(ErrorContext *err, Arena *arena, SDL_GPUDevice *device) 
 void tex_request(TextureSystem *ctx, CPUTexture *texture, RectF where) {}
 
 //
-// MARK:Main
+// ::Main
 //
 
 SDL_HitTestResult hittest_callback(SDL_Window *window, const SDL_Point *point, void *data) {
