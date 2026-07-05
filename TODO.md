@@ -68,6 +68,10 @@ Improve font rendering
 Generally consistent/correct hidpi scaling factors
 Cross-platform smooth scrolling (again, how does Ghostty do it?)
     Do I have to make a whole-ass Swift application shell just to get smooth scrolling?
+Memory limits
+    TigerStyle mandates allocating all memory to fixed limits at startup.
+    Arenas are certainly closer to this than malloc(), but it's an issue when those limits collide
+    with GPU memory limits
 
 ## Low Prio
 
@@ -222,7 +226,7 @@ render_text("my text", font, pos, size)
 render_texture(CPUTexture, pos, size)
 ```
 
-# Texture cache
+# Texture cache POC
 
 <!-- Test that stbrp supports incremental repacking -->
 <!-- Init texture system -->
@@ -233,3 +237,6 @@ Function to "render" requests
     Pack + upload textures
     Btw - perhaps glyph system can cache text bitmaps in CPU memory indefinitely? Font count +
     glyph count + font size can only get so big, and this is easier with arenas?
+
+First POC demo: render individual icons / text through the cache
+    Don't need to do any fancy cache eviction or anything yet

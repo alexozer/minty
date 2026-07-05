@@ -48,6 +48,9 @@ Str FONT_PATH = S("data/Roboto-Medium.ttf");
 // Str FONT_PATH = S("data/KosugiMaru-Regular.otf");
 constexpr u32 FONT_SIZE_PX = 40;
 
+constexpr SDL_GPUTextureFormat ICON_TEXTURE_FORMAT = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM_SRGB;
+constexpr SDL_GPUTextureFormat GLYPH_TEXTURE_FORMAT = SDL_GPU_TEXTUREFORMAT_R8_UNORM;
+
 //
 // ::Types
 //
@@ -239,11 +242,19 @@ struct GlyphAtlas {
 };
 derive_struct(GlyphAtlas);
 
-struct Mesh {
+struct MeshBuilder {
     FixedVec_Vertex vertices;
     FixedVec_u16 indices;
 };
-derive_struct(Mesh);
+derive_struct(MeshBuilder);
+
+struct MeshOutput {
+    Arr_Vertex icon_vertices;
+    Arr_u16 icon_indices;
+    Arr_Vertex glyph_vertices;
+    Arr_u16 glyph_indices;
+};
+derive_struct(MeshOutput);
 
 struct ShapedGlyph {
     u32 glyph_id;
@@ -262,11 +273,15 @@ derive_struct(TextureCacheEntry);
 struct TextureSystem {
     Atlas *icon_atlas;
     Atlas *glyph_atlas;
-    // TODO use fixed-size array or prealloc
-    Vec_P_CPUTexture requests;
-
     Arr_TextureCacheEntry entries;
     Vec_TextureHandle free_handles;
+    bool textures_cleared;
+    SDL_GPUGraphicsPipeline *clear_icon_pipeline;
+    SDL_GPUGraphicsPipeline *clear_glyph_pipeline;
+
+    // TODO use fixed-size array or prealloc
+    FixedVec_P_CPUTexture icon_requests;
+    FixedVec_P_CPUTexture glyph_requests;
 };
 derive_struct(TextureSystem);
 
@@ -413,7 +428,7 @@ CPUTexture convert_srgb_surface_to_rgba(Arena *arena, SDL_Surface *surface) {
         .count = dest_size,
     };
     CPUTexture texture = {
-        .format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM_SRGB,
+        .format = ICON_TEXTURE_FORMAT,
         .buffer = buffer,
         .dims = {.w = (u16)surface->w, .h = (u16)surface->h},
     };
@@ -1143,7 +1158,7 @@ void window_to_ndc(Vertex *vertex, SizePX window_size) {
 
 void push_atlas_quad(SizePX window_size,
                      Atlas *atlas,
-                     Mesh *mesh,
+                     MeshBuilder *mesh,
                      RectPX src,
                      RectPX dst,
                      Color color) {
@@ -1212,7 +1227,11 @@ void push_atlas_quad(SizePX window_size,
     window_to_ndc(&A(vertices, 3), window_size);
 }
 
-void make_icon_mesh_inner(SizePX window_size, Box *box, PosPX where, Atlas *atlas, Mesh *mesh) {
+void make_icon_mesh_inner(SizePX window_size,
+                          Box *box,
+                          PosPX where,
+                          Atlas *atlas,
+                          MeshBuilder *mesh) {
     switch (box->type) {
     case BoxType_Empty: {
         break;
@@ -1278,7 +1297,7 @@ void make_icon_mesh_inner(SizePX window_size, Box *box, PosPX where, Atlas *atla
     }
 }
 
-u64 make_icon_mesh(SizePX window_size, Session *session, Atlas *atlas, Mesh *mesh) {
+u64 make_icon_mesh(SizePX window_size, Session *session, Atlas *atlas, MeshBuilder *mesh) {
     Arena *scratch = arena_acquire();
 
     Box *box = prerender(scratch, session, window_size);
@@ -1541,7 +1560,7 @@ void layout_ui(UI_Box *root) {
     layout_ui_impl(root);
 }
 
-u64 make_ui_mesh(Arena *arena, SizePX window_size, UI_Box *box, Mesh *mesh) {
+u64 make_ui_mesh(Arena *arena, SizePX window_size, UI_Box *box, MeshBuilder *mesh) {
     u64 start_quad_count = mesh->vertices.count / 4;
 
     // Fake atlas for now
@@ -1655,7 +1674,7 @@ GlyphAtlas make_and_upload_glyph_atlas(ErrorContext *err,
         FT_Bitmap bitmap = face->glyph->bitmap;
         CPUTexture *texture = &A(textures, glyph_idx);
         Arr_u8 tmp_buffer = {.ptr = bitmap.buffer, .count = bitmap.width * bitmap.rows};
-        texture->format = SDL_GPU_TEXTUREFORMAT_R8_UNORM;
+        texture->format = GLYPH_TEXTURE_FORMAT;
         texture->buffer = arr_clone(scratch, tmp_buffer);
         texture->dims = (SizePX){(u16)bitmap.width, (u16)bitmap.rows};
 
@@ -1683,7 +1702,11 @@ GlyphAtlas make_and_upload_glyph_atlas(ErrorContext *err,
     return ret;
 }
 
-u64 make_glyph_mesh(SizePX window_size, Arr_u8 font_file, GlyphAtlas *atlas, Str text, Mesh *mesh) {
+u64 make_glyph_mesh(SizePX window_size,
+                    Arr_u8 font_file,
+                    GlyphAtlas *atlas,
+                    Str text,
+                    MeshBuilder *mesh) {
     Arena *scratch = arena_acquire();
 
     u64 start_vertex_count = mesh->vertices.count;
@@ -1964,12 +1987,6 @@ void init_render_pipelines(ErrorContext *err, App *app) {
     app->glyph_pipeline =
         make_render_pipeline(err, app->device, app->window, app->vert_shader,
                              app->glyph_frag_shader, swapchain_format, BlendType_Over);
-    app->clear_icon_pipeline =
-        make_render_pipeline(err, app->device, app->window, app->vert_shader, app->icon_frag_shader,
-                             SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM_SRGB, BlendType_None);
-    app->clear_glyph_pipeline =
-        make_render_pipeline(err, app->device, app->window, app->vert_shader, app->icon_frag_shader,
-                             SDL_GPU_TEXTUREFORMAT_R8_UNORM, BlendType_None);
 }
 
 SDL_GPUCommandBuffer *sdl_acquire_gpu_command_buffer(ErrorContext *err, SDL_GPUDevice *device) {
@@ -2024,7 +2041,7 @@ void init_renderer(ErrorContext *err, App *app) {
     scope_close(scope, "Initialize renderer");
 }
 
-void do_geometry_upload_pass(App *app, SDL_GPUCommandBuffer *command_buffer, Mesh *mesh) {
+void do_geometry_upload_pass(App *app, SDL_GPUCommandBuffer *command_buffer, MeshBuilder *mesh) {
     u64 vertex_data_size = mesh->vertices.count * sizeof(A(mesh->vertices, 0));
     u64 index_data_size = mesh->indices.count * sizeof(A(mesh->indices, 0));
 
@@ -2130,7 +2147,7 @@ void render(App *app) {
 
         void *transfer_data =
             (Vertex *)SDL_MapGPUTransferBuffer(app->device, app->vertex_transfer_buffer, true);
-        Mesh mesh = {};
+        MeshBuilder mesh = {};
         mesh.vertices = (FixedVec_Vertex){
             .ptr = transfer_data,
             .capacity = MAX_VERTEX_COUNT,
@@ -2168,8 +2185,7 @@ void render(App *app) {
 // ::Texture system
 //
 
-void clear_texture(ErrorContext *err,
-                   SDL_GPUCommandBuffer *command_buffer,
+void clear_texture(SDL_GPUCommandBuffer *command_buffer,
                    SDL_GPUGraphicsPipeline *pipeline,
                    SDL_GPUTexture *texture) {
     SDL_GPUColorTargetInfo color_target_infos[] = {{
@@ -2272,8 +2288,8 @@ Atlas *init_atlas(ErrorContext *err,
 
 void pack_textures_into_existing_atlas(Atlas *atlas,
                                        SDL_GPUDevice *device,
-                                       SDL_GPUCommandBuffer *command_buffer,
-                                       Arr_CPUTexture textures) {
+                                       SDL_GPUCopyPass *copy_pass,
+                                       Arr_P_CPUTexture textures) {
     Arena *scratch = arena_acquire();
 
     //
@@ -2283,8 +2299,8 @@ void pack_textures_into_existing_atlas(Atlas *atlas,
     Arr_stbrp_rect packer_rects = arena_push_arr(scratch, stbrp_rect, textures.count);
     for (u64 i = 0; i < textures.count; i++) {
         A(packer_rects, i).id = (i32)i;
-        A(packer_rects, i).w = A(textures, i).dims.w + 2;
-        A(packer_rects, i).h = A(textures, i).dims.h + 2;
+        A(packer_rects, i).w = A(textures, i)->dims.w + 2;
+        A(packer_rects, i).h = A(textures, i)->dims.h + 2;
     }
 
     log_assert(stbrp_pack_rects(&atlas->packer_ctx, packer_rects.ptr, (i32)packer_rects.count) ==
@@ -2293,11 +2309,11 @@ void pack_textures_into_existing_atlas(Atlas *atlas,
     // TODO use only 1px of padding, not 2px
     Arr_RectPX placements = arena_push_arr(scratch, RectPX, textures.count);
     for (u64 i = 0; i < textures.count; i++) {
-        if (A(textures, i).dims.w > 0 && A(textures, i).dims.h > 0) {
+        if (A(textures, i)->dims.w > 0 && A(textures, i)->dims.h > 0) {
             A(placements, i).x = (u16)A(packer_rects, i).x + 1;
             A(placements, i).y = (u16)A(packer_rects, i).y + 1;
-            A(placements, i).w = A(textures, i).dims.w;
-            A(placements, i).h = A(textures, i).dims.h;
+            A(placements, i).w = A(textures, i)->dims.w;
+            A(placements, i).h = A(textures, i)->dims.h;
         }
     }
 
@@ -2313,7 +2329,7 @@ void pack_textures_into_existing_atlas(Atlas *atlas,
     vec_prealloc(scratch, &offsets, textures.count);
 
     for (u64 i = 0; i < textures.count; i++) {
-        Opt_u64 offset = packer_try_push(&packer, A(textures, i).buffer, 512);
+        Opt_u64 offset = packer_try_push(&packer, A(textures, i)->buffer, 512);
         log_assert(offset.present);  // TODO
         vec_push(scratch, &offsets, (u32)offset.opt);
     }
@@ -2323,11 +2339,8 @@ void pack_textures_into_existing_atlas(Atlas *atlas,
     // Upload textures
     //
 
-    // TODO coalesce atlas-related copy and render passes
-    SDL_GPUCopyPass *copy_pass = SDL_BeginGPUCopyPass(command_buffer);
-
     for (u64 i = 0; i < offsets.count; i++) {
-        if (A(textures, i).dims.w > 0 && A(textures, i).dims.h > 0) {
+        if (A(textures, i)->dims.w > 0 && A(textures, i)->dims.h > 0) {
             SDL_GPUTextureTransferInfo src = {
                 .transfer_buffer = atlas->transfer_buffer,
                 .offset = A(offsets, i),
@@ -2347,20 +2360,123 @@ void pack_textures_into_existing_atlas(Atlas *atlas,
         }
     }
 
-    SDL_EndGPUCopyPass(copy_pass);
     arena_release(scratch);
 }
 
-TextureSystem *tex_init(ErrorContext *err, Arena *arena, SDL_GPUDevice *device) {
+TextureSystem *tex_init(ErrorContext *err,
+                        Arena *arena,
+                        SDL_GPUDevice *device,
+                        SDL_Window *window,
+                        SDL_GPUShader *vertex_shader,
+                        SDL_GPUShader *dummy_fragment_shader) {
     TextureSystem *ctx = arena_push(arena, TextureSystem);
     ctx->icon_atlas = init_atlas(err, arena, device, S("Icon Atlas"), (SizePX){2048, 2048},
-                                 SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM_SRGB, FilterType_Linear);
+                                 ICON_TEXTURE_FORMAT, FilterType_Linear);
     ctx->glyph_atlas = init_atlas(err, arena, device, S("Glyph Atlas"), (SizePX){1024, 1024},
-                                  SDL_GPU_TEXTUREFORMAT_R8_UNORM, FilterType_Nearest);
+                                  GLYPH_TEXTURE_FORMAT, FilterType_Nearest);
+
+    ctx->clear_icon_pipeline =
+        make_render_pipeline(err, device, window, vertex_shader, dummy_fragment_shader,
+                             ICON_TEXTURE_FORMAT, BlendType_None);
+    ctx->clear_glyph_pipeline =
+        make_render_pipeline(err, device, window, vertex_shader, dummy_fragment_shader,
+                             GLYPH_TEXTURE_FORMAT, BlendType_None);
     return ctx;
 }
 
 void tex_request(TextureSystem *ctx, CPUTexture *texture, RectF where) {}
+
+MeshOutput tex_build_mesh(TextureSystem *ctx,
+                          SDL_GPUDevice *device,
+                          SDL_GPUCommandBuffer *command_buffer,
+                          FixedVec_P_CPUTexture *requests) {
+    Arena *scratch = arena_acquire();
+    /*
+    For each request:
+        If request is not in cache (aka, packed into atlas)
+            Add to list to pack into atlas
+    For each new request:
+        Pack into atlas
+    If required, do each of these steps:
+        Clear icon and glyph textures in new render passes
+        Upload sprites to new textures in new copy passes
+    For each request:
+        Spit out quad
+   */
+    FixedVec_P_CPUTexture uncached_icon_requests =
+        fvec_alloc(scratch, P_CPUTexture, requests->count);
+    FixedVec_P_CPUTexture uncached_glyph_requests =
+        fvec_alloc(scratch, P_CPUTexture, requests->count);
+    for (u64 i = 0; i < requests->count; i++) {
+        CPUTexture *request = A(*requests, i);
+        if (request->handle.idx == 0) {
+            if (request->format == ICON_TEXTURE_FORMAT) {
+                fvec_push(&uncached_icon_requests, request);
+            } else if (request->format == GLYPH_TEXTURE_FORMAT) {
+                fvec_push(&uncached_glyph_requests, request);
+            } else {
+                log_fatal("Unexpected texture format: %d", request->format);
+            }
+        }
+    }
+
+    if (uncached_icon_requests.count > 0 || uncached_glyph_requests.count > 0) {
+        SDL_GPUCopyPass *copy_pass = SDL_BeginGPUCopyPass(command_buffer);
+        pack_textures_into_existing_atlas(ctx->icon_atlas, device, copy_pass,
+                                          fvec_arr(&uncached_icon_requests));
+        pack_textures_into_existing_atlas(ctx->glyph_atlas, device, copy_pass,
+                                          fvec_arr(&uncached_glyph_requests));
+        SDL_EndGPUCopyPass(copy_pass);
+    }
+
+    arena_release(scratch);
+}
+
+// Kind of weird, but this function:
+// - Potentially clears and uploads individual small textures to texture atlases
+// - Emits geometry to render requested textures
+// Maybe a saner architecture would decouple render graph construction from texture cache prep work?
+MeshOutput tex_prepare_to_render(TextureSystem *ctx,
+                                 SDL_GPUDevice *device,
+                                 SDL_GPUCommandBuffer *command_buffer,
+                                 Arr_Vertex vertex_buffer,
+                                 Arr_u16 index_buffer) {
+    clear_texture(command_buffer, ctx->clear_icon_pipeline, ctx->icon_atlas->texture);
+    clear_texture(command_buffer, ctx->clear_glyph_pipeline, ctx->glyph_atlas->texture);
+
+    MeshBuilder icon_mesh = {
+        .vertices =
+            {
+                .ptr = vertex_buffer.ptr,
+                .capacity = vertex_buffer.count,
+            },
+        .indices =
+            {
+                .ptr = index_buffer.ptr,
+                .capacity = index_buffer.count,
+            },
+    };
+    // ... build icon mesh
+    MeshBuilder glyph_mesh = {
+        .vertices =
+            {
+                .ptr = vertex_buffer.ptr + icon_mesh.vertices.count,
+                .capacity = icon_mesh.vertices.count - vertex_buffer.count,
+            },
+        .indices =
+            {
+                .ptr = index_buffer.ptr + icon_mesh.indices.count,
+                .capacity = icon_mesh.indices.count - index_buffer.count,
+            },
+    };
+    // ... build glyph mesh
+    return (MeshOutput){
+        .glyph_vertices = fvec_arr(&icon_mesh.vertices),
+        .glyph_indices = fvec_arr(&icon_mesh.indices),
+        .icon_vertices = fvec_arr(&glyph_mesh.vertices),
+        .icon_indices = fvec_arr(&glyph_mesh.indices),
+    };
+}
 
 //
 // ::Main

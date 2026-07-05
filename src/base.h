@@ -404,29 +404,25 @@ void vec__grow(Arena *arena, GenericVec *vec, u64 elem_size, u64 elem_align, u64
 // FixedVec
 //
 
-#define fvec_alloc(arena, t, count)                                                           \
-    ({                                                                                        \
-        typeof(arena) _arena_ = (arena);                                                      \
-        typeof(vec) _vec_ = (vec);                                                            \
-        typeof(count) _count_ = (count);                                                      \
-        _vec_->__typeid_fixed_vec;                                                            \
-        if (_vec_->capacity < _count_) {                                                      \
-            u64 old_size = _vec_->capacity * sizeof(*_vec_->ptr);                             \
-            u64 new_size = _count_ * sizeof(*_vec_->ptr);                                     \
-            u64 align = alignof(typeof(*_vec_->ptr));                                         \
-            _vec_->ptr = arena_realloc_bytes(_arena_, _vec_->ptr, old_size, new_size, align); \
-            _vec_->capacity = _count_;                                                        \
-        }                                                                                     \
+#define fvec_alloc(arena, t, cap)                                            \
+    ({                                                                       \
+        typeof(arena) _arena_ = (arena);                                     \
+        typeof(cap) _cap_ = (cap);                                           \
+        (CONCAT(FixedVec_, t)){                                              \
+            .ptr = arena_push_bytes(_arena_, sizeof(t) * _cap_, alignof(t)), \
+            .count = 0,                                                      \
+            .capacity = _cap_,                                               \
+        };                                                                   \
     })
 
-#define fvec_push(vec, val)                       \
-    ({                                            \
-        typeof(vec) _vec_ = (vec);                \
-        typeof(val) _val_ = (val);                \
-        _vec_->__typeid_fixed_vec;                \
-        log_assert(_vec_.count < _vec_.capacity); \
-        _vec_->count++;                           \
-        _vec_->ptr[_vec_->count - 1] = _val_;     \
+#define fvec_push(vec, val)                         \
+    ({                                              \
+        typeof(vec) _vec_ = (vec);                  \
+        typeof(val) _val_ = (val);                  \
+        _vec_->__typeid_fixed_vec;                  \
+        log_assert(_vec_->count < _vec_->capacity); \
+        _vec_->count++;                             \
+        _vec_->ptr[_vec_->count - 1] = _val_;       \
     })
 
 #define fvec_push_zero(vec)                       \
