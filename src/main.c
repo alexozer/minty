@@ -46,7 +46,7 @@ Str FONT_PATH = S("data/Roboto-Medium.ttf");
 // Str FONT_PATH = S("data/NotoSans-Regular.ttf");
 // Str FONT_PATH = S("data/NotoSans-Bold.ttf");
 // Str FONT_PATH = S("data/KosugiMaru-Regular.otf");
-constexpr u32 FONT_SIZE_PX = 40;
+// constexpr u32 FONT_SIZE_PX = 40;
 
 constexpr SDL_GPUTextureFormat ICON_TEXTURE_FORMAT = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM_SRGB;
 constexpr SDL_GPUTextureFormat GLYPH_TEXTURE_FORMAT = SDL_GPU_TEXTUREFORMAT_R8_UNORM;
@@ -365,15 +365,30 @@ struct UI_Box {
 };
 derive_struct_post(UI_Box);
 
+enum RenderInstType : u8 {
+    RenderInstType_UploadToTexture,
+    RenderInstType_RenderToSwapchain,
+    RenderInstType_RenderToTexture,
+};
+derive_enum(RenderInstType);
+
+struct TextureUpload {
+    SDL_GPUTextureTransferInfo src;
+    SDL_GPUTextureRegion dest;
+};
+derive_struct(TextureUpload);
+
 // Inspired by GfxRenderInst concept from noclip.website
 struct RenderInst {
+    RenderInstType type;
+    u16 order;
     SDL_GPUGraphicsPipeline *pipeline;
-    SDL_GPUTexture *input_texture;
-    SDL_GPUSampler *input_sampler;
+    SDL_GPUTexture *texture;
+    SDL_GPUSampler *sampler;
     SDL_GPUShader *vertex_shader;
     SDL_GPUShader *fragment_shader;
     Mesh mesh;
-    u16 layer;
+    Arr_TextureUpload texture_uploads;
 };
 derive_struct(RenderInst);
 
@@ -385,11 +400,12 @@ struct VertexBufferRegion {
 derive_struct(VertexBufferRegion);
 
 // Shared GPU resources etc.
+// How much state should be moved to texture system? Unclear
 struct RenderState {
     SDL_GPUDevice *device;
 
     // Shaders
-    SDL_GPUShader *vert_shader;
+    SDL_GPUShader *vertex_shader;
     SDL_GPUShader *icon_frag_shader;
     SDL_GPUShader *glyph_frag_shader;
 
@@ -1169,159 +1185,159 @@ void window_to_ndc(Vertex *vertex, SizePX window_size) {
     vertex->y = -((vertex->y / (f32)window_size.h) * 2.f - 1.f);
 }
 
-void push_atlas_quad(SizePX window_size,
-                     Atlas *atlas,
-                     MeshBuilder *mesh,
-                     RectPX src,
-                     RectPX dst,
-                     Color color) {
-    Arr_u16 indices = fvec_extend_zero(&mesh->indices, 6);
-    A(indices, 0) = (u16)(mesh->vertices.count + 0);
-    A(indices, 1) = (u16)(mesh->vertices.count + 1);
-    A(indices, 2) = (u16)(mesh->vertices.count + 2);
-    A(indices, 3) = (u16)(mesh->vertices.count + 2);
-    A(indices, 4) = (u16)(mesh->vertices.count + 1);
-    A(indices, 5) = (u16)(mesh->vertices.count + 3);
+// void push_atlas_quad(SizePX window_size,
+//                      Atlas *atlas,
+//                      Mesh *mesh,
+//                      RectPX src,
+//                      RectPX dst,
+//                      Color color) {
+//     Arr_u16 indices = fvec_extend_zero(&mesh->indices, 6);
+//     A(indices, 0) = (u16)(mesh->vertices.count + 0);
+//     A(indices, 1) = (u16)(mesh->vertices.count + 1);
+//     A(indices, 2) = (u16)(mesh->vertices.count + 2);
+//     A(indices, 3) = (u16)(mesh->vertices.count + 2);
+//     A(indices, 4) = (u16)(mesh->vertices.count + 1);
+//     A(indices, 5) = (u16)(mesh->vertices.count + 3);
+//
+//     Arr_Vertex vertices = fvec_extend_zero(&mesh->vertices, 4);
+//     // Top left
+//     A(vertices, 0) = (Vertex){
+//         .x = (f32)dst.x,
+//         .y = (f32)dst.y,
+//         .z = 0,
+//         .u = (f32)src.x / (f32)atlas->size.w,
+//         .v = (f32)src.y / (f32)atlas->size.h,
+//         .r = color.r,
+//         .g = color.g,
+//         .b = color.b,
+//         .a = color.a,
+//     };
+//     // Top right
+//     A(vertices, 1) = (Vertex){
+//         .x = (f32)(dst.x + dst.w),
+//         .y = (f32)dst.y,
+//         .z = 0,
+//         .u = (f32)(src.x + src.w) / (f32)atlas->size.w,
+//         .v = (f32)src.y / (f32)atlas->size.h,
+//         .r = color.r,
+//         .g = color.g,
+//         .b = color.b,
+//         .a = color.a,
+//     };
+//     // Bottom left
+//     A(vertices, 2) = (Vertex){
+//         .x = (f32)dst.x,
+//         .y = (f32)(dst.y + dst.h),
+//         .z = 0,
+//         .u = (f32)src.x / (f32)atlas->size.w,
+//         .v = (f32)(src.y + src.h) / (f32)atlas->size.h,
+//         .r = color.r,
+//         .g = color.g,
+//         .b = color.b,
+//         .a = color.a,
+//     };
+//     // Bottom right
+//     A(vertices, 3) = (Vertex){
+//         .x = (f32)(dst.x + dst.w),
+//         .y = (f32)(dst.y + dst.h),
+//         .z = 0,
+//         .u = (f32)(src.x + src.w) / (f32)atlas->size.w,
+//         .v = (f32)(src.y + src.h) / (f32)atlas->size.h,
+//         .r = color.r,
+//         .g = color.g,
+//         .b = color.b,
+//         .a = color.a,
+//     };
+//
+//     // Kinda awkward but whatever
+//     window_to_ndc(&A(vertices, 0), window_size);
+//     window_to_ndc(&A(vertices, 1), window_size);
+//     window_to_ndc(&A(vertices, 2), window_size);
+//     window_to_ndc(&A(vertices, 3), window_size);
+// }
 
-    Arr_Vertex vertices = fvec_extend_zero(&mesh->vertices, 4);
-    // Top left
-    A(vertices, 0) = (Vertex){
-        .x = (f32)dst.x,
-        .y = (f32)dst.y,
-        .z = 0,
-        .u = (f32)src.x / (f32)atlas->size.w,
-        .v = (f32)src.y / (f32)atlas->size.h,
-        .r = color.r,
-        .g = color.g,
-        .b = color.b,
-        .a = color.a,
-    };
-    // Top right
-    A(vertices, 1) = (Vertex){
-        .x = (f32)(dst.x + dst.w),
-        .y = (f32)dst.y,
-        .z = 0,
-        .u = (f32)(src.x + src.w) / (f32)atlas->size.w,
-        .v = (f32)src.y / (f32)atlas->size.h,
-        .r = color.r,
-        .g = color.g,
-        .b = color.b,
-        .a = color.a,
-    };
-    // Bottom left
-    A(vertices, 2) = (Vertex){
-        .x = (f32)dst.x,
-        .y = (f32)(dst.y + dst.h),
-        .z = 0,
-        .u = (f32)src.x / (f32)atlas->size.w,
-        .v = (f32)(src.y + src.h) / (f32)atlas->size.h,
-        .r = color.r,
-        .g = color.g,
-        .b = color.b,
-        .a = color.a,
-    };
-    // Bottom right
-    A(vertices, 3) = (Vertex){
-        .x = (f32)(dst.x + dst.w),
-        .y = (f32)(dst.y + dst.h),
-        .z = 0,
-        .u = (f32)(src.x + src.w) / (f32)atlas->size.w,
-        .v = (f32)(src.y + src.h) / (f32)atlas->size.h,
-        .r = color.r,
-        .g = color.g,
-        .b = color.b,
-        .a = color.a,
-    };
-
-    // Kinda awkward but whatever
-    window_to_ndc(&A(vertices, 0), window_size);
-    window_to_ndc(&A(vertices, 1), window_size);
-    window_to_ndc(&A(vertices, 2), window_size);
-    window_to_ndc(&A(vertices, 3), window_size);
-}
-
-void make_icon_mesh_inner(SizePX window_size,
-                          Box *box,
-                          PosPX where,
-                          Atlas *atlas,
-                          MeshBuilder *mesh) {
-    switch (box->type) {
-    case BoxType_Empty: {
-        break;
-    }
-    case BoxType_LeftToRightStack: {
-        for (u64 i = 0; i < box->children.count; i++) {
-            SizePX child_bbox = compute_box_bbox(A(box->children, i));
-            make_icon_mesh_inner(window_size, A(box->children, i), where, atlas, mesh);
-            where.x += child_bbox.w;
-        }
-        break;
-    }
-    case BoxType_TopToBottomStack: {
-        for (u64 i = 0; i < box->children.count; i++) {
-            SizePX child_bbox = compute_box_bbox(A(box->children, i));
-            make_icon_mesh_inner(window_size, A(box->children, i), where, atlas, mesh);
-            where.y += child_bbox.h;
-        }
-        break;
-    }
-    case BoxType_BackToFrontStack: {
-        for (u64 i = 0; i < box->children.count; i++) {
-            make_icon_mesh_inner(window_size, A(box->children, i), where, atlas, mesh);
-        }
-        break;
-    }
-    case BoxType_Text: {
-        // TTF_DrawRendererText(box->text_obj, where.x, where.y);
-        break;
-    }
-    case BoxType_Texture: {
-        RectPX src = A(atlas->placements, box->texture_idx);
-
-        f32 src_ratio = (f32)src.w / (f32)src.h;
-        f32 dst_ratio = (f32)box->bbox.opt.w / (f32)box->bbox.opt.h;
-
-        // Scale to fit
-        RectPX dest = {};
-        if (src_ratio > dst_ratio) {
-            f32 scale = (f32)box->bbox.opt.w / (f32)src.w;
-            dest.w = box->bbox.opt.w;
-            dest.h = (u16)SDL_lroundf((f32)src.h * scale);
-            dest.x = where.x;
-            dest.y = where.y + (u16)SDL_lroundf((f32)(box->bbox.opt.h - dest.h) / 2.f);
-        } else {
-            f32 scale = (f32)box->bbox.opt.h / (f32)src.h;
-            dest.w = (u16)SDL_lroundf((f32)src.w * scale);
-            dest.h = box->bbox.opt.h;
-            dest.x = where.x + (u16)SDL_lroundf((f32)(box->bbox.opt.w - dest.w) / 2.f);
-            dest.y = where.y;
-        }
-        Color color = {.r = 255, .g = 255, .b = 255, .a = 255};
-        push_atlas_quad(window_size, atlas, mesh, src, dest, color);
-        break;
-    }
-    case BoxType_SolidColor: {
-        // SDL_SetRenderDrawColorFloat(app->renderer, box->color.r, box->color.g,
-        // box->color.b, box->color.a); SDL_FRect r = { .x = where.x, .y =
-        // where.y, .w = box->width, .h = box->height };
-        // SDL_RenderFillRect(app->renderer, &r);
-        break;
-    }
-    }
-}
-
-u64 make_icon_mesh(SizePX window_size, Session *session, Atlas *atlas, MeshBuilder *mesh) {
-    Arena *scratch = arena_acquire();
-
-    Box *box = prerender(scratch, session, window_size);
-    u64 start_vertex_count = mesh->vertices.count;
-    PosPX where = {0, 0};
-    make_icon_mesh_inner(window_size, box, where, atlas, mesh);
-    u64 end_vertex_count = mesh->vertices.count;
-
-    arena_release(scratch);
-    return (end_vertex_count - start_vertex_count) / 4;
-}
+// void make_icon_mesh_inner(SizePX window_size,
+//                           Box *box,
+//                           PosPX where,
+//                           Atlas *atlas,
+//                           MeshBuilder *mesh) {
+//     switch (box->type) {
+//     case BoxType_Empty: {
+//         break;
+//     }
+//     case BoxType_LeftToRightStack: {
+//         for (u64 i = 0; i < box->children.count; i++) {
+//             SizePX child_bbox = compute_box_bbox(A(box->children, i));
+//             make_icon_mesh_inner(window_size, A(box->children, i), where, atlas, mesh);
+//             where.x += child_bbox.w;
+//         }
+//         break;
+//     }
+//     case BoxType_TopToBottomStack: {
+//         for (u64 i = 0; i < box->children.count; i++) {
+//             SizePX child_bbox = compute_box_bbox(A(box->children, i));
+//             make_icon_mesh_inner(window_size, A(box->children, i), where, atlas, mesh);
+//             where.y += child_bbox.h;
+//         }
+//         break;
+//     }
+//     case BoxType_BackToFrontStack: {
+//         for (u64 i = 0; i < box->children.count; i++) {
+//             make_icon_mesh_inner(window_size, A(box->children, i), where, atlas, mesh);
+//         }
+//         break;
+//     }
+//     case BoxType_Text: {
+//         // TTF_DrawRendererText(box->text_obj, where.x, where.y);
+//         break;
+//     }
+//     case BoxType_Texture: {
+//         RectPX src = A(atlas->placements, box->texture_idx);
+//
+//         f32 src_ratio = (f32)src.w / (f32)src.h;
+//         f32 dst_ratio = (f32)box->bbox.opt.w / (f32)box->bbox.opt.h;
+//
+//         // Scale to fit
+//         RectPX dest = {};
+//         if (src_ratio > dst_ratio) {
+//             f32 scale = (f32)box->bbox.opt.w / (f32)src.w;
+//             dest.w = box->bbox.opt.w;
+//             dest.h = (u16)SDL_lroundf((f32)src.h * scale);
+//             dest.x = where.x;
+//             dest.y = where.y + (u16)SDL_lroundf((f32)(box->bbox.opt.h - dest.h) / 2.f);
+//         } else {
+//             f32 scale = (f32)box->bbox.opt.h / (f32)src.h;
+//             dest.w = (u16)SDL_lroundf((f32)src.w * scale);
+//             dest.h = box->bbox.opt.h;
+//             dest.x = where.x + (u16)SDL_lroundf((f32)(box->bbox.opt.w - dest.w) / 2.f);
+//             dest.y = where.y;
+//         }
+//         Color color = {.r = 255, .g = 255, .b = 255, .a = 255};
+//         push_atlas_quad(window_size, atlas, mesh, src, dest, color);
+//         break;
+//     }
+//     case BoxType_SolidColor: {
+//         // SDL_SetRenderDrawColorFloat(app->renderer, box->color.r, box->color.g,
+//         // box->color.b, box->color.a); SDL_FRect r = { .x = where.x, .y =
+//         // where.y, .w = box->width, .h = box->height };
+//         // SDL_RenderFillRect(app->renderer, &r);
+//         break;
+//     }
+//     }
+// }
+//
+// u64 make_icon_mesh(SizePX window_size, Session *session, Atlas *atlas, MeshBuilder *mesh) {
+//     Arena *scratch = arena_acquire();
+//
+//     Box *box = prerender(scratch, session, window_size);
+//     u64 start_vertex_count = mesh->vertices.count;
+//     PosPX where = {0, 0};
+//     make_icon_mesh_inner(window_size, box, where, atlas, mesh);
+//     u64 end_vertex_count = mesh->vertices.count;
+//
+//     arena_release(scratch);
+//     return (end_vertex_count - start_vertex_count) / 4;
+// }
 
 //
 // ::UI v2
@@ -1573,27 +1589,27 @@ void layout_ui(UI_Box *root) {
     layout_ui_impl(root);
 }
 
-u64 make_ui_mesh(Arena *arena, SizePX window_size, UI_Box *box, MeshBuilder *mesh) {
-    u64 start_quad_count = mesh->vertices.count / 4;
-
-    // Fake atlas for now
-    Atlas atlas = {.size = window_size};
-    RectPX rect_px = {
-        .x = (u16)SDL_lroundf(box->output_size.x),
-        .y = (u16)SDL_lroundf(box->output_size.y),
-        .w = (u16)SDL_lroundf(box->output_size.w),
-        .h = (u16)SDL_lroundf(box->output_size.h),
-    };
-    push_atlas_quad(window_size, &atlas, mesh, rect_px, rect_px, (Color){});
-
-    for (u64 i = 0; i < box->childs.count; i++) {
-        UI_Box *child = A(box->childs, i);
-        make_ui_mesh(arena, window_size, child, mesh);
-    }
-
-    u64 end_quad_count = mesh->vertices.count / 4;
-    return end_quad_count - start_quad_count;
-}
+// u64 make_ui_mesh(Arena *arena, SizePX window_size, UI_Box *box, MeshBuilder *mesh) {
+//     u64 start_quad_count = mesh->vertices.count / 4;
+//
+//     // Fake atlas for now
+//     Atlas atlas = {.size = window_size};
+//     RectPX rect_px = {
+//         .x = (u16)SDL_lroundf(box->output_size.x),
+//         .y = (u16)SDL_lroundf(box->output_size.y),
+//         .w = (u16)SDL_lroundf(box->output_size.w),
+//         .h = (u16)SDL_lroundf(box->output_size.h),
+//     };
+//     push_atlas_quad(window_size, &atlas, mesh, rect_px, rect_px, (Color){});
+//
+//     for (u64 i = 0; i < box->childs.count; i++) {
+//         UI_Box *child = A(box->childs, i);
+//         make_ui_mesh(arena, window_size, child, mesh);
+//     }
+//
+//     u64 end_quad_count = mesh->vertices.count / 4;
+//     return end_quad_count - start_quad_count;
+// }
 
 //
 // ::Glyph system
@@ -1644,117 +1660,118 @@ Arr_ShapedGlyph shape_text_naive(Arena *arena, Arr_u8 font, Str text) {
 }
 
 // TODO split fallible font sanity check vs. infallible atlas creation
-GlyphAtlas make_and_upload_glyph_atlas(ErrorContext *err,
-                                       Arena *arena,
-                                       SDL_GPUDevice *device,
-                                       SDL_GPUCommandBuffer *command_buffer,
-                                       SDL_GPUGraphicsPipeline *clear_texture_pipeline,
-                                       FT_Library freetype_handle,
-                                       Arr_u8 font_file,
-                                       u16 face_size_px) {
-    if (!command_buffer) return (GlyphAtlas){};
-    if (!clear_texture_pipeline) return (GlyphAtlas){};
-    if (!freetype_handle) return (GlyphAtlas){};
+// GlyphAtlas make_and_upload_glyph_atlas(ErrorContext *err,
+//                                        Arena *arena,
+//                                        SDL_GPUDevice *device,
+//                                        SDL_GPUCommandBuffer *command_buffer,
+//                                        SDL_GPUGraphicsPipeline *clear_texture_pipeline,
+//                                        FT_Library freetype_handle,
+//                                        Arr_u8 font_file,
+//                                        u16 face_size_px) {
+//     if (!command_buffer) return (GlyphAtlas){};
+//     if (!clear_texture_pipeline) return (GlyphAtlas){};
+//     if (!freetype_handle) return (GlyphAtlas){};
+//
+//     log_assert(face_size_px > 0);
+//     Arena *scratch = arena_acquire();
+//     Scope scope = scope_open(err);
+//
+//     FT_Face face = {};
+//     if (FT_New_Memory_Face(freetype_handle, font_file.ptr, (long)font_file.count, 0, &face) !=
+//         FT_Err_Ok) {
+//         // TODO
+//         // break;
+//     }
+//
+//     if (FT_Set_Pixel_Sizes(face, face_size_px, 0) != FT_Err_Ok) {
+//         // TODO
+//         // break;
+//     }
+//
+//     Arr_CPUTexture textures = arena_push_arr(scratch, CPUTexture, (u64)face->num_glyphs);
+//     Arr_GlyphMetrics metrics = arena_push_arr(arena, GlyphMetrics, (u64)face->num_glyphs);
+//
+//     for (u64 glyph_idx = 0; glyph_idx < face->num_glyphs; glyph_idx++) {
+//         // TODO re-enable hinting once we can account for spacing discrepancies
+//         // Also maybe disable on macos for more native look?
+//         FT_Load_Glyph(face, (u32)glyph_idx, FT_LOAD_NO_HINTING);
+//         // if (face->glyph->format == FT_GLYPH_FORMAT_BITMAP) {
+//         //     bail(err, "TODO: handle bitmap glyph");
+//         // }
+//         FT_Render_Glyph(face->glyph, FT_RENDER_MODE_NORMAL);
+//
+//         FT_Bitmap bitmap = face->glyph->bitmap;
+//         CPUTexture *texture = &A(textures, glyph_idx);
+//         Arr_u8 tmp_buffer = {.ptr = bitmap.buffer, .count = bitmap.width * bitmap.rows};
+//         texture->format = GLYPH_TEXTURE_FORMAT;
+//         texture->buffer = arr_clone(scratch, tmp_buffer);
+//         texture->dims = (SizePX){(u16)bitmap.width, (u16)bitmap.rows};
+//
+//         // Convert from 26.6 fixed point pixels to f32 pixels
+//         A(metrics, glyph_idx).bearing_px_x = (f32)face->glyph->bitmap_left;
+//         A(metrics, glyph_idx).bearing_px_y = (f32)face->glyph->bitmap_top;
+//     }
+//
+//     SizePX font_atlas_size = {.w = 2048, .h = 2048};
+//     Str texture_name = str_format(scratch, "Glyph atlas: family = '%s', style = '%s', size =
+//     %dpx",
+//                                   face->family_name, face->style_name, face_size_px);
+//     Atlas *atlas =
+//         make_and_upload_atlas(err, arena, device, command_buffer, clear_texture_pipeline,
+//                               texture_name, textures, font_atlas_size, FilterType_Nearest);
+//     GlyphAtlas ret = {
+//         .atlas = atlas,
+//         .px_per_em = face_size_px,
+//         .units_per_em = face->units_per_EM,
+//         .metrics = metrics,
+//     };
+//
+//     FT_Done_Face(face);
+//     scope_close(scope, "Create and upload glyph atlas");
+//     arena_release(scratch);
+//     return ret;
+// }
 
-    log_assert(face_size_px > 0);
-    Arena *scratch = arena_acquire();
-    Scope scope = scope_open(err);
-
-    FT_Face face = {};
-    if (FT_New_Memory_Face(freetype_handle, font_file.ptr, (long)font_file.count, 0, &face) !=
-        FT_Err_Ok) {
-        // TODO
-        // break;
-    }
-
-    if (FT_Set_Pixel_Sizes(face, face_size_px, 0) != FT_Err_Ok) {
-        // TODO
-        // break;
-    }
-
-    Arr_CPUTexture textures = arena_push_arr(scratch, CPUTexture, (u64)face->num_glyphs);
-    Arr_GlyphMetrics metrics = arena_push_arr(arena, GlyphMetrics, (u64)face->num_glyphs);
-
-    for (u64 glyph_idx = 0; glyph_idx < face->num_glyphs; glyph_idx++) {
-        // TODO re-enable hinting once we can account for spacing discrepancies
-        // Also maybe disable on macos for more native look?
-        FT_Load_Glyph(face, (u32)glyph_idx, FT_LOAD_NO_HINTING);
-        // if (face->glyph->format == FT_GLYPH_FORMAT_BITMAP) {
-        //     bail(err, "TODO: handle bitmap glyph");
-        // }
-        FT_Render_Glyph(face->glyph, FT_RENDER_MODE_NORMAL);
-
-        FT_Bitmap bitmap = face->glyph->bitmap;
-        CPUTexture *texture = &A(textures, glyph_idx);
-        Arr_u8 tmp_buffer = {.ptr = bitmap.buffer, .count = bitmap.width * bitmap.rows};
-        texture->format = GLYPH_TEXTURE_FORMAT;
-        texture->buffer = arr_clone(scratch, tmp_buffer);
-        texture->dims = (SizePX){(u16)bitmap.width, (u16)bitmap.rows};
-
-        // Convert from 26.6 fixed point pixels to f32 pixels
-        A(metrics, glyph_idx).bearing_px_x = (f32)face->glyph->bitmap_left;
-        A(metrics, glyph_idx).bearing_px_y = (f32)face->glyph->bitmap_top;
-    }
-
-    SizePX font_atlas_size = {.w = 2048, .h = 2048};
-    Str texture_name = str_format(scratch, "Glyph atlas: family = '%s', style = '%s', size = %dpx",
-                                  face->family_name, face->style_name, face_size_px);
-    Atlas *atlas =
-        make_and_upload_atlas(err, arena, device, command_buffer, clear_texture_pipeline,
-                              texture_name, textures, font_atlas_size, FilterType_Nearest);
-    GlyphAtlas ret = {
-        .atlas = atlas,
-        .px_per_em = face_size_px,
-        .units_per_em = face->units_per_EM,
-        .metrics = metrics,
-    };
-
-    FT_Done_Face(face);
-    scope_close(scope, "Create and upload glyph atlas");
-    arena_release(scratch);
-    return ret;
-}
-
-u64 make_glyph_mesh(SizePX window_size,
-                    Arr_u8 font_file,
-                    GlyphAtlas *atlas,
-                    Str text,
-                    MeshBuilder *mesh) {
-    Arena *scratch = arena_acquire();
-
-    u64 start_vertex_count = mesh->vertices.count;
-
-    Arr_ShapedGlyph shaped_glyphs = shape_text_naive(scratch, font_file, text);
-    for (u64 i = 0; i < shaped_glyphs.count; i++) {
-        u32 glyph_id = A(shaped_glyphs, i).glyph_id;
-
-        // Shaping position of glyph
-        f32 glyph_px_x =
-            (f32)A(shaped_glyphs, i).glyph_x_fu * atlas->px_per_em / atlas->units_per_em;
-        f32 glyph_px_y =
-            (f32)A(shaped_glyphs, i).glyph_y_fu * atlas->px_per_em / atlas->units_per_em;
-
-        // Position of glyph bitmap
-        f32 bitmap_px_x = glyph_px_x + A(atlas->metrics, glyph_id).bearing_px_x;
-        f32 bitmap_px_y = glyph_px_y + A(atlas->metrics, glyph_id).bearing_px_y;
-
-        // Convert/round to window space pixel coord
-        u16 dest_px_x = (u16)SDL_lroundf(200.f + bitmap_px_x);
-        u16 dest_px_y = (u16)SDL_lroundf(200.f - bitmap_px_y);
-
-        u32 shaped_id = A(shaped_glyphs, i).glyph_id;
-        RectPX src = A(atlas->atlas->placements, shaped_id);
-        RectPX dst = {.x = dest_px_x, .y = dest_px_y, .w = src.w, .h = src.h};
-        Color color = {.r = 255, .g = 255, .b = 255, .a = 255};
-        push_atlas_quad(window_size, atlas->atlas, mesh, src, dst, color);
-    }
-
-    u64 end_vertex_count = mesh->vertices.count;
-    u64 quad_count = (end_vertex_count - start_vertex_count) / 4;
-
-    arena_release(scratch);
-    return quad_count;
-}
+// u64 make_glyph_mesh(SizePX window_size,
+//                     Arr_u8 font_file,
+//                     GlyphAtlas *atlas,
+//                     Str text,
+//                     Mesh *mesh) {
+//     Arena *scratch = arena_acquire();
+//
+//     u64 start_vertex_count = mesh->vertices.count;
+//
+//     Arr_ShapedGlyph shaped_glyphs = shape_text_naive(scratch, font_file, text);
+//     for (u64 i = 0; i < shaped_glyphs.count; i++) {
+//         u32 glyph_id = A(shaped_glyphs, i).glyph_id;
+//
+//         // Shaping position of glyph
+//         f32 glyph_px_x =
+//             (f32)A(shaped_glyphs, i).glyph_x_fu * atlas->px_per_em / atlas->units_per_em;
+//         f32 glyph_px_y =
+//             (f32)A(shaped_glyphs, i).glyph_y_fu * atlas->px_per_em / atlas->units_per_em;
+//
+//         // Position of glyph bitmap
+//         f32 bitmap_px_x = glyph_px_x + A(atlas->metrics, glyph_id).bearing_px_x;
+//         f32 bitmap_px_y = glyph_px_y + A(atlas->metrics, glyph_id).bearing_px_y;
+//
+//         // Convert/round to window space pixel coord
+//         u16 dest_px_x = (u16)SDL_lroundf(200.f + bitmap_px_x);
+//         u16 dest_px_y = (u16)SDL_lroundf(200.f - bitmap_px_y);
+//
+//         u32 shaped_id = A(shaped_glyphs, i).glyph_id;
+//         RectPX src = A(atlas->atlas->placements, shaped_id);
+//         RectPX dst = {.x = dest_px_x, .y = dest_px_y, .w = src.w, .h = src.h};
+//         Color color = {.r = 255, .g = 255, .b = 255, .a = 255};
+//         push_atlas_quad(window_size, atlas->atlas, mesh, src, dst, color);
+//     }
+//
+//     u64 end_vertex_count = mesh->vertices.count;
+//     u64 quad_count = (end_vertex_count - start_vertex_count) / 4;
+//
+//     arena_release(scratch);
+//     return quad_count;
+// }
 
 //
 // ::Renderer
@@ -1957,7 +1974,7 @@ void init_vertex_buffers(ErrorContext *err, RenderState *render_state) {
 
 void init_render_pipelines(ErrorContext *err, SDL_Window *window, RenderState *render_state) {
     // Load shaders
-    render_state->vert_shader =
+    render_state->vertex_shader =
         load_shader(err, render_state->device, OS_SHADERS.vert_shader, ShaderType_Vertex);
     render_state->icon_frag_shader =
         load_shader(err, render_state->device, OS_SHADERS.frag_icon_shader, ShaderType_Fragment);
@@ -1978,10 +1995,10 @@ void init_render_pipelines(ErrorContext *err, SDL_Window *window, RenderState *r
     SDL_GPUTextureFormat swapchain_format =
         SDL_GetGPUSwapchainTextureFormat(render_state->device, window);
     render_state->icon_pipeline =
-        make_render_pipeline(err, render_state->device, render_state->vert_shader,
+        make_render_pipeline(err, render_state->device, render_state->vertex_shader,
                              render_state->icon_frag_shader, swapchain_format, BlendType_Over);
     render_state->glyph_pipeline =
-        make_render_pipeline(err, render_state->device, render_state->vert_shader,
+        make_render_pipeline(err, render_state->device, render_state->vertex_shader,
                              render_state->glyph_frag_shader, swapchain_format, BlendType_Over);
 }
 
@@ -2031,14 +2048,6 @@ void init_renderer(ErrorContext *err, App *app) {
 // ::Renderer V2
 //
 
-RenderState *init_render_state(ErrorContext *err, Arena *arena) {}
-
-int compare_render_insts(const RenderInst *a, const RenderInst *b) {
-    if (a->layer < b->layer) return -1;
-    if (a->layer > b->layer) return 1;
-    return 0;
-}
-
 void do_geometry_upload_pass_v2(RenderState *render_state,
                                 SDL_GPUCommandBuffer *command_buffer,
                                 u32 vertex_count,
@@ -2075,11 +2084,17 @@ void do_geometry_upload_pass_v2(RenderState *render_state,
     SDL_EndGPUCopyPass(pass);
 }
 
+int compare_render_insts(RenderInst *const *a, RenderInst *const *b) {
+    if ((*a)->order < (*b)->order) return -1;
+    if ((*a)->order > (*b)->order) return 1;
+    return 0;
+}
+
 void render_render_insts(SDL_GPUCommandBuffer *command_buffer,
                          SDL_GPUTexture *swapchain_texture,
                          SDL_GPUBuffer *vertex_buffer,
                          SDL_GPUBuffer *index_buffer,
-                         Arr_RenderInst render_insts,
+                         Arr_P_RenderInst render_insts,
                          Arr_VertexBufferRegion regions) {
     SDL_GPUColorTargetInfo color_target_infos[] = {{
         .texture = swapchain_texture,
@@ -2096,13 +2111,13 @@ void render_render_insts(SDL_GPUCommandBuffer *command_buffer,
     SDL_BindGPUIndexBuffer(pass, &index_buffer_binding, SDL_GPU_INDEXELEMENTSIZE_16BIT);
 
     for (u64 inst_idx = 0; inst_idx < render_insts.count; inst_idx++) {
-        RenderInst *inst = &A(render_insts, inst_idx);
+        RenderInst *inst = A(render_insts, inst_idx);
         VertexBufferRegion region = A(regions, inst_idx);
 
         if (inst->mesh.indices.count > 0) {
             SDL_GPUTextureSamplerBinding tex_sampler_bindings[] = {{
-                .texture = inst->input_texture,
-                .sampler = inst->input_sampler,
+                .texture = inst->texture,
+                .sampler = inst->sampler,
             }};
             SDL_BindGPUGraphicsPipeline(pass, inst->pipeline);
             SDL_BindGPUFragmentSamplers(pass, 0, tex_sampler_bindings,
@@ -2133,7 +2148,7 @@ void render(App *app) {
                                           &height);
     if (swapchain_texture) {  // Apparently can be null if window is minimized
 
-        Arr_RenderInst render_insts = {};  // TODO
+        Arr_P_RenderInst render_insts = {};  // TODO
         arr_sort(render_insts, compare_render_insts);
 
         // Pack and upload geometry
@@ -2153,10 +2168,10 @@ void render(App *app) {
         for (u64 i = 0; i < render_insts.count; i++) {
             A(regions, i).first_vertex = (u32)vertices.count;
             A(regions, i).first_index = (u32)indices.count;
-            A(regions, i).index_count = (u32)A(render_insts, i).mesh.indices.count;
+            A(regions, i).index_count = (u32)A(render_insts, i)->mesh.indices.count;
 
-            fvec_extend(&vertices, A(render_insts, i).mesh.vertices);
-            fvec_extend(&indices, A(render_insts, i).mesh.indices);
+            fvec_extend(&vertices, A(render_insts, i)->mesh.vertices);
+            fvec_extend(&indices, A(render_insts, i)->mesh.indices);
         }
 
         SDL_UnmapGPUTransferBuffer(render_state->device, render_state->geom_transfer_buffer);
@@ -2373,110 +2388,91 @@ TextureSystem *tex_init(ErrorContext *err,
     ctx->glyph_atlas = init_atlas(err, arena, device, S("Glyph Atlas"), (SizePX){1024, 1024},
                                   GLYPH_TEXTURE_FORMAT, FilterType_Nearest);
 
-    ctx->clear_icon_pipeline =
-        make_render_pipeline(err, device, window, vertex_shader, dummy_fragment_shader,
-                             ICON_TEXTURE_FORMAT, BlendType_None);
-    ctx->clear_glyph_pipeline =
-        make_render_pipeline(err, device, window, vertex_shader, dummy_fragment_shader,
-                             GLYPH_TEXTURE_FORMAT, BlendType_None);
+    ctx->clear_icon_pipeline = make_render_pipeline(
+        err, device, vertex_shader, dummy_fragment_shader, ICON_TEXTURE_FORMAT, BlendType_None);
+    ctx->clear_glyph_pipeline = make_render_pipeline(
+        err, device, vertex_shader, dummy_fragment_shader, GLYPH_TEXTURE_FORMAT, BlendType_None);
     return ctx;
 }
 
 void tex_request(TextureSystem *ctx, CPUTexture *texture, RectF where) {}
 
-MeshOutput tex_build_mesh(TextureSystem *ctx,
-                          SDL_GPUDevice *device,
-                          SDL_GPUCommandBuffer *command_buffer,
-                          FixedVec_P_CPUTexture *requests) {
-    Arena *scratch = arena_acquire();
-    /*
-    For each request:
-        If request is not in cache (aka, packed into atlas)
-            Add to list to pack into atlas
-    For each new request:
-        Pack into atlas
-    If required, do each of these steps:
-        Clear icon and glyph textures in new render passes
-        Upload sprites to new textures in new copy passes
-    For each request:
-        Spit out quad
-   */
-    FixedVec_P_CPUTexture uncached_icon_requests =
-        fvec_alloc(scratch, P_CPUTexture, requests->count);
-    FixedVec_P_CPUTexture uncached_glyph_requests =
-        fvec_alloc(scratch, P_CPUTexture, requests->count);
-    for (u64 i = 0; i < requests->count; i++) {
-        CPUTexture *request = A(*requests, i);
-        if (request->handle.idx == 0) {
-            if (request->format == ICON_TEXTURE_FORMAT) {
-                fvec_push(&uncached_icon_requests, request);
-            } else if (request->format == GLYPH_TEXTURE_FORMAT) {
-                fvec_push(&uncached_glyph_requests, request);
-            } else {
-                log_fatal("Unexpected texture format: %d", request->format);
-            }
-        }
-    }
+// MeshOutput tex_build_mesh(TextureSystem *ctx,
+//                           SDL_GPUDevice *device,
+//                           SDL_GPUCommandBuffer *command_buffer,
+//                           FixedVec_P_CPUTexture *requests) {
+//     Arena *scratch = arena_acquire();
+//     /*
+//     For each request:
+//         If request is not in cache (aka, packed into atlas)
+//             Add to list to pack into atlas
+//     For each new request:
+//         Pack into atlas
+//     If required, do each of these steps:
+//         Clear icon and glyph textures in new render passes
+//         Upload sprites to new textures in new copy passes
+//     For each request:
+//         Spit out quad
+//    */
+//     FixedVec_P_CPUTexture uncached_icon_requests =
+//         fvec_alloc(scratch, P_CPUTexture, requests->count);
+//     FixedVec_P_CPUTexture uncached_glyph_requests =
+//         fvec_alloc(scratch, P_CPUTexture, requests->count);
+//     for (u64 i = 0; i < requests->count; i++) {
+//         CPUTexture *request = A(*requests, i);
+//         if (request->handle.idx == 0) {
+//             if (request->format == ICON_TEXTURE_FORMAT) {
+//                 fvec_push(&uncached_icon_requests, request);
+//             } else if (request->format == GLYPH_TEXTURE_FORMAT) {
+//                 fvec_push(&uncached_glyph_requests, request);
+//             } else {
+//                 log_fatal("Unexpected texture format: %d", request->format);
+//             }
+//         }
+//     }
+//
+//     if (uncached_icon_requests.count > 0 || uncached_glyph_requests.count > 0) {
+//         SDL_GPUCopyPass *copy_pass = SDL_BeginGPUCopyPass(command_buffer);
+//         pack_textures_into_existing_atlas(ctx->icon_atlas, device, copy_pass,
+//                                           fvec_arr(&uncached_icon_requests));
+//         pack_textures_into_existing_atlas(ctx->glyph_atlas, device, copy_pass,
+//                                           fvec_arr(&uncached_glyph_requests));
+//         SDL_EndGPUCopyPass(copy_pass);
+//     }
+//
+//     arena_release(scratch);
+// }
 
-    if (uncached_icon_requests.count > 0 || uncached_glyph_requests.count > 0) {
-        SDL_GPUCopyPass *copy_pass = SDL_BeginGPUCopyPass(command_buffer);
-        pack_textures_into_existing_atlas(ctx->icon_atlas, device, copy_pass,
-                                          fvec_arr(&uncached_icon_requests));
-        pack_textures_into_existing_atlas(ctx->glyph_atlas, device, copy_pass,
-                                          fvec_arr(&uncached_glyph_requests));
-        SDL_EndGPUCopyPass(copy_pass);
-    }
-
-    arena_release(scratch);
-}
-
-// Kind of weird, but this function:
-// - Potentially clears and uploads individual small textures to texture atlases
-// - Emits geometry to render requested textures
-// Maybe a saner architecture would decouple render graph construction from texture cache prep work?
-MeshOutput tex_prepare_to_render(TextureSystem *ctx,
-                                 SDL_GPUDevice *device,
-                                 SDL_GPUCommandBuffer *command_buffer,
-                                 Arr_Vertex vertex_buffer,
-                                 Arr_u16 index_buffer) {
+Arr_P_RenderInst tex_prepare_to_render(Arena *frame_arena,
+                                       TextureSystem *ctx,
+                                       RenderState *render_state,
+                                       Arr_TextureRequest requests) {
+    FixedVec_P_RenderInst render_insts = fvec_alloc(frame_arena, P_RenderInst, (u64)8);
     if (!ctx->textures_cleared) {
-        clear_texture(command_buffer, ctx->clear_icon_pipeline, ctx->icon_atlas->texture);
-        clear_texture(command_buffer, ctx->clear_glyph_pipeline, ctx->glyph_atlas->texture);
-        ctx->textures_cleared = true;
+        // Clear atlas textures by performing render pass with no draw calls
+        RenderInst *icon_clear_inst = arena_push(frame_arena, RenderInst);
+        icon_clear_inst->type = RenderInstType_RenderToTexture;
+        icon_clear_inst->order = 0;
+        icon_clear_inst->pipeline = render_state->clear_icon_pipeline;
+        icon_clear_inst->texture = ctx->icon_atlas->texture;
+        icon_clear_inst->sampler = ctx->icon_atlas->sampler;
+        icon_clear_inst->vertex_shader = render_state->vertex_shader;
+        icon_clear_inst->fragment_shader = render_state->icon_frag_shader;
+
+        RenderInst *glyph_clear_inst = arena_push(frame_arena, RenderInst);
+        glyph_clear_inst->type = RenderInstType_RenderToTexture;
+        glyph_clear_inst->order = 0;
+        glyph_clear_inst->pipeline = render_state->clear_glyph_pipeline;
+        glyph_clear_inst->texture = ctx->glyph_atlas->texture;
+        glyph_clear_inst->sampler = ctx->glyph_atlas->sampler;
+        glyph_clear_inst->vertex_shader = render_state->vertex_shader;
+        glyph_clear_inst->fragment_shader = render_state->glyph_frag_shader;
+
+        fvec_push(&render_insts, icon_clear_inst);
+        fvec_push(&render_insts, glyph_clear_inst);
     }
 
-    MeshBuilder icon_mesh = {
-        .vertices =
-            {
-                .ptr = vertex_buffer.ptr,
-                .capacity = vertex_buffer.count,
-            },
-        .indices =
-            {
-                .ptr = index_buffer.ptr,
-                .capacity = index_buffer.count,
-            },
-    };
-    // ... build icon mesh
-    MeshBuilder glyph_mesh = {
-        .vertices =
-            {
-                .ptr = vertex_buffer.ptr + icon_mesh.vertices.count,
-                .capacity = icon_mesh.vertices.count - vertex_buffer.count,
-            },
-        .indices =
-            {
-                .ptr = index_buffer.ptr + icon_mesh.indices.count,
-                .capacity = icon_mesh.indices.count - index_buffer.count,
-            },
-    };
-    // ... build glyph mesh
-    return (MeshOutput){
-        .glyph_vertices = fvec_arr(&icon_mesh.vertices),
-        .glyph_indices = fvec_arr(&icon_mesh.indices),
-        .icon_vertices = fvec_arr(&glyph_mesh.vertices),
-        .icon_indices = fvec_arr(&glyph_mesh.indices),
-    };
+    return fvec_arr(&render_insts);
 }
 
 //

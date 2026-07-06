@@ -271,3 +271,7 @@ bg, icons/text, transparent split selector, etc. Each render inst in our case co
 
 We can't append directly into the vertex transfer buffer like before as easily (at least, building
 independent render instances makes for a cleaner architecture)
+
+## Packer render inst
+
+For copy pass: plop src/dest metadata into render inst?
