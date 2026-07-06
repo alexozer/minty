@@ -242,22 +242,6 @@ struct GlyphAtlas {
 };
 derive_struct(GlyphAtlas);
 
-// TODO remove?
-struct MeshBuilder {
-    FixedVec_Vertex vertices;
-    FixedVec_u16 indices;
-};
-derive_struct(MeshBuilder);
-
-// TODO remove?
-struct MeshOutput {
-    Arr_Vertex icon_vertices;
-    Arr_u16 icon_indices;
-    Arr_Vertex glyph_vertices;
-    Arr_u16 glyph_indices;
-};
-derive_struct(MeshOutput);
-
 struct Mesh {
     Arr_Vertex vertices;
     Arr_u16 indices;
@@ -400,20 +384,8 @@ struct VertexBufferRegion {
 };
 derive_struct(VertexBufferRegion);
 
-struct App {
-    Arena *app_arena;  // Lives for duration of application
-    SDL_Window *window;
-
-    SDL_Keycode prev_keys;
-    // TODO: float-based scrolling on NDC could mess with pixel-perfect alignment
-    f32 scroll;
-    f32 scale;  // `scale + 1.0f` is actual scale
-    bool insert_mode_enabled;
-    Vec_u8 typed_text;
-
-    Arena *session_arena;
-    Session *session;  // Nullable
-
+// Shared GPU resources etc.
+struct RenderState {
     SDL_GPUDevice *device;
 
     // Shaders
@@ -431,10 +403,24 @@ struct App {
     SDL_GPUTransferBuffer *geom_transfer_buffer;
     SDL_GPUBuffer *vertex_buffer;
     SDL_GPUBuffer *index_buffer;
+};
+derive_struct(RenderState);
 
-    // Textures
-    Atlas *icon_atlas;
-    GlyphAtlas glyph_atlas;
+struct App {
+    Arena *app_arena;  // Lives for duration of application
+    SDL_Window *window;
+
+    SDL_Keycode prev_keys;
+    // TODO: float-based scrolling on NDC could mess with pixel-perfect alignment
+    f32 scroll;
+    f32 scale;  // `scale + 1.0f` is actual scale
+    bool insert_mode_enabled;
+    Vec_u8 typed_text;
+
+    Arena *session_arena;
+    Session *session;  // Nullable
+
+    RenderState *render_state;
 
     // Text stuff
     FT_Library freetype;
@@ -1771,18 +1757,16 @@ u64 make_glyph_mesh(SizePX window_size,
 }
 
 //
-// ::Renderer V1
+// ::Renderer
 //
 
 SDL_GPUGraphicsPipeline *make_render_pipeline(ErrorContext *err,
                                               SDL_GPUDevice *device,
-                                              SDL_Window *window,
                                               SDL_GPUShader *vert_shader,
                                               SDL_GPUShader *frag_shader,
                                               SDL_GPUTextureFormat target_texture_format,
                                               BlendType blend_type) {
     if (!device) return nullptr;
-    if (!window) return nullptr;
     if (!vert_shader) return nullptr;
     if (!frag_shader) return nullptr;
     Scope scope = scope_open(err);
@@ -1944,76 +1928,61 @@ SDL_GPUTransferBuffer *sdl_create_gpu_transfer_buffer(ErrorContext *err,
     return buffer;
 }
 
-void init_vertex_buffers(ErrorContext *err, App *app) {
+void init_vertex_buffers(ErrorContext *err, RenderState *render_state) {
     Scope scope = scope_open(err);
 
     SDL_GPUBufferCreateInfo vert_info = {
         .usage = SDL_GPU_BUFFERUSAGE_VERTEX,
         .size = sizeof(Vertex) * MAX_VERTEX_COUNT,
     };
-    app->vertex_buffer =
-        sdl_create_gpu_buffer(err, app->device, &vert_info, S("THE vertex buffer"));
+    render_state->vertex_buffer =
+        sdl_create_gpu_buffer(err, render_state->device, &vert_info, S("THE vertex buffer"));
 
     SDL_GPUBufferCreateInfo index_info = {
         .usage = SDL_GPU_BUFFERUSAGE_INDEX,
         .size = sizeof(u16) * MAX_INDEX_COUNT,
     };
-    app->index_buffer = sdl_create_gpu_buffer(err, app->device, &index_info, S("THE index buffer"));
+    render_state->index_buffer =
+        sdl_create_gpu_buffer(err, render_state->device, &index_info, S("THE index buffer"));
 
     SDL_GPUTransferBufferCreateInfo transfer_buffer_info = {
         .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
         .size = (sizeof(Vertex) * MAX_VERTEX_COUNT) + (sizeof(u16) * MAX_INDEX_COUNT),
     };
-    app->geom_transfer_buffer =
-        sdl_create_gpu_transfer_buffer(err, app->device, &transfer_buffer_info);
+    render_state->geom_transfer_buffer =
+        sdl_create_gpu_transfer_buffer(err, render_state->device, &transfer_buffer_info);
 
     scope_close(scope, "Init vertex+index buffers");
 }
 
-void make_and_upload_icon_atlas(ErrorContext *err, App *app, SDL_GPUCommandBuffer *command_buffer) {
-    if (!command_buffer) return;
-    Scope scope = scope_open(err);
-    Arena *scratch = arena_acquire();
-
-    FileDef *file = &app->session->file;
-    Arr_CPUTexture icon_textures = arena_push_arr(scratch, CPUTexture, file->segments.count);
-    for (u64 i = 0; i < file->segments.count; i++) {
-        A(icon_textures, i) = A(file->segments, i).icon_texture;
-    }
-    app->icon_atlas = make_and_upload_atlas(err, app->session_arena, app->device, command_buffer,
-                                            app->clear_icon_pipeline, S("Icon atlas"),
-                                            icon_textures, (SizePX){2048, 2048}, FilterType_Linear);
-
-    arena_release(scratch);
-    scope_close(scope, "Make and upload icon atlas");
-}
-
-void init_render_pipelines(ErrorContext *err, App *app) {
+void init_render_pipelines(ErrorContext *err, SDL_Window *window, RenderState *render_state) {
     // Load shaders
-    app->vert_shader = load_shader(err, app->device, OS_SHADERS.vert_shader, ShaderType_Vertex);
-    app->icon_frag_shader =
-        load_shader(err, app->device, OS_SHADERS.frag_icon_shader, ShaderType_Fragment);
-    app->glyph_frag_shader =
-        load_shader(err, app->device, OS_SHADERS.frag_glyph_shader, ShaderType_Fragment);
+    render_state->vert_shader =
+        load_shader(err, render_state->device, OS_SHADERS.vert_shader, ShaderType_Vertex);
+    render_state->icon_frag_shader =
+        load_shader(err, render_state->device, OS_SHADERS.frag_icon_shader, ShaderType_Fragment);
+    render_state->glyph_frag_shader =
+        load_shader(err, render_state->device, OS_SHADERS.frag_glyph_shader, ShaderType_Fragment);
     if (err_occurred(err)) return;
 
-    if (SDL_WindowSupportsGPUPresentMode(app->device, app->window, SDL_GPU_PRESENTMODE_MAILBOX)) {
-        SDL_SetGPUSwapchainParameters(app->device, app->window,
+    if (SDL_WindowSupportsGPUPresentMode(render_state->device, window,
+                                         SDL_GPU_PRESENTMODE_MAILBOX)) {
+        SDL_SetGPUSwapchainParameters(render_state->device, window,
                                       SDL_GPU_SWAPCHAINCOMPOSITION_SDR_LINEAR,
                                       SDL_GPU_PRESENTMODE_MAILBOX);
     } else {
-        SDL_SetGPUSwapchainParameters(app->device, app->window,
+        SDL_SetGPUSwapchainParameters(render_state->device, window,
                                       SDL_GPU_SWAPCHAINCOMPOSITION_SDR_LINEAR,
                                       SDL_GPU_PRESENTMODE_VSYNC);
     }
     SDL_GPUTextureFormat swapchain_format =
-        SDL_GetGPUSwapchainTextureFormat(app->device, app->window);
-    app->icon_pipeline =
-        make_render_pipeline(err, app->device, app->window, app->vert_shader, app->icon_frag_shader,
-                             swapchain_format, BlendType_Over);
-    app->glyph_pipeline =
-        make_render_pipeline(err, app->device, app->window, app->vert_shader,
-                             app->glyph_frag_shader, swapchain_format, BlendType_Over);
+        SDL_GetGPUSwapchainTextureFormat(render_state->device, window);
+    render_state->icon_pipeline =
+        make_render_pipeline(err, render_state->device, render_state->vert_shader,
+                             render_state->icon_frag_shader, swapchain_format, BlendType_Over);
+    render_state->glyph_pipeline =
+        make_render_pipeline(err, render_state->device, render_state->vert_shader,
+                             render_state->glyph_frag_shader, swapchain_format, BlendType_Over);
 }
 
 SDL_GPUCommandBuffer *sdl_acquire_gpu_command_buffer(ErrorContext *err, SDL_GPUDevice *device) {
@@ -2032,185 +2001,37 @@ void sdl_submit_gpu_command_buffer(SDL_GPUCommandBuffer *command_buffer) {
     if (command_buffer) SDL_SubmitGPUCommandBuffer(command_buffer);
 }
 
-void init_render_buffers(ErrorContext *err, App *app) {
-    Scope scope = scope_open(err);
-
-    SDL_GPUCommandBuffer *command_buffer = sdl_acquire_gpu_command_buffer(err, app->device);
-    init_vertex_buffers(err, app);
-    make_and_upload_icon_atlas(err, app, command_buffer);
-    app->glyph_atlas = make_and_upload_glyph_atlas(err, app->app_arena, app->device, command_buffer,
-                                                   app->clear_glyph_pipeline, app->freetype,
-                                                   app->font_file, FONT_SIZE_PX);
-
-    sdl_submit_gpu_command_buffer(command_buffer);
-    scope_close(scope, "Initialize render buffers");
-}
-
 void init_renderer(ErrorContext *err, App *app) {
     Scope scope = scope_open(err);
 
+    // TODO initialize in font system
     if (FT_Init_FreeType(&app->freetype) != FT_Err_Ok) {
         err_report(err, "Failed to initialize freetype");
     }
     app->font_file = os_read_file(err, app->app_arena, FONT_PATH);
 
-    app->device = SDL_CreateGPUDevice(OS_SHADERS.format, RENDERER_DEBUG_MODE_ENABLED, nullptr);
-    if (!app->device) {
+    RenderState *render_state = arena_push(app->app_arena, RenderState);
+    app->render_state = render_state;
+    render_state->device =
+        SDL_CreateGPUDevice(OS_SHADERS.format, RENDERER_DEBUG_MODE_ENABLED, nullptr);
+    if (!render_state->device) {
         err_report(err, "%s", SDL_GetError());
     } else {
         // ... or should  I make all renderer initialization functions invariant to nullptr
         // SDL_GPUDevice?
-        SDL_ClaimWindowForGPUDevice(app->device, app->window);
-        init_render_pipelines(err, app);
-        init_render_buffers(err, app);
+        SDL_ClaimWindowForGPUDevice(render_state->device, app->window);
+        init_render_pipelines(err, app->window, render_state);
+        init_vertex_buffers(err, render_state);
     }
 
     scope_close(scope, "Initialize renderer");
 }
 
-void do_geometry_upload_pass(App *app, SDL_GPUCommandBuffer *command_buffer, MeshBuilder *mesh) {
-    u64 vertex_data_size = mesh->vertices.count * sizeof(A(mesh->vertices, 0));
-    u64 index_data_size = mesh->indices.count * sizeof(A(mesh->indices, 0));
-
-    SDL_GPUCopyPass *pass = SDL_BeginGPUCopyPass(command_buffer);
-
-    // Upload vertex data
-    SDL_GPUTransferBufferLocation vert_src = {.transfer_buffer = app->geom_transfer_buffer,
-                                              .offset = 0};
-    SDL_GPUBufferRegion vert_dest = {
-        .buffer = app->vertex_buffer,
-        .offset = 0,
-        .size = (u32)vertex_data_size,
-    };
-    SDL_UploadToGPUBuffer(pass, &vert_src, &vert_dest, true);
-
-    // Upload index data
-    SDL_GPUTransferBufferLocation index_src = {
-        .transfer_buffer = app->geom_transfer_buffer,
-        .offset = (u32)vertex_data_size,
-    };
-    SDL_GPUBufferRegion index_dest = {
-        .buffer = app->index_buffer,
-        .offset = (u32)((u64)mesh->indices.ptr - (u64)mesh->vertices.ptr),
-        .size = (u32)index_data_size,
-    };
-    SDL_UploadToGPUBuffer(pass, &index_src, &index_dest, true);
-
-    SDL_EndGPUCopyPass(pass);
-}
-
-void render_main_color_pass(App *app,
-                            SDL_GPUCommandBuffer *command_buffer,
-                            SDL_GPUTexture *swapchain_texture,
-                            u64 icon_quad_count,
-                            u64 glyph_quad_count) {
-    SDL_GPUColorTargetInfo color_target_infos[] = {{
-        .texture = swapchain_texture,
-        .clear_color = {0.f, 0.f, 0.f, 1.f},
-        .load_op = SDL_GPU_LOADOP_CLEAR,
-        .store_op = SDL_GPU_STOREOP_STORE,
-    }};
-    SDL_GPURenderPass *pass = SDL_BeginGPURenderPass(command_buffer, color_target_infos,
-                                                     c_arr_count(color_target_infos), nullptr);
-    SDL_GPUBufferBinding vertex_buffer_bindings[] = {{.buffer = app->vertex_buffer, .offset = 0}};
-    SDL_GPUBufferBinding index_buffer_binding = {.buffer = app->index_buffer, .offset = 0};
-    SDL_GPUTextureSamplerBinding icon_tex_sampler_bindings[] = {{
-        .texture = app->icon_atlas->texture,
-        .sampler = app->icon_atlas->sampler,
-    }};
-    SDL_GPUTextureSamplerBinding glyph_tex_sampler_bindings[] = {{
-        .texture = app->glyph_atlas.atlas->texture,
-        .sampler = app->glyph_atlas.atlas->sampler,
-    }};
-
-    SDL_BindGPUVertexBuffers(pass, 0, vertex_buffer_bindings, c_arr_count(vertex_buffer_bindings));
-    SDL_BindGPUIndexBuffer(pass, &index_buffer_binding, SDL_GPU_INDEXELEMENTSIZE_16BIT);
-
-    // Draw icons
-    if (icon_quad_count > 0) {
-        SDL_BindGPUGraphicsPipeline(pass, app->icon_pipeline);
-        SDL_BindGPUFragmentSamplers(pass, 0, icon_tex_sampler_bindings,
-                                    c_arr_count(icon_tex_sampler_bindings));
-        SDL_DrawGPUIndexedPrimitives(pass,
-                                     (u32)(icon_quad_count * 6),  // Index count
-                                     1,                           // Instance count
-                                     0,                           // First index
-                                     0,                           // Vertex offset
-                                     0                            // First instance
-        );
-    }
-
-    // Draw glyphs
-    if (glyph_quad_count > 0) {
-        SDL_BindGPUGraphicsPipeline(pass, app->glyph_pipeline);
-        SDL_BindGPUFragmentSamplers(pass, 0, glyph_tex_sampler_bindings,
-                                    c_arr_count(glyph_tex_sampler_bindings));
-        SDL_DrawGPUIndexedPrimitives(pass,
-                                     (u32)(glyph_quad_count * 6),  // Index count
-                                     1,                            // Instance count
-                                     (u32)(icon_quad_count * 6),   // First index
-                                     0,                            // Vertex offset
-                                     0                             // First instance
-        );
-    }
-
-    SDL_EndGPURenderPass(pass);
-}
-
-void render(App *app) {
-    Arena *frame_arena = arena_acquire();
-    SDL_GPUCommandBuffer *command_buffer = SDL_AcquireGPUCommandBuffer(app->device);
-
-    SDL_GPUTexture *texture = nullptr;
-    u32 width = 0;
-    u32 height = 0;
-    SDL_WaitAndAcquireGPUSwapchainTexture(command_buffer, app->window, &texture, &width, &height);
-    if (texture) {  // Apparently can be null if window is minimized
-        SizePX window_size = {.w = (u16)width, .h = (u16)height};
-
-        // TODO: switch to new layout
-        UI_Box *box = build_ui(frame_arena, app->session, window_size);
-        layout_ui(box);
-
-        void *transfer_data =
-            (Vertex *)SDL_MapGPUTransferBuffer(app->device, app->geom_transfer_buffer, true);
-        MeshBuilder mesh = {};
-        mesh.vertices = (FixedVec_Vertex){
-            .ptr = transfer_data,
-            .capacity = MAX_VERTEX_COUNT,
-        };
-        mesh.indices = (FixedVec_u16){
-            .ptr = (u16 *)((Vertex *)transfer_data + MAX_VERTEX_COUNT),
-            .capacity = MAX_INDEX_COUNT,
-        };
-
-        u64 ui_quad_count = make_ui_mesh(frame_arena, window_size, box, &mesh);
-        u64 icon_quad_count = ui_quad_count;
-        u64 glyph_quad_count = 0;
-
-        // TODO get rid of ui_quad_count
-        // u64 icon_quad_count =
-        //     make_icon_mesh(frame_arena, window_size, app->session, app->icon_atlas, &mesh);
-        // u64 glyph_quad_count = make_glyph_mesh(frame_arena, window_size, app->font_file,
-        //                                        &app->glyph_atlas, vec_arr(&app->typed_text),
-        //                                        &mesh);
-
-        for (u64 i = 0; i < mesh.vertices.count; i++) {
-            A(mesh.vertices, i).y -= app->scroll * 0.1f;
-        }
-
-        SDL_UnmapGPUTransferBuffer(app->device, app->geom_transfer_buffer);
-        do_geometry_upload_pass(app, command_buffer, &mesh);
-        render_main_color_pass(app, command_buffer, texture, icon_quad_count, glyph_quad_count);
-    }
-
-    SDL_SubmitGPUCommandBuffer(command_buffer);
-    arena_release(frame_arena);
-}
-
 //
 // ::Renderer V2
 //
+
+RenderState *init_render_state(ErrorContext *err, Arena *arena) {}
 
 int compare_render_insts(const RenderInst *a, const RenderInst *b) {
     if (a->layer < b->layer) return -1;
@@ -2218,7 +2039,7 @@ int compare_render_insts(const RenderInst *a, const RenderInst *b) {
     return 0;
 }
 
-void do_geometry_upload_pass_v2(App *app,
+void do_geometry_upload_pass_v2(RenderState *render_state,
                                 SDL_GPUCommandBuffer *command_buffer,
                                 u32 vertex_count,
                                 u32 index_count) {
@@ -2229,11 +2050,11 @@ void do_geometry_upload_pass_v2(App *app,
 
     // Upload vertex data
     SDL_GPUTransferBufferLocation vert_src = {
-        .transfer_buffer = app->geom_transfer_buffer,
+        .transfer_buffer = render_state->geom_transfer_buffer,
         .offset = 0,
     };
     SDL_GPUBufferRegion vert_dest = {
-        .buffer = app->vertex_buffer,
+        .buffer = render_state->vertex_buffer,
         .offset = 0,
         .size = vertex_data_size,
     };
@@ -2241,11 +2062,11 @@ void do_geometry_upload_pass_v2(App *app,
 
     // Upload index data
     SDL_GPUTransferBufferLocation index_src = {
-        .transfer_buffer = app->geom_transfer_buffer,
+        .transfer_buffer = render_state->geom_transfer_buffer,
         .offset = MAX_VERTEX_COUNT * sizeof(Vertex),
     };
     SDL_GPUBufferRegion index_dest = {
-        .buffer = app->index_buffer,
+        .buffer = render_state->index_buffer,
         .offset = 0,
         .size = index_data_size,
     };
@@ -2299,9 +2120,11 @@ void render_render_insts(SDL_GPUCommandBuffer *command_buffer,
     SDL_EndGPURenderPass(pass);
 }
 
-void render_v2(App *app) {
+void render(App *app) {
     Arena *frame_arena = arena_acquire();
-    SDL_GPUCommandBuffer *command_buffer = SDL_AcquireGPUCommandBuffer(app->device);
+
+    RenderState *render_state = app->render_state;
+    SDL_GPUCommandBuffer *command_buffer = SDL_AcquireGPUCommandBuffer(render_state->device);
 
     SDL_GPUTexture *swapchain_texture = nullptr;
     u32 width = 0;
@@ -2314,8 +2137,8 @@ void render_v2(App *app) {
         arr_sort(render_insts, compare_render_insts);
 
         // Pack and upload geometry
-        void *transfer_data =
-            (Vertex *)SDL_MapGPUTransferBuffer(app->device, app->geom_transfer_buffer, true);
+        void *transfer_data = (Vertex *)SDL_MapGPUTransferBuffer(
+            render_state->device, render_state->geom_transfer_buffer, true);
         FixedVec_Vertex vertices = {
             .ptr = transfer_data,
             .capacity = MAX_VERTEX_COUNT,
@@ -2336,10 +2159,11 @@ void render_v2(App *app) {
             fvec_extend(&indices, A(render_insts, i).mesh.indices);
         }
 
-        SDL_UnmapGPUTransferBuffer(app->device, app->geom_transfer_buffer);
-        do_geometry_upload_pass_v2(app, command_buffer, (u32)vertices.count, (u32)indices.count);
-        render_render_insts(command_buffer, swapchain_texture, app->vertex_buffer,
-                            app->index_buffer, render_insts, regions);
+        SDL_UnmapGPUTransferBuffer(render_state->device, render_state->geom_transfer_buffer);
+        do_geometry_upload_pass_v2(render_state, command_buffer, (u32)vertices.count,
+                                   (u32)indices.count);
+        render_render_insts(command_buffer, swapchain_texture, render_state->vertex_buffer,
+                            render_state->index_buffer, render_insts, regions);
     }
 
     SDL_SubmitGPUCommandBuffer(command_buffer);
