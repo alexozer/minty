@@ -242,12 +242,14 @@ struct GlyphAtlas {
 };
 derive_struct(GlyphAtlas);
 
+// TODO remove?
 struct MeshBuilder {
     FixedVec_Vertex vertices;
     FixedVec_u16 indices;
 };
 derive_struct(MeshBuilder);
 
+// TODO remove?
 struct MeshOutput {
     Arr_Vertex icon_vertices;
     Arr_u16 icon_indices;
@@ -255,6 +257,12 @@ struct MeshOutput {
     Arr_u16 glyph_indices;
 };
 derive_struct(MeshOutput);
+
+struct Mesh {
+    Arr_Vertex vertices;
+    Arr_u16 indices;
+};
+derive_struct(Mesh);
 
 struct ShapedGlyph {
     u32 glyph_id;
@@ -373,6 +381,25 @@ struct UI_Box {
 };
 derive_struct_post(UI_Box);
 
+// Inspired by GfxRenderInst concept from noclip.website
+struct RenderInst {
+    SDL_GPUGraphicsPipeline *pipeline;
+    SDL_GPUTexture *input_texture;
+    SDL_GPUSampler *input_sampler;
+    SDL_GPUShader *vertex_shader;
+    SDL_GPUShader *fragment_shader;
+    Mesh mesh;
+    u16 layer;
+};
+derive_struct(RenderInst);
+
+struct VertexBufferRegion {
+    u32 first_vertex;
+    u32 first_index;
+    u32 index_count;
+};
+derive_struct(VertexBufferRegion);
+
 struct App {
     Arena *app_arena;  // Lives for duration of application
     SDL_Window *window;
@@ -401,7 +428,7 @@ struct App {
     SDL_GPUGraphicsPipeline *clear_glyph_pipeline;
 
     // Geometry buffers
-    SDL_GPUTransferBuffer *vertex_transfer_buffer;
+    SDL_GPUTransferBuffer *geom_transfer_buffer;
     SDL_GPUBuffer *vertex_buffer;
     SDL_GPUBuffer *index_buffer;
 
@@ -1744,7 +1771,7 @@ u64 make_glyph_mesh(SizePX window_size,
 }
 
 //
-// ::Rendering
+// ::Renderer V1
 //
 
 SDL_GPUGraphicsPipeline *make_render_pipeline(ErrorContext *err,
@@ -1937,7 +1964,7 @@ void init_vertex_buffers(ErrorContext *err, App *app) {
         .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
         .size = (sizeof(Vertex) * MAX_VERTEX_COUNT) + (sizeof(u16) * MAX_INDEX_COUNT),
     };
-    app->vertex_transfer_buffer =
+    app->geom_transfer_buffer =
         sdl_create_gpu_transfer_buffer(err, app->device, &transfer_buffer_info);
 
     scope_close(scope, "Init vertex+index buffers");
@@ -2048,7 +2075,7 @@ void do_geometry_upload_pass(App *app, SDL_GPUCommandBuffer *command_buffer, Mes
     SDL_GPUCopyPass *pass = SDL_BeginGPUCopyPass(command_buffer);
 
     // Upload vertex data
-    SDL_GPUTransferBufferLocation vert_src = {.transfer_buffer = app->vertex_transfer_buffer,
+    SDL_GPUTransferBufferLocation vert_src = {.transfer_buffer = app->geom_transfer_buffer,
                                               .offset = 0};
     SDL_GPUBufferRegion vert_dest = {
         .buffer = app->vertex_buffer,
@@ -2059,7 +2086,7 @@ void do_geometry_upload_pass(App *app, SDL_GPUCommandBuffer *command_buffer, Mes
 
     // Upload index data
     SDL_GPUTransferBufferLocation index_src = {
-        .transfer_buffer = app->vertex_transfer_buffer,
+        .transfer_buffer = app->geom_transfer_buffer,
         .offset = (u32)vertex_data_size,
     };
     SDL_GPUBufferRegion index_dest = {
@@ -2146,7 +2173,7 @@ void render(App *app) {
         layout_ui(box);
 
         void *transfer_data =
-            (Vertex *)SDL_MapGPUTransferBuffer(app->device, app->vertex_transfer_buffer, true);
+            (Vertex *)SDL_MapGPUTransferBuffer(app->device, app->geom_transfer_buffer, true);
         MeshBuilder mesh = {};
         mesh.vertices = (FixedVec_Vertex){
             .ptr = transfer_data,
@@ -2172,9 +2199,147 @@ void render(App *app) {
             A(mesh.vertices, i).y -= app->scroll * 0.1f;
         }
 
-        SDL_UnmapGPUTransferBuffer(app->device, app->vertex_transfer_buffer);
+        SDL_UnmapGPUTransferBuffer(app->device, app->geom_transfer_buffer);
         do_geometry_upload_pass(app, command_buffer, &mesh);
         render_main_color_pass(app, command_buffer, texture, icon_quad_count, glyph_quad_count);
+    }
+
+    SDL_SubmitGPUCommandBuffer(command_buffer);
+    arena_release(frame_arena);
+}
+
+//
+// ::Renderer V2
+//
+
+int compare_render_insts(const RenderInst *a, const RenderInst *b) {
+    if (a->layer < b->layer) return -1;
+    if (a->layer > b->layer) return 1;
+    return 0;
+}
+
+void do_geometry_upload_pass_v2(App *app,
+                                SDL_GPUCommandBuffer *command_buffer,
+                                u32 vertex_count,
+                                u32 index_count) {
+    u32 vertex_data_size = vertex_count * sizeof(Vertex);
+    u32 index_data_size = index_count * sizeof(u16);
+
+    SDL_GPUCopyPass *pass = SDL_BeginGPUCopyPass(command_buffer);
+
+    // Upload vertex data
+    SDL_GPUTransferBufferLocation vert_src = {
+        .transfer_buffer = app->geom_transfer_buffer,
+        .offset = 0,
+    };
+    SDL_GPUBufferRegion vert_dest = {
+        .buffer = app->vertex_buffer,
+        .offset = 0,
+        .size = vertex_data_size,
+    };
+    SDL_UploadToGPUBuffer(pass, &vert_src, &vert_dest, true);
+
+    // Upload index data
+    SDL_GPUTransferBufferLocation index_src = {
+        .transfer_buffer = app->geom_transfer_buffer,
+        .offset = MAX_VERTEX_COUNT * sizeof(Vertex),
+    };
+    SDL_GPUBufferRegion index_dest = {
+        .buffer = app->index_buffer,
+        .offset = 0,
+        .size = index_data_size,
+    };
+    SDL_UploadToGPUBuffer(pass, &index_src, &index_dest, true);
+
+    SDL_EndGPUCopyPass(pass);
+}
+
+void render_render_insts(SDL_GPUCommandBuffer *command_buffer,
+                         SDL_GPUTexture *swapchain_texture,
+                         SDL_GPUBuffer *vertex_buffer,
+                         SDL_GPUBuffer *index_buffer,
+                         Arr_RenderInst render_insts,
+                         Arr_VertexBufferRegion regions) {
+    SDL_GPUColorTargetInfo color_target_infos[] = {{
+        .texture = swapchain_texture,
+        .clear_color = {0.f, 0.f, 0.f, 1.f},
+        .load_op = SDL_GPU_LOADOP_CLEAR,
+        .store_op = SDL_GPU_STOREOP_STORE,
+    }};
+    SDL_GPURenderPass *pass = SDL_BeginGPURenderPass(command_buffer, color_target_infos,
+                                                     c_arr_count(color_target_infos), nullptr);
+
+    SDL_GPUBufferBinding vertex_buffer_bindings[] = {{.buffer = vertex_buffer, .offset = 0}};
+    SDL_GPUBufferBinding index_buffer_binding = {.buffer = index_buffer, .offset = 0};
+    SDL_BindGPUVertexBuffers(pass, 0, vertex_buffer_bindings, c_arr_count(vertex_buffer_bindings));
+    SDL_BindGPUIndexBuffer(pass, &index_buffer_binding, SDL_GPU_INDEXELEMENTSIZE_16BIT);
+
+    for (u64 inst_idx = 0; inst_idx < render_insts.count; inst_idx++) {
+        RenderInst *inst = &A(render_insts, inst_idx);
+        VertexBufferRegion region = A(regions, inst_idx);
+
+        if (inst->mesh.indices.count > 0) {
+            SDL_GPUTextureSamplerBinding tex_sampler_bindings[] = {{
+                .texture = inst->input_texture,
+                .sampler = inst->input_sampler,
+            }};
+            SDL_BindGPUGraphicsPipeline(pass, inst->pipeline);
+            SDL_BindGPUFragmentSamplers(pass, 0, tex_sampler_bindings,
+                                        c_arr_count(tex_sampler_bindings));
+            SDL_DrawGPUIndexedPrimitives(pass,
+                                         region.index_count,        // Index count
+                                         1,                         // Instance count
+                                         region.first_index,        // First index
+                                         (i32)region.first_vertex,  // Vertex offset
+                                         0                          // First instance
+            );
+        }
+    }
+
+    SDL_EndGPURenderPass(pass);
+}
+
+void render_v2(App *app) {
+    Arena *frame_arena = arena_acquire();
+    SDL_GPUCommandBuffer *command_buffer = SDL_AcquireGPUCommandBuffer(app->device);
+
+    SDL_GPUTexture *swapchain_texture = nullptr;
+    u32 width = 0;
+    u32 height = 0;
+    SDL_WaitAndAcquireGPUSwapchainTexture(command_buffer, app->window, &swapchain_texture, &width,
+                                          &height);
+    if (swapchain_texture) {  // Apparently can be null if window is minimized
+
+        Arr_RenderInst render_insts = {};  // TODO
+        arr_sort(render_insts, compare_render_insts);
+
+        // Pack and upload geometry
+        void *transfer_data =
+            (Vertex *)SDL_MapGPUTransferBuffer(app->device, app->geom_transfer_buffer, true);
+        FixedVec_Vertex vertices = {
+            .ptr = transfer_data,
+            .capacity = MAX_VERTEX_COUNT,
+        };
+        FixedVec_u16 indices = {
+            .ptr = (u16 *)((Vertex *)transfer_data + MAX_VERTEX_COUNT),
+            .capacity = MAX_INDEX_COUNT,
+        };
+
+        Arr_VertexBufferRegion regions =
+            arena_push_arr(frame_arena, VertexBufferRegion, render_insts.count);
+        for (u64 i = 0; i < render_insts.count; i++) {
+            A(regions, i).first_vertex = (u32)vertices.count;
+            A(regions, i).first_index = (u32)indices.count;
+            A(regions, i).index_count = (u32)A(render_insts, i).mesh.indices.count;
+
+            fvec_extend(&vertices, A(render_insts, i).mesh.vertices);
+            fvec_extend(&indices, A(render_insts, i).mesh.indices);
+        }
+
+        SDL_UnmapGPUTransferBuffer(app->device, app->geom_transfer_buffer);
+        do_geometry_upload_pass_v2(app, command_buffer, (u32)vertices.count, (u32)indices.count);
+        render_render_insts(command_buffer, swapchain_texture, app->vertex_buffer,
+                            app->index_buffer, render_insts, regions);
     }
 
     SDL_SubmitGPUCommandBuffer(command_buffer);
@@ -2286,6 +2451,29 @@ Atlas *init_atlas(ErrorContext *err,
     return atlas;
 }
 
+void upload_texture(SDL_GPUCopyPass *copy_pass,
+                    SDL_GPUTexture *texture,
+                    SDL_GPUTransferBuffer *transfer_buffer,
+                    u32 offset,
+                    RectPX placement) {
+    SDL_GPUTextureTransferInfo src = {
+        .transfer_buffer = transfer_buffer,
+        .offset = offset,
+    };
+    SDL_GPUTextureRegion dest = {
+        .texture = texture,
+        .mip_level = 0,
+        .layer = 0,
+        .x = (u32)placement.x,
+        .y = (u32)placement.y,
+        .z = 0,
+        .w = (u32)placement.w,
+        .h = (u32)placement.h,
+        .d = 1,
+    };
+    SDL_UploadToGPUTexture(copy_pass, &src, &dest, false);
+}
+
 void pack_textures_into_existing_atlas(Atlas *atlas,
                                        SDL_GPUDevice *device,
                                        SDL_GPUCopyPass *copy_pass,
@@ -2341,22 +2529,8 @@ void pack_textures_into_existing_atlas(Atlas *atlas,
 
     for (u64 i = 0; i < offsets.count; i++) {
         if (A(textures, i)->dims.w > 0 && A(textures, i)->dims.h > 0) {
-            SDL_GPUTextureTransferInfo src = {
-                .transfer_buffer = atlas->transfer_buffer,
-                .offset = A(offsets, i),
-            };
-            SDL_GPUTextureRegion dest = {
-                .texture = atlas->texture,
-                .mip_level = 0,
-                .layer = 0,
-                .x = (u32)A(placements, i).x,
-                .y = (u32)A(placements, i).y,
-                .z = 0,
-                .w = (u32)A(placements, i).w,
-                .h = (u32)A(placements, i).h,
-                .d = 1,
-            };
-            SDL_UploadToGPUTexture(copy_pass, &src, &dest, false);
+            upload_texture(copy_pass, atlas->texture, atlas->transfer_buffer, A(offsets, i),
+                           A(placements, i));
         }
     }
 
@@ -2441,8 +2615,11 @@ MeshOutput tex_prepare_to_render(TextureSystem *ctx,
                                  SDL_GPUCommandBuffer *command_buffer,
                                  Arr_Vertex vertex_buffer,
                                  Arr_u16 index_buffer) {
-    clear_texture(command_buffer, ctx->clear_icon_pipeline, ctx->icon_atlas->texture);
-    clear_texture(command_buffer, ctx->clear_glyph_pipeline, ctx->glyph_atlas->texture);
+    if (!ctx->textures_cleared) {
+        clear_texture(command_buffer, ctx->clear_icon_pipeline, ctx->icon_atlas->texture);
+        clear_texture(command_buffer, ctx->clear_glyph_pipeline, ctx->glyph_atlas->texture);
+        ctx->textures_cleared = true;
+    }
 
     MeshBuilder icon_mesh = {
         .vertices =

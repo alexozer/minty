@@ -168,11 +168,11 @@ constexpr u64 MIN_VEC_CAPACITY = 8;
 [[noreturn]] void *oob();
 
 // Sneaky array bounds checks in C
-#define A(arr, idx)                                                             \
-    (*({                                                                        \
-        typeof(arr) *_arr_ = &(arr);                                            \
-        u64 _i_ = (u64)(idx);                                                   \
-        _i_ < _arr_->count ? &_arr_->ptr[_i_] : (typeof(_arr_->ptr[0]) *)oob(); \
+#define A(arr, idx)                                                                       \
+    (*({                                                                                  \
+        typeof(arr) *_A_arr_ = &(arr);                                                    \
+        u64 _A_i_ = (u64)(idx);                                                           \
+        _A_i_ < _A_arr_->count ? &_A_arr_->ptr[_A_i_] : (typeof(_A_arr_->ptr[0]) *)oob(); \
     }))
 
 typedef Arr_u8 Str;
@@ -279,6 +279,13 @@ StrPair str_split2(Str base, u8 delim);
                                          alignof(typeof(*_arr_.ptr)));              \
         SDL_memcpy(new_ptr, _arr_.ptr, _arr_.count * sizeof(*_arr_.ptr));           \
         (typeof(_arr_)){.ptr = new_ptr, .count = _arr_.count};                      \
+    })
+
+#define arr_sort(arr, compare)                                                                 \
+    ({                                                                                         \
+        typeof(arr) _arr_ = (arr);                                                             \
+        int (*_compare_)(const typeof(*_arr_.ptr) *, const typeof(*_arr_.ptr) *) = (compare);  \
+        SDL_qsort(_arr_.ptr, _arr_.count, sizeof(*_arr_.ptr), (SDL_CompareCallback)_compare_); \
     })
 
 //

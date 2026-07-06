@@ -233,10 +233,41 @@ render_texture(CPUTexture, pos, size)
     <!-- Allocate starter textures + atlases -->
 Function to enqueue texture draw request
 Function to "render" requests
-    Clear texture on first render
-    Pack + upload textures
+    <!-- Clear texture on first render -->
+    <!-- Pack + upload textures -->
     Btw - perhaps glyph system can cache text bitmaps in CPU memory indefinitely? Font count +
     glyph count + font size can only get so big, and this is easier with arenas?
 
 First POC demo: render individual icons / text through the cache
     Don't need to do any fancy cache eviction or anything yet
+    Just render some icons man, text can wait
+How to manage the various resources used across the frame?
+    Complex option: implement some sort of render graph
+    Simple starter option: pass GfxState around to things that need it, instead of trying to split
+    up resources everywhere
+    But what's the point of, say, TextureSystem not rendering textured quads itself?
+
+Frame outline:
+    UI builder uh, builds UI primitives
+    UI layout
+    Text + texture requests emitted from UI
+        Text system converts text to texture requests
+    Texture cache packs+uploads atlases as needed
+    Texture mesh generated
+
+I'm not confident enough in how I plan to implement SDFs to know how they'd slot into the
+pipeline...
+
+Aha! Maybe we can go back to the noclip.website idea of "render inst lists" - you independently
+construct objects equivalent to draw calls, and then they're all chained together at the end.
+
+Thinking back to texture stuff: we probably want to build a draw call for each "layer", including
+bg, icons/text, transparent split selector, etc. Each render inst in our case contains:
+
+- Pipeline (PSO?)
+- A texture to bind (optional?)
+- Vertex/fragment shader
+- Runtime mesh to upload
+
+We can't append directly into the vertex transfer buffer like before as easily (at least, building
+independent render instances makes for a cleaner architecture)
