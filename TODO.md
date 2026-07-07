@@ -275,3 +275,18 @@ independent render instances makes for a cleaner architecture)
 ## Packer render inst
 
 For copy pass: plop src/dest metadata into render inst?
+
+# Codegen attempt 2
+
+Definitely do:
+
+- Split up main.c into separate files
+- Integrate codegen.c invocations into build system
+- Make sure it works with zig build watch
+- Rearrange / rename stuff in c files
+
+Maybe future do:
+
+- Split up types.h
+- Codegen typedef struct / enum
+- pub / fn for non-static / static

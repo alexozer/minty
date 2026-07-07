@@ -371,43 +371,6 @@ SDL_IOStream *sdl_io_from_mem(ErrorContext *err, Arr_u8 buf) {
     return stream;
 }
 
-SDL_IOStream *sdl_io_from_file(ErrorContext *err, Str path, Str mode) {
-    Arena *scratch = arena_acquire();
-
-    char *path_c = str_to_c(scratch, path);
-    char *mode_c = str_to_c(scratch, mode);
-    SDL_IOStream *stream = SDL_IOFromFile(path_c, mode_c);
-    if (!stream) {
-        err_report(err, "%s", SDL_GetError());
-    }
-
-    arena_release(scratch);
-    return stream;
-}
-
-Arr_u8 sdl_read_entire_stream(ErrorContext *err, Arena *arena, SDL_IOStream *stream) {
-    if (!stream) return (Arr_u8){};
-    Scope scope = scope_open(err);
-
-    Arr_u8 buffer = {};
-    i64 size = SDL_GetIOSize(stream);
-    if (size < 0) {
-        err_report(err, "%s", SDL_GetError());
-    } else {
-        buffer = arena_push_arr(arena, u8, (u64)size);
-        u64 offset = 0;
-        while (offset < size && SDL_GetIOStatus(stream) == SDL_IO_STATUS_READY) {
-            offset += SDL_ReadIO(stream, buffer.ptr + offset, (u64)size - offset);
-        }
-        if (offset != size) {
-            err_report(err, "%s", SDL_GetError());
-        }
-    }
-
-    scope_close(scope, "Read stream to buffer");
-    return buffer;
-}
-
 void sdl_close_io(SDL_IOStream *stream) {
     if (stream) SDL_CloseIO(stream);
 }

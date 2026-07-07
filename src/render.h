@@ -1,0 +1,33 @@
+//
+// GENERATED FILE - DO NOT MODIFY
+//
+
+#pragma once
+
+#include "types.h"
+
+void init_vertex_buffers(ErrorContext *err, RenderState *render_state);
+void init_render_pipelines(ErrorContext *err, SDL_Window *window, RenderState *render_state);
+void init_renderer(ErrorContext *err, App *app);
+void do_clear_texture_passes(RenderState *render_state,
+                             SDL_GPUCommandBuffer *command_buffer,
+                             Arr_P_RenderInst clear_texture_insts);
+void do_upload_passes(RenderState *render_state,
+                      SDL_GPUCommandBuffer *command_buffer,
+                      Arr_P_RenderInst upload_insts);
+void do_geometry_upload_pass_v2(RenderState *render_state,
+                                SDL_GPUCommandBuffer *command_buffer,
+                                u32 vertex_count,
+                                u32 index_count);
+int compare_render_insts(RenderInst *const *a, RenderInst *const *b);
+void do_draw_pass(SDL_GPUCommandBuffer *command_buffer,
+                  SDL_GPUTexture *swapchain_texture,
+                  SDL_GPUBuffer *vertex_buffer,
+                  SDL_GPUBuffer *index_buffer,
+                  Arr_P_RenderInst render_insts,
+                  Arr_VertexBufferRegion regions);
+void do_draw_passes(RenderState *render_state,
+                    SDL_GPUCommandBuffer *command_buffer,
+                    SDL_GPUTexture *swapchain_texture,
+                    Arr_P_RenderInst draw_insts);
+void render(App *app);

@@ -590,3 +590,6 @@ derive_struct(Packer);
 Packer packer_from_arr(Arr_u8 arr);
 // Returns offset iff packed
 Opt_u64 packer_try_push(Packer *packer, Arr_u8 buf, u64 alignment);
+
+#define fn
+#define pub

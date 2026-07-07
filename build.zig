@@ -51,10 +51,10 @@ pub fn build(b: *std.Build) !void {
 
     var cdb_targets: std.ArrayList(*std.Build.Step.Compile) = .empty;
 
-    const blitter_sources_plat = switch (target.result.os.tag) {
-        .macos => blitter_sources ++ .{ "src/platform_posix.c", "src/platform_macos.c" },
-        .linux => blitter_sources ++ .{ "src/platform_posix.c", "src/platform_linux.c" },
-        .windows => blitter_sources ++ .{"src/platform_windows.c"},
+    const platform_sources: []const []const u8 = switch (target.result.os.tag) {
+        .macos => &.{ "src/platform_posix.c", "src/platform_macos.c" },
+        .linux => &.{ "src/platform_posix.c", "src/platform_linux.c" },
+        .windows => &.{"src/platform_windows.c"},
         else => @panic("Unsupported OS"),
     };
     const blitter_flags = c_flags ++ .{"-Werror"};
@@ -88,8 +88,41 @@ pub fn build(b: *std.Build) !void {
     try cdb_targets.append(b.allocator, simdutf);
 
     //
+    // codegen
+    //
+
+    const codegen_sources = &.{ "src/tools/codegen.c", "src/base.c" };
+    var codegen_sources_plat: std.ArrayList([]const u8) = .empty;
+    try codegen_sources_plat.appendSlice(b.allocator, codegen_sources);
+    try codegen_sources_plat.appendSlice(b.allocator, platform_sources);
+
+    const codegen = b.addExecutable(.{
+        .name = "codegen",
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+            .strip = false,
+            .link_libc = false,
+            .link_libcpp = false,
+        }),
+    });
+    codegen.root_module.addCSourceFiles(.{
+        .files = try codegen_sources_plat.toOwnedSlice(b.allocator),
+        .flags = blitter_flags,
+        .language = .c,
+    });
+    codegen.root_module.linkLibrary(sdl.artifact("SDL3"));
+    codegen.root_module.linkLibrary(simdutf);
+    try cdb_targets.append(b.allocator, codegen);
+    b.installArtifact(codegen);
+
+    //
     // blitter
     //
+
+    var blitter_sources_plat: std.ArrayList([]const u8) = .empty;
+    try blitter_sources_plat.appendSlice(b.allocator, blitter_sources);
+    try blitter_sources_plat.appendSlice(b.allocator, platform_sources);
 
     const blitter = b.addExecutable(.{
         .name = "blitter",
@@ -102,7 +135,7 @@ pub fn build(b: *std.Build) !void {
         }),
     });
     blitter.root_module.addCSourceFiles(.{
-        .files = blitter_sources_plat,
+        .files = try blitter_sources_plat.toOwnedSlice(b.allocator),
         .flags = blitter_flags,
         .language = .c,
     });
