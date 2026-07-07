@@ -275,7 +275,6 @@ fn void pack_textures_into_existing_atlas(Arena *frame_arena,
     // Build texture upload render insts
     //
 
-    log_info("Look, I'm packing and uploading a texture! format = %d", A(textures, 0)->format);
     RenderInst *inst = arena_push(frame_arena, RenderInst);
     inst->type = RenderInstType_Upload;
     inst->texture = atlas->texture;

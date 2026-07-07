@@ -15,10 +15,10 @@ int compare_render_insts(RenderInst *const *a, RenderInst *const *b);
 void do_clear_texture_passes(RenderState *render_state,
                              SDL_GPUCommandBuffer *command_buffer,
                              Arr_P_RenderInst clear_texture_insts);
-void do_upload_passes(RenderState *render_state,
-                      SDL_GPUCommandBuffer *command_buffer,
-                      Arr_P_RenderInst upload_insts);
-void do_geometry_upload_pass(RenderState *render_state,
+void do_upload_texture_passes(RenderState *render_state,
+                              SDL_GPUCommandBuffer *command_buffer,
+                              Arr_P_RenderInst upload_insts);
+void do_upload_geometry_pass(RenderState *render_state,
                              SDL_GPUCommandBuffer *command_buffer,
                              u32 vertex_count,
                              u32 index_count);

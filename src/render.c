@@ -152,7 +152,7 @@ fn void render(App *app) {
         }
 
         do_clear_texture_passes(render_state, command_buffer, fvec_arr(&clear_texture_insts));
-        do_upload_passes(render_state, command_buffer, fvec_arr(&upload_insts));
+        do_upload_texture_passes(render_state, command_buffer, fvec_arr(&upload_insts));
         do_draw_passes(render_state, command_buffer, swapchain_texture, fvec_arr(&draw_insts));
     }
 
@@ -182,14 +182,12 @@ fn void do_clear_texture_passes(RenderState *render_state,
     }
 }
 
-fn void do_upload_passes(RenderState *render_state,
-                         SDL_GPUCommandBuffer *command_buffer,
-                         Arr_P_RenderInst upload_insts) {
+fn void do_upload_texture_passes(RenderState *render_state,
+                                 SDL_GPUCommandBuffer *command_buffer,
+                                 Arr_P_RenderInst upload_insts) {
     SDL_GPUCopyPass *copy_pass = SDL_BeginGPUCopyPass(command_buffer);
     for (u64 inst_idx = 0; inst_idx < upload_insts.count; inst_idx++) {
         RenderInst *inst = A(upload_insts, inst_idx);
-
-        log_info("Doing texture upload render inst! inst_idx = %" PRIu64, inst_idx);
 
         for (u64 texture_idx = 0; texture_idx < inst->texture_uploads.count; texture_idx++) {
             TextureUpload *upload = &A(inst->texture_uploads, texture_idx);
@@ -210,15 +208,13 @@ fn void do_upload_passes(RenderState *render_state,
                 .d = 1,
             };
 
-            log_info("Uploading texture! texture_idx = %" PRIu64 ", width = %d, height = %d",
-                     texture_idx, upload->dest.w, upload->dest.h);
             SDL_UploadToGPUTexture(copy_pass, &src, &dest, false);
         }
     }
     SDL_EndGPUCopyPass(copy_pass);
 }
 
-fn void do_geometry_upload_pass(RenderState *render_state,
+fn void do_upload_geometry_pass(RenderState *render_state,
                                 SDL_GPUCommandBuffer *command_buffer,
                                 u32 vertex_count,
                                 u32 index_count) {
@@ -328,7 +324,7 @@ fn void do_draw_passes(RenderState *render_state,
     }
     SDL_UnmapGPUTransferBuffer(render_state->device, render_state->geom_transfer_buffer);
     if (indices.count > 0) {
-        do_geometry_upload_pass(render_state, command_buffer, (u32)vertices.count,
+        do_upload_geometry_pass(render_state, command_buffer, (u32)vertices.count,
                                 (u32)indices.count);
     }
 
