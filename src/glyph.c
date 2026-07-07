@@ -1,5 +1,7 @@
 #include "glyph.h"
 
+#include <kb_text_shape.h>
+
 // TODO check font for errors on load, but afterwards assume it's good
 // TODO cache shaping context
 // TODO arena allocate kbts stuff

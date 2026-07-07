@@ -2,6 +2,13 @@
 #include "gpu_utils.h"
 #include "platform.h"
 
+// TODO thread through program properly
+Str FONT_PATH = S("data/Roboto-Medium.ttf");
+// Str FONT_PATH = S("data/NotoSans-Regular.ttf");
+// Str FONT_PATH = S("data/NotoSans-Bold.ttf");
+// Str FONT_PATH = S("data/KosugiMaru-Regular.otf");
+// constexpr u32 FONT_SIZE_PX = 40;
+
 fn void init_vertex_buffers(ErrorContext *err, RenderState *render_state) {
     Scope scope = scope_open(err);
 
@@ -32,11 +39,11 @@ fn void init_vertex_buffers(ErrorContext *err, RenderState *render_state) {
 fn void init_render_pipelines(ErrorContext *err, SDL_Window *window, RenderState *render_state) {
     // Load shaders
     render_state->vertex_shader =
-        load_shader(err, render_state->device, OS_SHADERS.vert_shader, ShaderType_Vertex);
-    render_state->icon_frag_shader =
-        load_shader(err, render_state->device, OS_SHADERS.frag_icon_shader, ShaderType_Fragment);
-    render_state->glyph_frag_shader =
-        load_shader(err, render_state->device, OS_SHADERS.frag_glyph_shader, ShaderType_Fragment);
+        gpu_load_shader(err, render_state->device, OS_SHADERS.vert_shader, ShaderType_Vertex);
+    render_state->icon_frag_shader = gpu_load_shader(
+        err, render_state->device, OS_SHADERS.frag_icon_shader, ShaderType_Fragment);
+    render_state->glyph_frag_shader = gpu_load_shader(
+        err, render_state->device, OS_SHADERS.frag_glyph_shader, ShaderType_Fragment);
     if (err_occurred(err)) return;
 
     if (SDL_WindowSupportsGPUPresentMode(render_state->device, window,
@@ -52,11 +59,11 @@ fn void init_render_pipelines(ErrorContext *err, SDL_Window *window, RenderState
     SDL_GPUTextureFormat swapchain_format =
         SDL_GetGPUSwapchainTextureFormat(render_state->device, window);
     render_state->icon_pipeline =
-        make_render_pipeline(err, render_state->device, render_state->vertex_shader,
-                             render_state->icon_frag_shader, swapchain_format, BlendType_Over);
+        gpu_make_pipeline(err, render_state->device, render_state->vertex_shader,
+                          render_state->icon_frag_shader, swapchain_format, BlendType_Over);
     render_state->glyph_pipeline =
-        make_render_pipeline(err, render_state->device, render_state->vertex_shader,
-                             render_state->glyph_frag_shader, swapchain_format, BlendType_Over);
+        gpu_make_pipeline(err, render_state->device, render_state->vertex_shader,
+                          render_state->glyph_frag_shader, swapchain_format, BlendType_Over);
 }
 
 fn void init_renderer(ErrorContext *err, App *app) {

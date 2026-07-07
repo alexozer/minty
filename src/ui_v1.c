@@ -1,4 +1,5 @@
 #include "ui_v1.h"
+#include "timer_update.h"
 
 fn Box *make_text_box(Arena *arena, Str content, Color color) {
     Box *box = arena_push(arena, Box);

@@ -1,11 +1,6 @@
 const std = @import("std");
 const zcc = @import("compile_commands");
 
-const blitter_sources: []const []const u8 = &.{
-    "src/main.c",
-    "src/base.c",
-};
-
 const thirdparty_c_sources: []const []const u8 = &.{
     "3rdparty/xao.c",
     "3rdparty/yyjson.c",
@@ -45,11 +40,46 @@ const cpp_flags: []const []const u8 = .{
     "-fno-rtti",
 } ++ cxx_flags;
 
+pub fn getSourceFiles(
+    b: *std.Build,
+    dir_path: []const u8,
+    extension: []const u8,
+) ![][]const u8 {
+    var file_list = std.ArrayList([]const u8).empty;
+    errdefer file_list.deinit(b.allocator);
+
+    const dir = b.build_root.handle;
+    const src_dir = try dir.openDir(b.graph.io, dir_path, .{
+        .access_sub_paths = true,
+        .iterate = true,
+        .follow_symlinks = false,
+    });
+    defer src_dir.close(b.graph.io);
+
+    var walker = try src_dir.walk(b.allocator);
+    defer walker.deinit();
+
+    while (try walker.next(b.graph.io)) |entry| {
+        if (entry.kind != .file) continue;
+        if (!std.mem.endsWith(u8, entry.basename, extension)) continue;
+        if (std.mem.startsWith(u8, entry.basename, "platform")) continue;
+        // TODO exclude entire "tools" dir
+        if (std.mem.startsWith(u8, entry.basename, "codegen")) continue;
+
+        const path = try std.fs.path.join(b.allocator, &.{ dir_path, entry.path });
+        try file_list.append(b.allocator, path);
+    }
+
+    return try file_list.toOwnedSlice(b.allocator);
+}
+
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
     var cdb_targets: std.ArrayList(*std.Build.Step.Compile) = .empty;
+
+    const blitter_sources = try getSourceFiles(b, "src", ".c");
 
     const platform_sources: []const []const u8 = switch (target.result.os.tag) {
         .macos => &.{ "src/platform_posix.c", "src/platform_macos.c" },

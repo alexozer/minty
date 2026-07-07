@@ -4,6 +4,7 @@
 
 #include <SDL3/SDL_gpu.h>
 #include <SDL3/SDL_keycode.h>
+#include <SDL3/SDL_main.h>
 #include <stb_rect_pack.h>
 #include <xao.h>
 
@@ -28,13 +29,6 @@ derive_struct(SizePX);
 
 constexpr SizePX DEFAULT_WINDOW_SIZE = {360, 600};
 constexpr SizePX MIN_WINDOW_SIZE = {200, 100};
-
-// TODO thread through program properly
-Str FONT_PATH = S("data/Roboto-Medium.ttf");
-// Str FONT_PATH = S("data/NotoSans-Regular.ttf");
-// Str FONT_PATH = S("data/NotoSans-Bold.ttf");
-// Str FONT_PATH = S("data/KosugiMaru-Regular.otf");
-// constexpr u32 FONT_SIZE_PX = 40;
 
 constexpr SDL_GPUTextureFormat ICON_TEXTURE_FORMAT = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM_SRGB;
 constexpr SDL_GPUTextureFormat GLYPH_TEXTURE_FORMAT = SDL_GPU_TEXTUREFORMAT_R8_UNORM;

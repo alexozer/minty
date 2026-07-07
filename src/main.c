@@ -8,7 +8,6 @@
 #include <SDL3/SDL_gpu.h>
 #include <SDL3/SDL_init.h>
 #include <SDL3/SDL_keycode.h>
-#include <SDL3/SDL_main.h>
 #include <SDL3/SDL_pixels.h>
 #include <SDL3/SDL_stdinc.h>
 #include <SDL3/SDL_video.h>
@@ -16,7 +15,6 @@
 #include <ft2build.h>
 #include FT_FREETYPE_H
 
-#include <kb_text_shape.h>
 #include <stb_rect_pack.h>
 #include <xao.h>
 #include <yyjson.h>

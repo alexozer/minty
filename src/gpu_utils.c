@@ -1,11 +1,12 @@
 #include "gpu_utils.h"
+#include "platform.h"
 
-fn SDL_GPUGraphicsPipeline *make_render_pipeline(ErrorContext *err,
-                                                 SDL_GPUDevice *device,
-                                                 SDL_GPUShader *vert_shader,
-                                                 SDL_GPUShader *frag_shader,
-                                                 SDL_GPUTextureFormat target_texture_format,
-                                                 BlendType blend_type) {
+fn SDL_GPUGraphicsPipeline *gpu_make_pipeline(ErrorContext *err,
+                                              SDL_GPUDevice *device,
+                                              SDL_GPUShader *vert_shader,
+                                              SDL_GPUShader *frag_shader,
+                                              SDL_GPUTextureFormat target_texture_format,
+                                              BlendType blend_type) {
     if (!device) return nullptr;
     if (!vert_shader) return nullptr;
     if (!frag_shader) return nullptr;
@@ -85,10 +86,10 @@ fn SDL_GPUGraphicsPipeline *make_render_pipeline(ErrorContext *err,
     return pipeline;
 }
 
-fn SDL_GPUShader *load_shader(ErrorContext *err,
-                              SDL_GPUDevice *device,
-                              Arr_u8 source,
-                              ShaderType type) {
+fn SDL_GPUShader *gpu_load_shader(ErrorContext *err,
+                                  SDL_GPUDevice *device,
+                                  Arr_u8 source,
+                                  ShaderType type) {
     Scope scope = scope_open(err);
     Arena *scratch = arena_acquire();
 

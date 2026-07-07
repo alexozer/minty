@@ -1,4 +1,5 @@
 #include "timer_load.h"
+#include "platform.h"
 
 fn CPUTexture convert_srgb_surface_to_rgba(Arena *arena, SDL_Surface *surface) {
     if (!surface) return (CPUTexture){};
