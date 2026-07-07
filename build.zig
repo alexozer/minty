@@ -73,32 +73,7 @@ pub fn getSourceFiles(
     return try file_list.toOwnedSlice(b.allocator);
 }
 
-pub fn build(b: *std.Build) !void {
-    const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{});
-
-    var cdb_targets: std.ArrayList(*std.Build.Step.Compile) = .empty;
-
-    const blitter_sources = try getSourceFiles(b, "src", ".c");
-
-    const platform_sources: []const []const u8 = switch (target.result.os.tag) {
-        .macos => &.{ "src/platform_posix.c", "src/platform_macos.c" },
-        .linux => &.{ "src/platform_posix.c", "src/platform_linux.c" },
-        .windows => &.{"src/platform_windows.c"},
-        else => @panic("Unsupported OS"),
-    };
-    const blitter_flags = c_flags ++ .{"-Werror"};
-
-    const sdl = b.dependency("sdl", .{ .optimize = optimize, .target = target });
-    try cdb_targets.append(b.allocator, sdl.artifact("SDL3"));
-
-    const freetype = b.dependency("freetype", .{ .optimize = optimize, .target = target });
-    try cdb_targets.append(b.allocator, freetype.artifact("freetype"));
-
-    //
-    // simdutf
-    //
-
+fn get_simdutf_library(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) *std.Build.Step.Compile {
     const simdutf = b.addLibrary(.{
         .name = "simdutf",
         .root_module = b.createModule(.{
@@ -115,6 +90,36 @@ pub fn build(b: *std.Build) !void {
         .language = .cpp,
     });
     simdutf.installHeader(b.path("3rdparty/simdutf_c.h"), "simdutf_c.h");
+    return simdutf;
+}
+
+pub fn build(b: *std.Build) !void {
+    const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
+    const native_target = b.resolveTargetQuery(.{ .cpu_model = .native });
+    const native_optimize: std.builtin.OptimizeMode = .ReleaseFast;
+
+    var cdb_targets: std.ArrayList(*std.Build.Step.Compile) = .empty;
+
+    const blitter_sources = try getSourceFiles(b, "src", ".c");
+
+    const platform_sources: []const []const u8 = switch (target.result.os.tag) {
+        .macos => &.{ "src/platform_posix.c", "src/platform_macos.c" },
+        .linux => &.{ "src/platform_posix.c", "src/platform_linux.c" },
+        .windows => &.{"src/platform_windows.c"},
+        else => @panic("Unsupported OS"),
+    };
+    const blitter_flags = c_flags ++ .{"-Werror"};
+
+    const sdl = b.dependency("sdl", .{ .optimize = optimize, .target = target });
+    const sdl_native = b.dependency("sdl", .{ .target = native_target, .optimize = native_optimize });
+    try cdb_targets.append(b.allocator, sdl.artifact("SDL3"));
+
+    const freetype = b.dependency("freetype", .{ .optimize = optimize, .target = target });
+    try cdb_targets.append(b.allocator, freetype.artifact("freetype"));
+
+    const simdutf = get_simdutf_library(b, target, optimize);
+    const simdutf_native = get_simdutf_library(b, native_target, native_optimize);
     try cdb_targets.append(b.allocator, simdutf);
 
     //
@@ -129,8 +134,8 @@ pub fn build(b: *std.Build) !void {
     const codegen = b.addExecutable(.{
         .name = "codegen",
         .root_module = b.createModule(.{
-            .target = target,
-            .optimize = optimize,
+            .target = native_target,
+            .optimize = native_optimize,
             .strip = false,
             .link_libc = false,
             .link_libcpp = false,
@@ -141,8 +146,8 @@ pub fn build(b: *std.Build) !void {
         .flags = blitter_flags,
         .language = .c,
     });
-    codegen.root_module.linkLibrary(sdl.artifact("SDL3"));
-    codegen.root_module.linkLibrary(simdutf);
+    codegen.root_module.linkLibrary(sdl_native.artifact("SDL3"));
+    codegen.root_module.linkLibrary(simdutf_native);
     try cdb_targets.append(b.allocator, codegen);
     b.installArtifact(codegen);
 
@@ -179,6 +184,14 @@ pub fn build(b: *std.Build) !void {
     blitter.root_module.linkLibrary(freetype.artifact("freetype"));
     try cdb_targets.append(b.allocator, blitter);
     b.installArtifact(blitter);
+
+    // Make Blitter depend on codegen
+    const codegen_step = b.addRunArtifact(codegen);
+    for (blitter_sources) |source| {
+        if (std.mem.endsWith(u8, source, "base.c")) continue;
+        codegen_step.addFileArg(b.path(source));
+    }
+    blitter.step.dependOn(&codegen_step.step);
 
     const run_blitter = b.addRunArtifact(blitter);
     if (b.args) |args| {

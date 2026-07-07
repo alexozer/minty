@@ -63,12 +63,6 @@ void process_file(ErrorContext *err, Arena *arena, Str in_path, Str out_path) {
     arena_release(scratch);
 }
 
-Str SOURCE_FILES[] = {
-    S("src/main.c"),         S("src/texture.c"), S("src/gpu_utils.c"), S("src/timer_load.c"),
-    S("src/timer_update.c"), S("src/ui_v1.c"),   S("src/glyph.c"),     S("src/render.c"),
-    S("src/ui.c"),           S("src/ui_v1.c"),
-};
-
 int main(int argc, char **argv) {
     thread_init();
     Arena *err_arena = arena_acquire();
@@ -77,8 +71,8 @@ int main(int argc, char **argv) {
 
     Arena *arena = arena_acquire();
 
-    for (u64 i = 0; i < c_arr_count(SOURCE_FILES); i++) {
-        Str c_path = SOURCE_FILES[i];
+    for (u64 i = 1; i < argc; i++) {
+        Str c_path = str_from_c(argv[i]);
         Str c_path_prefix = str_slice(c_path, 0, c_path.count - 1);
         Str h_path = str_format(arena, "%.*sh", SF(c_path_prefix));
         process_file(err, arena, c_path, h_path);

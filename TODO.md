@@ -280,10 +280,11 @@ For copy pass: plop src/dest metadata into render inst?
 
 Definitely do:
 
-- Split up main.c into separate files
-- Integrate codegen.c invocations into build system
+<!-- - Split up main.c into separate files -->
+<!-- - Rearrange / rename stuff in c files -->
+<!-- - Build codegen.c -->
+- Add codegen as blitter dependency
 - Make sure it works with zig build watch
-- Rearrange / rename stuff in c files
 
 Maybe future do:
 
