@@ -355,8 +355,9 @@ enum RenderInstType : u8 {
 derive_enum(RenderInstType);
 
 struct TextureUpload {
-    SDL_GPUTextureTransferInfo src;
-    SDL_GPUTextureRegion dest;
+    SDL_GPUTransferBuffer *transfer_buffer;
+    u32 transfer_buffer_offset;
+    RectPX dest;
 };
 derive_struct(TextureUpload);
 

@@ -432,13 +432,13 @@ void vec__grow(Arena *arena, GenericVec *vec, u64 elem_size, u64 elem_align, u64
         _vec_->ptr[_vec_->count - 1] = _val_;       \
     })
 
-#define fvec_push_zero(vec)                       \
-    ({                                            \
-        typeof(vec) _vec_ = (vec);                \
-        _vec_->__typeid_fixed_vec;                \
-        log_assert(_vec_.count < _vec_.capacity); \
-        _vec_->count++;                           \
-        (&_vec_->ptr[_vec_->count - 1]);          \
+#define fvec_push_zero(vec)                         \
+    ({                                              \
+        typeof(vec) _vec_ = (vec);                  \
+        _vec_->__typeid_fixed_vec;                  \
+        log_assert(_vec_->count < _vec_->capacity); \
+        _vec_->count++;                             \
+        (&_vec_->ptr[_vec_->count - 1]);            \
     })
 
 #define fvec_pop(vec)                                           \
@@ -592,4 +592,3 @@ Packer packer_from_arr(Arr_u8 arr);
 Opt_u64 packer_try_push(Packer *packer, Arr_u8 buf, u64 alignment);
 
 #define fn
-#define pub

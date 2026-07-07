@@ -88,7 +88,7 @@ fn App *init_app(ErrorContext *err, Str path) {
     app->session_arena = arena_acquire();
     app->session = make_session(err, app->session_arena, app, path);
     if (!err_occurred(err)) {
-        init_renderer(err, app);
+        render_init(err, app);
     }
 
     return app;

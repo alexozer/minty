@@ -9,6 +9,32 @@ Str FONT_PATH = S("data/Roboto-Medium.ttf");
 // Str FONT_PATH = S("data/KosugiMaru-Regular.otf");
 // constexpr u32 FONT_SIZE_PX = 40;
 
+fn void render_init(ErrorContext *err, App *app) {
+    Scope scope = scope_open(err);
+
+    // TODO initialize in font system
+    if (FT_Init_FreeType(&app->freetype) != FT_Err_Ok) {
+        err_report(err, "Failed to initialize freetype");
+    }
+    app->font_file = os_read_file(err, app->app_arena, FONT_PATH);
+
+    RenderState *render_state = arena_push(app->app_arena, RenderState);
+    app->render_state = render_state;
+    render_state->device =
+        SDL_CreateGPUDevice(OS_SHADERS.format, RENDERER_DEBUG_MODE_ENABLED, nullptr);
+    if (!render_state->device) {
+        err_report(err, "%s", SDL_GetError());
+    } else {
+        // ... or should  I make all renderer initialization functions invariant to nullptr
+        // SDL_GPUDevice?
+        SDL_ClaimWindowForGPUDevice(render_state->device, app->window);
+        init_render_pipelines(err, app->window, render_state);
+        init_vertex_buffers(err, render_state);
+    }
+
+    scope_close(scope, "Initialize renderer");
+}
+
 fn void init_vertex_buffers(ErrorContext *err, RenderState *render_state) {
     Scope scope = scope_open(err);
 
@@ -66,30 +92,58 @@ fn void init_render_pipelines(ErrorContext *err, SDL_Window *window, RenderState
                           render_state->glyph_frag_shader, swapchain_format, BlendType_Over);
 }
 
-fn void init_renderer(ErrorContext *err, App *app) {
-    Scope scope = scope_open(err);
+fn void render(App *app) {
+    Arena *frame_arena = arena_acquire();
 
-    // TODO initialize in font system
-    if (FT_Init_FreeType(&app->freetype) != FT_Err_Ok) {
-        err_report(err, "Failed to initialize freetype");
+    RenderState *render_state = app->render_state;
+    SDL_GPUCommandBuffer *command_buffer = SDL_AcquireGPUCommandBuffer(render_state->device);
+
+    SDL_GPUTexture *swapchain_texture = nullptr;
+    u32 width = 0;
+    u32 height = 0;
+    SDL_WaitAndAcquireGPUSwapchainTexture(command_buffer, app->window, &swapchain_texture, &width,
+                                          &height);
+    if (swapchain_texture) {                 // Apparently can be null if window is minimized
+        Arr_P_RenderInst render_insts = {};  // TODO
+        arr_sort(render_insts, compare_render_insts);
+
+        // Group render insts by type
+        FixedVec_P_RenderInst clear_texture_insts =
+            fvec_alloc(frame_arena, P_RenderInst, render_insts.count);
+        FixedVec_P_RenderInst upload_insts =
+            fvec_alloc(frame_arena, P_RenderInst, render_insts.count);
+        FixedVec_P_RenderInst draw_insts =
+            fvec_alloc(frame_arena, P_RenderInst, render_insts.count);
+        for (u64 i = 0; i < render_insts.count; i++) {
+            switch (A(render_insts, i)->type) {
+            case RenderInstType_ClearTexture: {
+                fvec_push(&clear_texture_insts, A(render_insts, i));
+                break;
+            }
+            case RenderInstType_Upload: {
+                fvec_push(&upload_insts, A(render_insts, i));
+                break;
+            }
+            case RenderInstType_Draw: {
+                fvec_push(&draw_insts, A(render_insts, i));
+                break;
+            }
+            }
+        }
+
+        do_clear_texture_passes(render_state, command_buffer, fvec_arr(&clear_texture_insts));
+        do_upload_passes(render_state, command_buffer, fvec_arr(&upload_insts));
+        do_draw_passes(render_state, command_buffer, swapchain_texture, fvec_arr(&draw_insts));
     }
-    app->font_file = os_read_file(err, app->app_arena, FONT_PATH);
 
-    RenderState *render_state = arena_push(app->app_arena, RenderState);
-    app->render_state = render_state;
-    render_state->device =
-        SDL_CreateGPUDevice(OS_SHADERS.format, RENDERER_DEBUG_MODE_ENABLED, nullptr);
-    if (!render_state->device) {
-        err_report(err, "%s", SDL_GetError());
-    } else {
-        // ... or should  I make all renderer initialization functions invariant to nullptr
-        // SDL_GPUDevice?
-        SDL_ClaimWindowForGPUDevice(render_state->device, app->window);
-        init_render_pipelines(err, app->window, render_state);
-        init_vertex_buffers(err, render_state);
-    }
+    SDL_SubmitGPUCommandBuffer(command_buffer);
+    arena_release(frame_arena);
+}
 
-    scope_close(scope, "Initialize renderer");
+fn int compare_render_insts(RenderInst *const *a, RenderInst *const *b) {
+    if ((*a)->order < (*b)->order) return -1;
+    if ((*a)->order > (*b)->order) return 1;
+    return 0;
 }
 
 fn void do_clear_texture_passes(RenderState *render_state,
@@ -117,16 +171,33 @@ fn void do_upload_passes(RenderState *render_state,
 
         for (u64 texture_idx = 0; texture_idx < inst->texture_uploads.count; texture_idx++) {
             TextureUpload *upload = &A(inst->texture_uploads, texture_idx);
-            SDL_UploadToGPUTexture(copy_pass, &upload->src, &upload->dest, false);
+
+            SDL_GPUTextureTransferInfo src = {
+                .transfer_buffer = upload->transfer_buffer,
+                .offset = upload->transfer_buffer_offset,
+            };
+            SDL_GPUTextureRegion dest = {
+                .texture = inst->texture,
+                .mip_level = 0,
+                .layer = 0,
+                .x = (u32)upload->dest.x,
+                .y = (u32)upload->dest.y,
+                .z = 0,
+                .w = (u32)upload->dest.w,
+                .h = (u32)upload->dest.h,
+                .d = 1,
+            };
+
+            SDL_UploadToGPUTexture(copy_pass, &src, &dest, false);
         }
     }
     SDL_EndGPUCopyPass(copy_pass);
 }
 
-fn void do_geometry_upload_pass_v2(RenderState *render_state,
-                                   SDL_GPUCommandBuffer *command_buffer,
-                                   u32 vertex_count,
-                                   u32 index_count) {
+fn void do_geometry_upload_pass(RenderState *render_state,
+                                SDL_GPUCommandBuffer *command_buffer,
+                                u32 vertex_count,
+                                u32 index_count) {
     u32 vertex_data_size = vertex_count * sizeof(Vertex);
     u32 index_data_size = index_count * sizeof(u16);
 
@@ -157,12 +228,6 @@ fn void do_geometry_upload_pass_v2(RenderState *render_state,
     SDL_UploadToGPUBuffer(pass, &index_src, &index_dest, true);
 
     SDL_EndGPUCopyPass(pass);
-}
-
-fn int compare_render_insts(RenderInst *const *a, RenderInst *const *b) {
-    if ((*a)->order < (*b)->order) return -1;
-    if ((*a)->order > (*b)->order) return 1;
-    return 0;
 }
 
 fn void do_draw_pass(SDL_GPUCommandBuffer *command_buffer,
@@ -239,59 +304,12 @@ fn void do_draw_passes(RenderState *render_state,
     }
     SDL_UnmapGPUTransferBuffer(render_state->device, render_state->geom_transfer_buffer);
     if (indices.count > 0) {
-        do_geometry_upload_pass_v2(render_state, command_buffer, (u32)vertices.count,
-                                   (u32)indices.count);
+        do_geometry_upload_pass(render_state, command_buffer, (u32)vertices.count,
+                                (u32)indices.count);
     }
 
     do_draw_pass(command_buffer, swapchain_texture, render_state->vertex_buffer,
                  render_state->index_buffer, draw_insts, regions);
 
     arena_release(scratch);
-}
-
-fn void render(App *app) {
-    Arena *frame_arena = arena_acquire();
-
-    RenderState *render_state = app->render_state;
-    SDL_GPUCommandBuffer *command_buffer = SDL_AcquireGPUCommandBuffer(render_state->device);
-
-    SDL_GPUTexture *swapchain_texture = nullptr;
-    u32 width = 0;
-    u32 height = 0;
-    SDL_WaitAndAcquireGPUSwapchainTexture(command_buffer, app->window, &swapchain_texture, &width,
-                                          &height);
-    if (swapchain_texture) {                 // Apparently can be null if window is minimized
-        Arr_P_RenderInst render_insts = {};  // TODO
-        arr_sort(render_insts, compare_render_insts);
-        // Group render insts by type
-        FixedVec_P_RenderInst clear_texture_insts =
-            fvec_alloc(frame_arena, P_RenderInst, render_insts.count);
-        FixedVec_P_RenderInst upload_insts =
-            fvec_alloc(frame_arena, P_RenderInst, render_insts.count);
-        FixedVec_P_RenderInst draw_insts =
-            fvec_alloc(frame_arena, P_RenderInst, render_insts.count);
-        for (u64 i = 0; i < render_insts.count; i++) {
-            switch (A(render_insts, i)->type) {
-            case RenderInstType_ClearTexture: {
-                fvec_push(&clear_texture_insts, A(render_insts, i));
-                break;
-            }
-            case RenderInstType_Upload: {
-                fvec_push(&upload_insts, A(render_insts, i));
-                break;
-            }
-            case RenderInstType_Draw: {
-                fvec_push(&draw_insts, A(render_insts, i));
-                break;
-            }
-            }
-        }
-
-        do_clear_texture_passes(render_state, command_buffer, fvec_arr(&clear_texture_insts));
-        do_upload_passes(render_state, command_buffer, fvec_arr(&upload_insts));
-        do_draw_passes(render_state, command_buffer, swapchain_texture, fvec_arr(&draw_insts));
-    }
-
-    SDL_SubmitGPUCommandBuffer(command_buffer);
-    arena_release(frame_arena);
 }
