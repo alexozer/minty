@@ -21,4 +21,3 @@ Box *align_box_center_vert(Arena *arena, Box *box, u16 height);
 Box *prerender_segment(Arena *arena, Session *session, u16 width, u64 idx);
 Box *prerender_contents(Arena *arena, Session *session, SizePX size);
 Box *prerender(Arena *arena, Session *session, SizePX window_size);
-void window_to_ndc(Vertex *vertex, SizePX window_size);

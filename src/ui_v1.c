@@ -283,11 +283,6 @@ fn Box *prerender(Arena *arena, Session *session, SizePX window_size) {
     return timer;
 }
 
-fn void window_to_ndc(Vertex *vertex, SizePX window_size) {
-    vertex->x = (vertex->x / (f32)window_size.w) * 2.f - 1.f;
-    vertex->y = -((vertex->y / (f32)window_size.h) * 2.f - 1.f);
-}
-
 // void make_icon_mesh_inner(SizePX window_size,
 //                           Box *box,
 //                           PosPX where,

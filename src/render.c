@@ -1,6 +1,7 @@
 #include "render.h"
 #include "gpu_utils.h"
 #include "platform.h"
+#include "texture.h"
 
 // TODO thread through program properly
 Str FONT_PATH = S("data/Roboto-Medium.ttf");
@@ -31,6 +32,8 @@ fn void render_init(ErrorContext *err, App *app) {
         init_render_pipelines(err, app->window, render_state);
         init_vertex_buffers(err, render_state);
     }
+    app->texture_system = tex_init(err, app->app_arena, render_state->device,
+                                   render_state->vertex_shader, render_state->glyph_frag_shader);
 
     scope_close(scope, "Initialize renderer");
 }
@@ -103,8 +106,12 @@ fn void render(App *app) {
     u32 height = 0;
     SDL_WaitAndAcquireGPUSwapchainTexture(command_buffer, app->window, &swapchain_texture, &width,
                                           &height);
-    if (swapchain_texture) {                 // Apparently can be null if window is minimized
-        Arr_P_RenderInst render_insts = {};  // TODO
+    SizePX window_size = {(u16)width, (u16)height};
+
+    if (swapchain_texture) {                       // Apparently can be null if window is minimized
+        Arr_TextureRequest texture_requests = {};  // TODO
+        Arr_P_RenderInst render_insts = tex_prepare_to_render(
+            frame_arena, app->texture_system, render_state, window_size, texture_requests);
         arr_sort(render_insts, compare_render_insts);
 
         // Group render insts by type

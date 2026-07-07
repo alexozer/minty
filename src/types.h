@@ -230,6 +230,12 @@ struct Mesh {
 };
 derive_struct(Mesh);
 
+struct MeshBuilder {
+    FixedVec_Vertex vertices;
+    FixedVec_u16 indices;
+};
+derive_struct(MeshBuilder);
+
 struct ShapedGlyph {
     u32 glyph_id;
     i32 glyph_x_fu;  // fu = font unit
@@ -262,6 +268,7 @@ derive_struct(TextureSystem);
 struct TextureRequest {
     CPUTexture *texture;
     RectF transform;
+    Color color;
 };
 derive_struct(TextureRequest);
 
@@ -420,6 +427,7 @@ struct App {
     Session *session;  // Nullable
 
     RenderState *render_state;
+    TextureSystem *texture_system;
 
     // Text stuff
     FT_Library freetype;
