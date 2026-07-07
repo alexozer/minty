@@ -283,8 +283,8 @@ Definitely do:
 <!-- - Split up main.c into separate files -->
 <!-- - Rearrange / rename stuff in c files -->
 <!-- - Build codegen.c -->
-- Add codegen as blitter dependency
-- Make sure it works with zig build watch
+<!-- - Add codegen as blitter dependency -->
+<!-- - Make sure it works with zig build watch -->
 
 Maybe future do:
 

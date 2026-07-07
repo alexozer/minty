@@ -190,6 +190,10 @@ pub fn build(b: *std.Build) !void {
     for (blitter_sources) |source| {
         if (std.mem.endsWith(u8, source, "base.c")) continue;
         codegen_step.addFileArg(b.path(source));
+        codegen_step.addFileInput(b.path(source));
+        // Zig build system issue IMO: you really shouldn't need to call addWatchInput() on
+        // dependency graph inputs
+        try codegen_step.step.addWatchInput(b.path(source));
     }
     blitter.step.dependOn(&codegen_step.step);
 
