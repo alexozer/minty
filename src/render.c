@@ -2,6 +2,7 @@
 #include "gpu_utils.h"
 #include "platform.h"
 #include "texture.h"
+#include "types.h"
 
 // TODO thread through program properly
 Str FONT_PATH = S("data/Roboto-Medium.ttf");
@@ -95,6 +96,18 @@ fn void init_render_pipelines(ErrorContext *err, SDL_Window *window, RenderState
                           render_state->glyph_frag_shader, swapchain_format, BlendType_Over);
 }
 
+fn Arr_TextureRequest test_ui(Arena *frame_arena, App *app) {
+    Vec_TextureRequest requests = {};
+    TextureRequest *req = vec_push_zero(frame_arena, &requests);
+
+    req->texture = &A(app->session->file.segments, 0).icon_texture;
+    req->transform =
+        (RectF){.x = 50, .y = 50, .w = req->texture->dims.w, .h = req->texture->dims.h};
+    req->color = (Color){.r = 255, .g = 255, .b = 255, .a = 255};
+
+    return vec_arr(&requests);
+}
+
 fn void render(App *app) {
     Arena *frame_arena = arena_acquire();
 
@@ -108,8 +121,8 @@ fn void render(App *app) {
                                           &height);
     SizePX window_size = {(u16)width, (u16)height};
 
-    if (swapchain_texture) {                       // Apparently can be null if window is minimized
-        Arr_TextureRequest texture_requests = {};  // TODO
+    if (swapchain_texture) {  // Apparently can be null if window is minimized
+        Arr_TextureRequest texture_requests = test_ui(frame_arena, app);  // TODO
         Arr_P_RenderInst render_insts = tex_prepare_to_render(
             frame_arena, app->texture_system, render_state, window_size, texture_requests);
         arr_sort(render_insts, compare_render_insts);

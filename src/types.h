@@ -199,7 +199,6 @@ struct Atlas {
     SizePX size;
     SDL_GPUTexture *texture;
     SDL_GPUSampler *sampler;
-    Arr_RectPX placements;
     SDL_GPUTransferBuffer *transfer_buffer;
     u64 transfer_buffer_size;
 
@@ -245,23 +244,19 @@ derive_struct(ShapedGlyph);
 
 struct TextureCacheEntry {
     TextureHandle handle;
-    u32 atlas_rect_idx;
-    bool is_icon;
+    RectPX placement;
+    // We know which atlas it is based on the texture format
 };
 derive_struct(TextureCacheEntry);
 
 struct TextureSystem {
     Atlas *icon_atlas;
     Atlas *glyph_atlas;
-    Arr_TextureCacheEntry entries;
-    Vec_TextureHandle free_handles;
+    FixedVec_TextureCacheEntry cache_entries;
+    FixedVec_TextureHandle free_handles;
     bool textures_cleared;
     SDL_GPUGraphicsPipeline *clear_icon_pipeline;
     SDL_GPUGraphicsPipeline *clear_glyph_pipeline;
-
-    // TODO use fixed-size array or prealloc
-    FixedVec_P_CPUTexture icon_requests;
-    FixedVec_P_CPUTexture glyph_requests;
 };
 derive_struct(TextureSystem);
 

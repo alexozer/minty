@@ -2,6 +2,9 @@
 #include "gpu_utils.h"
 #include "types.h"
 
+// TODO We may not want a max texture count...
+constexpr u64 MAX_TEXTURES = 4096;
+
 fn TextureSystem *tex_init(ErrorContext *err,
                            Arena *arena,
                            SDL_GPUDevice *device,
@@ -19,6 +22,9 @@ fn TextureSystem *tex_init(ErrorContext *err,
                                                  ICON_TEXTURE_FORMAT, BlendType_None);
     ctx->clear_glyph_pipeline = gpu_make_pipeline(err, device, vertex_shader, dummy_fragment_shader,
                                                   GLYPH_TEXTURE_FORMAT, BlendType_None);
+
+    ctx->cache_entries = fvec_alloc(arena, TextureCacheEntry, MAX_TEXTURES);
+    ctx->free_handles = fvec_alloc(arena, TextureHandle, MAX_TEXTURES);
 
     scope_close(scope, "Initialize texture system");
     return ctx;
@@ -184,18 +190,34 @@ fn void tex_build_upload_insts(Arena *frame_arena,
     }
 
     if (uncached_icon_requests.count > 0) {
-        pack_textures_into_existing_atlas(frame_arena, ctx->icon_atlas, render_state,
+        pack_textures_into_existing_atlas(frame_arena, ctx, ctx->icon_atlas, render_state,
                                           fvec_arr(&uncached_icon_requests), render_insts);
     }
     if (uncached_glyph_requests.count > 0) {
-        pack_textures_into_existing_atlas(frame_arena, ctx->glyph_atlas, render_state,
+        pack_textures_into_existing_atlas(frame_arena, ctx, ctx->glyph_atlas, render_state,
                                           fvec_arr(&uncached_glyph_requests), render_insts);
     }
 
     arena_release(scratch);
 }
 
+fn TextureCacheEntry *alloc_cache_entry(TextureSystem *ctx) {
+    if (ctx->free_handles.count > 0) {
+        TextureHandle handle = fvec_pop(&ctx->free_handles);
+        TextureCacheEntry *entry = &A(ctx->cache_entries, handle.idx);
+        entry->handle = handle;
+        return entry;
+
+    } else {
+        TextureHandle handle = {.idx = (u16)ctx->cache_entries.count};
+        TextureCacheEntry *entry = fvec_push_zero(&ctx->cache_entries);
+        entry->handle = handle;
+        return entry;
+    }
+}
+
 fn void pack_textures_into_existing_atlas(Arena *frame_arena,
+                                          TextureSystem *ctx,
                                           Atlas *atlas,
                                           RenderState *render_state,
                                           Arr_P_CPUTexture textures,
@@ -228,6 +250,14 @@ fn void pack_textures_into_existing_atlas(Arena *frame_arena,
     }
 
     //
+    // Record texture cache entries
+    //
+    for (u64 i = 0; i < placements.count; i++) {
+        TextureCacheEntry *entry = alloc_cache_entry(ctx);
+        entry->placement = A(placements, i);
+    }
+
+    //
     // Pack textures into transfer buffer
     //
 
@@ -246,7 +276,7 @@ fn void pack_textures_into_existing_atlas(Arena *frame_arena,
     SDL_UnmapGPUTransferBuffer(render_state->device, atlas->transfer_buffer);
 
     //
-    // Upload textures
+    // Build texture upload render insts
     //
 
     RenderInst *inst = arena_push(frame_arena, RenderInst);
@@ -299,11 +329,10 @@ fn void tex_build_draw_insts(Arena *frame_arena,
             .h = (u16)SDL_lroundf(req->transform.h),
         };
 
+        RectPX src = A(ctx->cache_entries, req->texture->handle.idx).placement;
         if (req->texture->format == ICON_TEXTURE_FORMAT) {
-            RectPX src = A(ctx->icon_atlas->placements, req->texture->handle.idx);
             push_atlas_quad(window_size, ctx->icon_atlas, &icon_mesh, src, dest, req->color);
         } else if (req->texture->format == GLYPH_TEXTURE_FORMAT) {
-            RectPX src = A(ctx->glyph_atlas->placements, req->texture->handle.idx);
             push_atlas_quad(window_size, ctx->glyph_atlas, &glyph_mesh, src, dest, req->color);
         }
     }

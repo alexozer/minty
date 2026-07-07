@@ -32,7 +32,9 @@ void tex_build_upload_insts(Arena *frame_arena,
                             RenderState *render_state,
                             Arr_TextureRequest requests,
                             FixedVec_P_RenderInst *render_insts);
+TextureCacheEntry *alloc_cache_entry(TextureSystem *ctx);
 void pack_textures_into_existing_atlas(Arena *frame_arena,
+                                       TextureSystem *ctx,
                                        Atlas *atlas,
                                        RenderState *render_state,
                                        Arr_P_CPUTexture textures,

@@ -328,13 +328,15 @@ void vec__grow(Arena *arena, GenericVec *vec, u64 elem_size, u64 elem_align, u64
         (&_vec_->ptr[_vec_->count - 1]);                                 \
     })
 
-#define vec_pop(vec)                                            \
-    ({                                                          \
-        typeof(vec) _vec_ = (vec);                              \
-        _vec_->__typeid_vec;                                    \
-        log_assert(_vec_->count > 0);                           \
-        _vec_->ptr[_vec_->count - 1] = (typeof(*_vec_->ptr)){}; \
-        _vec_->count--;                                         \
+#define vec_pop(vec)                                             \
+    ({                                                           \
+        typeof(vec) _vec_ = (vec);                               \
+        _vec_->__typeid_vec;                                     \
+        log_assert(_vec_->count > 0);                            \
+        typeof(*_vec_->ptr) elem = _vec_->ptr[_vec_->count - 1]; \
+        _vec_->ptr[_vec_->count - 1] = (typeof(*_vec_->ptr)){};  \
+        _vec_->count--;                                          \
+        elem;                                                    \
     })
 
 #define vec_extend(arena, vec, arr)                                              \
@@ -441,13 +443,15 @@ void vec__grow(Arena *arena, GenericVec *vec, u64 elem_size, u64 elem_align, u64
         (&_vec_->ptr[_vec_->count - 1]);            \
     })
 
-#define fvec_pop(vec)                                           \
-    ({                                                          \
-        typeof(vec) _vec_ = (vec);                              \
-        _vec_->__typeid_fixed_vec;                              \
-        log_assert(_vec_->count > 0);                           \
-        _vec_->ptr[_vec_->count - 1] = (typeof(*_vec_->ptr)){}; \
-        _vec_->count--;                                         \
+#define fvec_pop(vec)                                            \
+    ({                                                           \
+        typeof(vec) _vec_ = (vec);                               \
+        _vec_->__typeid_fixed_vec;                               \
+        log_assert(_vec_->count > 0);                            \
+        typeof(*_vec_->ptr) elem = _vec_->ptr[_vec_->count - 1]; \
+        _vec_->ptr[_vec_->count - 1] = (typeof(*_vec_->ptr)){};  \
+        _vec_->count--;                                          \
+        elem;                                                    \
     })
 
 #define fvec_extend(vec, arr)                                      \
