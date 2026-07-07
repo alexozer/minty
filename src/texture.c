@@ -40,8 +40,6 @@ fn Atlas *tex_init_atlas(ErrorContext *err,
     Atlas *atlas = arena_push(arena, Atlas);
     Arena *scratch = arena_acquire();
 
-    // Allocate and clear GPU texture
-
     SDL_GPUTextureCreateInfo gpu_texture_info = {
         .type = SDL_GPU_TEXTURETYPE_2D,
         .format = texture_format,
@@ -136,31 +134,27 @@ fn void tex_build_clear_insts(Arena *frame_arena,
                               TextureSystem *ctx,
                               RenderState *render_state,
                               FixedVec_P_RenderInst *render_insts) {
-    if (!ctx->textures_cleared) {
-        ctx->textures_cleared = true;
+    // Clear atlas textures by performing render pass with no draw calls
+    RenderInst *icon_clear_inst = arena_push(frame_arena, RenderInst);
+    icon_clear_inst->type = RenderInstType_ClearTexture;
+    icon_clear_inst->order = 0;
+    icon_clear_inst->pipeline = render_state->clear_icon_pipeline;
+    icon_clear_inst->texture = ctx->icon_atlas->texture;
+    icon_clear_inst->sampler = ctx->icon_atlas->sampler;
+    icon_clear_inst->vertex_shader = render_state->vertex_shader;
+    icon_clear_inst->fragment_shader = render_state->icon_frag_shader;
 
-        // Clear atlas textures by performing render pass with no draw calls
-        RenderInst *icon_clear_inst = arena_push(frame_arena, RenderInst);
-        icon_clear_inst->type = RenderInstType_ClearTexture;
-        icon_clear_inst->order = 0;
-        icon_clear_inst->pipeline = render_state->clear_icon_pipeline;
-        icon_clear_inst->texture = ctx->icon_atlas->texture;
-        icon_clear_inst->sampler = ctx->icon_atlas->sampler;
-        icon_clear_inst->vertex_shader = render_state->vertex_shader;
-        icon_clear_inst->fragment_shader = render_state->icon_frag_shader;
+    RenderInst *glyph_clear_inst = arena_push(frame_arena, RenderInst);
+    glyph_clear_inst->type = RenderInstType_ClearTexture;
+    glyph_clear_inst->order = 0;
+    glyph_clear_inst->pipeline = render_state->clear_glyph_pipeline;
+    glyph_clear_inst->texture = ctx->glyph_atlas->texture;
+    glyph_clear_inst->sampler = ctx->glyph_atlas->sampler;
+    glyph_clear_inst->vertex_shader = render_state->vertex_shader;
+    glyph_clear_inst->fragment_shader = render_state->glyph_frag_shader;
 
-        RenderInst *glyph_clear_inst = arena_push(frame_arena, RenderInst);
-        glyph_clear_inst->type = RenderInstType_ClearTexture;
-        glyph_clear_inst->order = 0;
-        glyph_clear_inst->pipeline = render_state->clear_glyph_pipeline;
-        glyph_clear_inst->texture = ctx->glyph_atlas->texture;
-        glyph_clear_inst->sampler = ctx->glyph_atlas->sampler;
-        glyph_clear_inst->vertex_shader = render_state->vertex_shader;
-        glyph_clear_inst->fragment_shader = render_state->glyph_frag_shader;
-
-        fvec_push(render_insts, icon_clear_inst);
-        fvec_push(render_insts, glyph_clear_inst);
-    }
+    fvec_push(render_insts, icon_clear_inst);
+    fvec_push(render_insts, glyph_clear_inst);
 }
 
 fn void tex_build_upload_insts(Arena *frame_arena,
@@ -241,20 +235,21 @@ fn void pack_textures_into_existing_atlas(Arena *frame_arena,
     // TODO use only 1px of padding, not 2px
     Arr_RectPX placements = arena_push_arr(scratch, RectPX, textures.count);
     for (u64 i = 0; i < textures.count; i++) {
-        if (A(textures, i)->dims.w > 0 && A(textures, i)->dims.h > 0) {
-            A(placements, i).x = (u16)A(packer_rects, i).x + 1;
-            A(placements, i).y = (u16)A(packer_rects, i).y + 1;
-            A(placements, i).w = A(textures, i)->dims.w;
-            A(placements, i).h = A(textures, i)->dims.h;
-        }
+        log_assert(A(textures, i)->dims.w > 0);
+        log_assert(A(textures, i)->dims.h > 0);
+        A(placements, i).x = (u16)A(packer_rects, i).x + 1;
+        A(placements, i).y = (u16)A(packer_rects, i).y + 1;
+        A(placements, i).w = A(textures, i)->dims.w;
+        A(placements, i).h = A(textures, i)->dims.h;
     }
 
     //
     // Record texture cache entries
     //
-    for (u64 i = 0; i < placements.count; i++) {
+    for (u64 i = 0; i < textures.count; i++) {
         TextureCacheEntry *entry = alloc_cache_entry(ctx);
         entry->placement = A(placements, i);
+        A(textures, i)->handle = entry->handle;
     }
 
     //
@@ -279,18 +274,16 @@ fn void pack_textures_into_existing_atlas(Arena *frame_arena,
     // Build texture upload render insts
     //
 
+    log_info("Look, I'm packing and uploading a texture!");
     RenderInst *inst = arena_push(frame_arena, RenderInst);
     inst->type = RenderInstType_Upload;
     inst->texture = atlas->texture;
+    inst->texture_uploads = arena_push_arr(frame_arena, TextureUpload, offsets.count);
 
-    FixedVec_TextureUpload uploads = fvec_alloc(frame_arena, TextureUpload, offsets.count);
     for (u64 i = 0; i < offsets.count; i++) {
-        if (A(textures, i)->dims.w > 0 && A(textures, i)->dims.h > 0) {
-            TextureUpload *upload = fvec_push_zero(&uploads);
-            upload->transfer_buffer = atlas->transfer_buffer;
-            upload->transfer_buffer_offset = A(offsets, i);
-            upload->dest = A(placements, i);
-        }
+        A(inst->texture_uploads, i).transfer_buffer = atlas->transfer_buffer;
+        A(inst->texture_uploads, i).transfer_buffer_offset = A(offsets, i);
+        A(inst->texture_uploads, i).dest = A(placements, i);
     }
 
     fvec_push(render_insts, inst);

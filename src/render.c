@@ -189,6 +189,8 @@ fn void do_upload_passes(RenderState *render_state,
     for (u64 inst_idx = 0; inst_idx < upload_insts.count; inst_idx++) {
         RenderInst *inst = A(upload_insts, inst_idx);
 
+        log_info("Doing texture upload render inst! inst_idx = %" PRIu64, inst_idx);
+
         for (u64 texture_idx = 0; texture_idx < inst->texture_uploads.count; texture_idx++) {
             TextureUpload *upload = &A(inst->texture_uploads, texture_idx);
 
@@ -208,6 +210,8 @@ fn void do_upload_passes(RenderState *render_state,
                 .d = 1,
             };
 
+            log_info("Uploading texture! texture_idx = %" PRIu64 ", width = %d, height = %d",
+                     texture_idx, upload->dest.w, upload->dest.h);
             SDL_UploadToGPUTexture(copy_pass, &src, &dest, false);
         }
     }
