@@ -60,10 +60,11 @@ fn Atlas *tex_init_atlas(ErrorContext *err,
 
     // Make transfer buffer.
     // Note that we can't just size it to the size of the atlas due rect alignment bloating the
-    // size.
+    // size. Here we're hoping in practice that this is big enough - we could also split uploads
+    // across frames if needed (or use cycling to use multiple transfer buffers in a single frame?)
     SDL_GPUTransferBufferCreateInfo transfer_buffer_info = {
         .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-        .size = atlas_size.w * atlas_size.h / 2,
+        .size = atlas_size.w * atlas_size.h * 3 / 2,
     };
     SDL_GPUTransferBuffer *transfer_buffer =
         SDL_CreateGPUTransferBuffer(device, &transfer_buffer_info);

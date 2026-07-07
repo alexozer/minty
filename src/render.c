@@ -98,12 +98,17 @@ fn void init_render_pipelines(ErrorContext *err, SDL_Window *window, RenderState
 
 fn Arr_TextureRequest test_ui(Arena *frame_arena, App *app) {
     Vec_TextureRequest requests = {};
-    TextureRequest *req = vec_push_zero(frame_arena, &requests);
 
-    req->texture = &A(app->session->file.segments, 0).icon_texture;
-    req->transform =
-        (RectF){.x = 50, .y = 50, .w = req->texture->dims.w, .h = req->texture->dims.h};
-    req->color = (Color){.r = 255, .g = 255, .b = 255, .a = 255};
+    for (u64 i = 0; i < app->session->file.segments.count; i++) {
+        CPUTexture *texture = &A(app->session->file.segments, i).icon_texture;
+        if (texture->dims.w > 0 && texture->dims.h > 0) {
+            TextureRequest *req = vec_push_zero(frame_arena, &requests);
+            req->texture = texture;
+            req->transform =
+                (RectF){.x = 50, .y = 50, .w = req->texture->dims.w, .h = req->texture->dims.h};
+            req->color = (Color){.r = 255, .g = 255, .b = 255, .a = 255};
+        }
+    }
 
     return vec_arr(&requests);
 }
@@ -151,9 +156,15 @@ fn void render(App *app) {
             }
         }
 
-        do_clear_texture_passes(render_state, command_buffer, fvec_arr(&clear_texture_insts));
-        do_upload_texture_passes(render_state, command_buffer, fvec_arr(&upload_insts));
-        do_draw_passes(render_state, command_buffer, swapchain_texture, fvec_arr(&draw_insts));
+        if (clear_texture_insts.count > 0) {
+            do_clear_texture_passes(render_state, command_buffer, fvec_arr(&clear_texture_insts));
+        }
+        if (upload_insts.count > 0) {
+            do_upload_texture_passes(render_state, command_buffer, fvec_arr(&upload_insts));
+        }
+        if (draw_insts.count > 0) {
+            do_draw_passes(render_state, command_buffer, swapchain_texture, fvec_arr(&draw_insts));
+        }
     }
 
     SDL_SubmitGPUCommandBuffer(command_buffer);
