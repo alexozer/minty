@@ -9,7 +9,6 @@
 void render_init(ErrorContext *err, App *app);
 void init_vertex_buffers(ErrorContext *err, RenderState *render_state);
 void init_render_pipelines(ErrorContext *err, SDL_Window *window, RenderState *render_state);
-Arr_TextureRequest test_ui(Arena *frame_arena, App *app);
 void render(App *app);
 int compare_render_insts(RenderInst *const *a, RenderInst *const *b);
 void do_clear_texture_passes(RenderState *render_state,

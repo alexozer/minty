@@ -75,7 +75,7 @@ fn Arr_ShapedGlyph shape_text_naive(Arena *arena, Arr_u8 font, Str text) {
 //         // break;
 //     }
 //
-//     Arr_CPUTexture textures = arena_push_arr(scratch, CPUTexture, (u64)face->num_glyphs);
+//     Arr_Texture textures = arena_push_arr(scratch, Texture, (u64)face->num_glyphs);
 //     Arr_GlyphMetrics metrics = arena_push_arr(arena, GlyphMetrics, (u64)face->num_glyphs);
 //
 //     for (u64 glyph_idx = 0; glyph_idx < face->num_glyphs; glyph_idx++) {
@@ -88,7 +88,7 @@ fn Arr_ShapedGlyph shape_text_naive(Arena *arena, Arr_u8 font, Str text) {
 //         FT_Render_Glyph(face->glyph, FT_RENDER_MODE_NORMAL);
 //
 //         FT_Bitmap bitmap = face->glyph->bitmap;
-//         CPUTexture *texture = &A(textures, glyph_idx);
+//         Texture *texture = &A(textures, glyph_idx);
 //         Arr_u8 tmp_buffer = {.ptr = bitmap.buffer, .count = bitmap.width * bitmap.rows};
 //         texture->format = GLYPH_TEXTURE_FORMAT;
 //         texture->buffer = arr_clone(scratch, tmp_buffer);

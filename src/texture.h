@@ -11,6 +11,7 @@ TextureSystem *tex_init(ErrorContext *err,
                         SDL_GPUDevice *device,
                         SDL_GPUShader *vertex_shader,
                         SDL_GPUShader *dummy_fragment_shader);
+void init_dummy_white_texture(Arena *arena, Texture *texture);
 Atlas *tex_init_atlas(ErrorContext *err,
                       Arena *arena,
                       SDL_GPUDevice *device,
@@ -37,7 +38,7 @@ void pack_textures_into_existing_atlas(Arena *frame_arena,
                                        TextureSystem *ctx,
                                        Atlas *atlas,
                                        RenderState *render_state,
-                                       Arr_P_CPUTexture textures,
+                                       Arr_P_Texture textures,
                                        FixedVec_P_RenderInst *render_insts);
 void tex_build_draw_insts(Arena *frame_arena,
                           TextureSystem *ctx,

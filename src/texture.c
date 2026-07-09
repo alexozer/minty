@@ -27,8 +27,18 @@ fn TextureSystem *tex_init(ErrorContext *err,
     fvec_push_zero(&ctx->cache_entries);  // Zero handle is invalid, reserve slot 0
     ctx->free_handles = fvec_alloc(arena, TextureHandle, MAX_TEXTURES);
 
+    init_dummy_white_texture(arena, &ctx->dummy_texture);
+
     scope_close(scope, "Initialize texture system");
     return ctx;
+}
+
+fn void init_dummy_white_texture(Arena *arena, Texture *texture) {
+    texture->dims.w = 4;
+    texture->dims.h = 4;
+    texture->format = ICON_TEXTURE_FORMAT;
+    texture->buffer = arena_push_arr(arena, u8, texture->dims.w * texture->dims.h * 4);
+    arr_memset(texture->buffer, 0xff);
 }
 
 fn Atlas *tex_init_atlas(ErrorContext *err,
@@ -166,15 +176,20 @@ fn void tex_build_upload_insts(Arena *frame_arena,
                                FixedVec_P_RenderInst *render_insts) {
     Arena *scratch = arena_acquire();
 
-    FixedVec_P_CPUTexture uncached_icon_requests =
-        fvec_alloc(scratch, P_CPUTexture, requests.count);
-    FixedVec_P_CPUTexture uncached_glyph_requests =
-        fvec_alloc(scratch, P_CPUTexture, requests.count);
+    FixedVec_P_Texture uncached_icon_requests =
+        fvec_alloc(scratch, P_Texture, requests.count);
+    FixedVec_P_Texture uncached_glyph_requests =
+        fvec_alloc(scratch, P_Texture, requests.count);
     for (u64 i = 0; i < requests.count; i++) {
         TextureRequest *request = &A(requests, i);
-        CPUTexture *texture = request->texture;
+        Texture *texture = request->texture.present ? request->texture.opt : &ctx->dummy_texture;
 
         if (texture->handle.idx == 0) {
+            // Record texture cache entry
+            // entry->placement is computed by atlas packer
+            TextureCacheEntry *entry = alloc_cache_entry(ctx);
+            texture->handle = entry->handle;
+
             if (texture->format == ICON_TEXTURE_FORMAT) {
                 fvec_push(&uncached_icon_requests, texture);
             } else if (texture->format == GLYPH_TEXTURE_FORMAT) {
@@ -216,7 +231,7 @@ fn void pack_textures_into_existing_atlas(Arena *frame_arena,
                                           TextureSystem *ctx,
                                           Atlas *atlas,
                                           RenderState *render_state,
-                                          Arr_P_CPUTexture textures,
+                                          Arr_P_Texture textures,
                                           FixedVec_P_RenderInst *render_insts) {
     Arena *scratch = arena_acquire();
 
@@ -246,12 +261,12 @@ fn void pack_textures_into_existing_atlas(Arena *frame_arena,
     }
 
     //
-    // Record texture cache entries
+    // Record texture placements in cache
     //
     for (u64 i = 0; i < textures.count; i++) {
-        TextureCacheEntry *entry = alloc_cache_entry(ctx);
+        Texture *texture = A(textures, i);
+        TextureCacheEntry *entry = &A(ctx->cache_entries, texture->handle.idx);
         entry->placement = A(placements, i);
-        A(textures, i)->handle = entry->handle;
     }
 
     //
@@ -323,10 +338,11 @@ fn void tex_build_draw_insts(Arena *frame_arena,
             .h = (u16)SDL_lroundf(req->transform.h),
         };
 
-        RectPX src = A(ctx->cache_entries, req->texture->handle.idx).placement;
-        if (req->texture->format == ICON_TEXTURE_FORMAT) {
+        Texture *texture = req->texture.present ? req->texture.opt : &ctx->dummy_texture;
+        RectPX src = A(ctx->cache_entries, texture->handle.idx).placement;
+        if (texture->format == ICON_TEXTURE_FORMAT) {
             push_atlas_quad(window_size, ctx->icon_atlas, &icon_mesh, src, dest, req->color);
-        } else if (req->texture->format == GLYPH_TEXTURE_FORMAT) {
+        } else if (texture->format == GLYPH_TEXTURE_FORMAT) {
             push_atlas_quad(window_size, ctx->glyph_atlas, &glyph_mesh, src, dest, req->color);
         }
     }

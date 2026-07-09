@@ -33,12 +33,30 @@ u64 next_pow2(u64 x) {
     return x;
 }
 
-[[noreturn]] void crash(const char *why) {
-    log_fatal("%s", why);
+// TODO compile out file/line info in release builds
+// ... and in non-release / non-profile builds, also print the failed assertion
+[[noreturn]] void crash(const char *file, i32 line, const char *why) {
+    if (line > 0) {
+        Str f = str_from_c(file);
+
+        // Try to find basename
+        u64 pos = f.count;
+        while (true) {
+            if (pos == 0) break;
+            if (A(f, pos - 1) == C('/')) break;
+            if (A(f, pos - 1) == C('\\')) break;
+            pos--;
+        }
+
+        Str basename = str_slice(f, pos, f.count);
+        log_fatal("%.*s:%d: %s", SF(basename), line, why);
+    } else {
+        log_fatal("%s", why);
+    }
 }
 
 [[noreturn]] void *oob() {
-    crash("Array index out of bounds");
+    crash("", 0, "Array index out of bounds");
 }
 
 void arena_pool_init() {

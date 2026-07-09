@@ -45,13 +45,14 @@ struct TextureHandle {
 };
 derive_struct(TextureHandle);
 
-struct CPUTexture {
+// Texture in CPU memory
+struct Texture {
     SDL_GPUTextureFormat format;
     Arr_u8 buffer;
     SizePX dims;
     TextureHandle handle;  // Automatically populated/replaced by texture cache
 };
-derive_struct(CPUTexture);
+derive_struct(Texture);
 
 struct SplitRecord {
     u64 attempt_num;
@@ -62,7 +63,7 @@ derive_struct(SplitRecord);
 struct SegmentDef {
     Str name;
     Arr_u8 icon_png;  // Icon in PNG format
-    CPUTexture icon_texture;
+    Texture icon_texture;
 };
 derive_struct(SegmentDef);
 
@@ -88,7 +89,7 @@ derive_enum(TimerMode);
 struct Timer {
     TimerMode mode;
     Vec_Opt_Duration live_splits;
-    CPUTexture CPUTexture;
+    Texture Texture;
     Instant start_time;
     Instant paused_time;
     Duration total_paused_duration;
@@ -146,6 +147,12 @@ struct Color {
     u8 r, g, b, a;
 };
 derive_struct(Color);
+
+constexpr Color COLOR_WHITE = {.r = 0xff, .g = 0xff, .b = 0xff, .a = 0xff};
+constexpr Color COLOR_BLACK = {.r = 0, .g = 0, .b = 0, .a = 0xff};
+constexpr Color COLOR_RED = {.r = 0xff, .g = 0, .b = 0, .a = 0xff};
+constexpr Color COLOR_GREEN = {.r = 0, .g = 0xff, .b = 0, .a = 0xff};
+constexpr Color COLOR_BLUE = {.r = 0, .g = 0, .b = 0xff, .a = 0xff};
 
 enum Axis {
     Axis_X,
@@ -242,6 +249,23 @@ struct ShapedGlyph {
 };
 derive_struct(ShapedGlyph);
 
+enum QuadRequestType : u8 {
+    QuadRequestType_Texture,
+    QuadRequestType_Text,
+};
+derive_enum(QuadRequestType);
+
+// Output of UI system
+struct QuadRequest {
+    QuadRequestType type;
+    u8 order;
+    RectF transform;
+    Texture *texture;
+    Str text_content;
+    Color color;
+};
+derive_struct(QuadRequest);
+
 struct TextureCacheEntry {
     TextureHandle handle;
     RectPX placement;
@@ -257,11 +281,14 @@ struct TextureSystem {
     bool textures_cleared;
     SDL_GPUGraphicsPipeline *clear_icon_pipeline;
     SDL_GPUGraphicsPipeline *clear_glyph_pipeline;
+    Texture dummy_texture;
 };
 derive_struct(TextureSystem);
 
 struct TextureRequest {
-    CPUTexture *texture;
+    // No texture means plain colored rectangle.
+    // TODO: make optional pointer types use nullptr as None (simple with union?)
+    Opt_P_Texture texture;
     RectF transform;
     Color color;
 };
@@ -338,7 +365,7 @@ struct UI_Box {
     UI_Size input_size;
     Str text_content;
     UI_Flag flags;
-    u32 texture_id;
+    Texture *texture;
 
     UI_Box *parent;
     Vec_P_UI_Box childs;

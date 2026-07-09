@@ -145,7 +145,7 @@ constexpr u64 MIN_VEC_CAPACITY = 8;
 // Logging
 //
 
-[[noreturn]] void crash(const char *why);
+[[noreturn]] void crash(const char *file, i32 line, const char *why);
 
 #define log_trace(...) SDL_LogTrace(SDL_LOG_CATEGORY_APPLICATION, __VA_ARGS__)
 #define log_debug(...) SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION, __VA_ARGS__)
@@ -157,9 +157,9 @@ constexpr u64 MIN_VEC_CAPACITY = 8;
     abort()
 
 #define log_assert(cond) \
-    if ((cond) == false) crash("assertion failed")
+    if ((cond) == false) crash(__FILE__, __LINE__, "assertion failed")
 
-#define log_unreachable() crash("assertion failed: unreachable")
+#define log_unreachable() crash(__FILE__, __LINE__, "assertion failed: unreachable")
 
 //
 // Strings
@@ -286,6 +286,19 @@ StrPair str_split2(Str base, u8 delim);
         typeof(arr) _arr_ = (arr);                                                             \
         int (*_compare_)(const typeof(*_arr_.ptr) *, const typeof(*_arr_.ptr) *) = (compare);  \
         SDL_qsort(_arr_.ptr, _arr_.count, sizeof(*_arr_.ptr), (SDL_CompareCallback)_compare_); \
+    })
+
+#define arr_memset(arr, v)                                \
+    ({                                                    \
+        typeof(arr) _arr_ = (arr);                        \
+        typeof(*_arr_.ptr) _v_ = (v);                     \
+        if (sizeof(_v_) == 1) {                           \
+            SDL_memset(_arr_.ptr, _v_, _arr_.count);      \
+        } else {                                          \
+            for (u64 _i_ = 0; _i_ < _arr_.count; _i_++) { \
+                *_arr_.ptr = _v_;                         \
+            }                                             \
+        }                                                 \
     })
 
 //

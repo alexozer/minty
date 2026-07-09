@@ -1,4 +1,11 @@
 #include "ui.h"
+#include "types.h"
+
+// TODO don't require ID for every box
+fn UI_Box *ui_box(Arena *arena, Str id) {
+    UI_Box *box = arena_push(arena, UI_Box);
+    return box;
+}
 
 fn void ui_flex_x(UI_Box *box, f32 ratio) {
     box->input_size.w = (UI_Dim){
@@ -32,88 +39,27 @@ fn void ui_parent(Arena *arena, UI_Box *child, UI_Box *parent) {
     vec_push(arena, &parent->childs, child);
 }
 
-// TODO don't require ID for every box
-fn UI_Box *ui_box(Arena *arena, Str id) {
-    UI_Box *box = arena_push(arena, UI_Box);
-    box->id = id;
-    return box;
-}
-
 fn UI_Box *ui_template(Arena *arena, UI_Box *template, Str id) {
     // TODO do this in a more principled way
     UI_Box *box = ui_box(arena, id);
     box->input_size = template->input_size;
     box->text_content = template->text_content;
     box->flags = template->flags;
-    box->texture_id = template->texture_id;
+    box->texture = template->texture;
     if (template->parent) {
         ui_parent(arena, box, template->parent);
     }
     return box;
 }
 
-fn UI_Box *build_ui_segment(Arena *arena, Session *session, u64 idx) {
-    UI_Box *row = ui_box(arena, str_format(arena, "row%" PRIu64, idx));
-    ui_flex_x(row, 1);
-    ui_fixed_y(row, 80);
-    row->flags |= UI_Flag_ChildLayoutX;
-    row->id = str_format(arena, "icon%" PRIu64, idx);
-
-    UI_Box *icon = ui_box(arena, S("space1"));
-    ui_parent(arena, icon, row);
-    ui_fixed_x(icon, 80);
-    ui_flex_y(icon, 1);
-    icon->flags |= UI_Flag_DrawTexture;
-
-    for (u64 i = 0; i < 3; i++) {
-        UI_Box *col = ui_box(arena, S("space"));
-        ui_parent(arena, col, row);
-        ui_flex_x(col, 1);
-        ui_flex_y(col, 1);
-    }
-
-    return row;
-}
-
-fn UI_Box *build_ui_segments(Arena *arena, Session *session) {
-    UI_Box *parent = ui_box(arena, S("segments parent"));
-    parent->flags |= UI_Flag_ChildLayoutY;
-    ui_flex_x(parent, 1);
-    ui_flex_y(parent, 1);
-
-    // for (u64 i = 0; i < session->file.segments.count; i++) {
-    UI_Box *row = build_ui_segment(arena, session, 0);
-    ui_parent(arena, row, parent);
-    // }
-
-    return parent;
-}
-
-fn UI_Box *build_ui(Arena *arena, Session *session, SizePX size) {
-    UI_Box *root = ui_box(arena, S("root"));
-    ui_fixed_x(root, size.w);
-    ui_fixed_y(root, size.h);
-    root->flags |= UI_Flag_ChildLayoutY;
-
-    UI_Box *child_template = ui_box(arena, S("child template"));
-    ui_flex_x(child_template, 1);
-    ui_fixed_y(child_template, 40);
-    child_template->parent = root;
-
-    // Game name
-    UI_Box *game_name = ui_template(arena, child_template, S("game name"));
-    game_name->flags |= UI_Flag_DrawText;
-    game_name->text_content = session->file.game_name;
-
-    // Category name
-    UI_Box *category_name = ui_template(arena, child_template, S("category name"));
-    category_name->flags |= UI_Flag_DrawText;
-    category_name->text_content = session->file.game_name;
-
-    UI_Box *segments = build_ui_segments(arena, session);
-    ui_parent(arena, segments, root);
-
-    return root;
+fn void layout_ui(UI_Box *root) {
+    log_assert(root->input_size.w.type == UI_DimType_FixedPX);
+    log_assert(root->input_size.h.type == UI_DimType_FixedPX);
+    root->output_size.x = 0;
+    root->output_size.y = 0;
+    root->output_size.w = root->input_size.w.value;
+    root->output_size.h = root->input_size.h.value;
+    layout_ui_impl(root);
 }
 
 fn void layout_ui_main_axis(UI_Box *parent, Axis axis) {
@@ -234,34 +180,45 @@ fn void layout_ui_impl(UI_Box *box) {
     }
 }
 
-fn void layout_ui(UI_Box *root) {
-    log_assert(root->input_size.w.type == UI_DimType_FixedPX);
-    log_assert(root->input_size.h.type == UI_DimType_FixedPX);
-    root->output_size.x = 0;
-    root->output_size.y = 0;
-    root->output_size.w = root->input_size.w.value;
-    root->output_size.h = root->input_size.h.value;
-    layout_ui_impl(root);
+fn Arr_TextureRequest render_ui(Arena *frame_arena, UI_Box *root) {
+    Vec_TextureRequest reqs = {};
+    render_ui_impl(frame_arena, root, &reqs);
+    return vec_arr(&reqs);
 }
 
-// u64 make_ui_mesh(Arena *arena, SizePX window_size, UI_Box *box, MeshBuilder *mesh) {
-//     u64 start_quad_count = mesh->vertices.count / 4;
-//
-//     // Fake atlas for now
-//     Atlas atlas = {.size = window_size};
-//     RectPX rect_px = {
-//         .x = (u16)SDL_lroundf(box->output_size.x),
-//         .y = (u16)SDL_lroundf(box->output_size.y),
-//         .w = (u16)SDL_lroundf(box->output_size.w),
-//         .h = (u16)SDL_lroundf(box->output_size.h),
-//     };
-//     push_atlas_quad(window_size, &atlas, mesh, rect_px, rect_px, (Color){});
-//
-//     for (u64 i = 0; i < box->childs.count; i++) {
-//         UI_Box *child = A(box->childs, i);
-//         make_ui_mesh(arena, window_size, child, mesh);
-//     }
-//
-//     u64 end_quad_count = mesh->vertices.count / 4;
-//     return end_quad_count - start_quad_count;
-// }
+fn void render_ui_impl(Arena *frame_arena, UI_Box *box, Vec_TextureRequest *reqs) {
+    // if (box->flags & UI_Flag_DrawTexture) {
+    // log_assert(box->texture != nullptr);
+
+    // f32 texture_aspect_ratio = (f32)box->texture->dims.w / box->texture->dims.h;
+    // RectF transform = scale_rect_proportionally_to_fit(box->output_size,
+    // texture_aspect_ratio);
+    if (box->childs.count == 0) {
+        RectF transform = box->output_size;
+        TextureRequest *req = vec_push_zero(frame_arena, reqs);
+        // req->texture = box->texture;
+        req->transform = transform;
+        req->color = COLOR_WHITE;
+    }
+
+    for (u64 i = 0; i < box->childs.count; i++) {
+        render_ui_impl(frame_arena, A(box->childs, i), reqs);
+    }
+}
+
+fn RectF scale_rect_proportionally_to_fit(RectF outer, f32 inner_aspect_ratio) {
+    f32 outer_aspect_ratio = outer.w / outer.h;
+    RectF inner = {};
+    if (inner_aspect_ratio > outer_aspect_ratio) {
+        inner.w = outer.w;
+        inner.h = outer.w / inner_aspect_ratio;
+        inner.x = outer.x;
+        inner.y = outer.y + (outer.h - inner.h) / 2.f;
+    } else {
+        inner.w = outer.h * inner_aspect_ratio;
+        inner.h = outer.h;
+        inner.x = outer.x + (outer.w - inner.w) / 2.f;
+        inner.y = outer.y;
+    }
+    return inner;
+}

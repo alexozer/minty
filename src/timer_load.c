@@ -1,15 +1,15 @@
 #include "timer_load.h"
 #include "platform.h"
 
-fn CPUTexture convert_srgb_surface_to_rgba(Arena *arena, SDL_Surface *surface) {
-    if (!surface) return (CPUTexture){};
+fn Texture convert_srgb_surface_to_rgba(Arena *arena, SDL_Surface *surface) {
+    if (!surface) return (Texture){};
 
     u64 dest_size = (u64)(surface->w * surface->h * 4);
     Arr_u8 buffer = {
         .ptr = (u8 *)arena_push_bytes(arena, dest_size, 8),
         .count = dest_size,
     };
-    CPUTexture texture = {
+    Texture texture = {
         .format = ICON_TEXTURE_FORMAT,
         .buffer = buffer,
         .dims = {.w = (u16)surface->w, .h = (u16)surface->h},
@@ -56,12 +56,12 @@ fn void sdl_destroy_surface(SDL_Surface *surface) {
     if (surface) SDL_DestroySurface(surface);
 }
 
-fn CPUTexture decode_png_to_texture(ErrorContext *err, Arena *arena, Arr_u8 png) {
+fn Texture decode_png_to_texture(ErrorContext *err, Arena *arena, Arr_u8 png) {
     Scope scope = scope_open(err);
 
     SDL_IOStream *stream = sdl_io_from_mem(err, png);
     SDL_Surface *surface = sdl_load_png_io(err, stream);
-    CPUTexture texture = convert_srgb_surface_to_rgba(arena, surface);
+    Texture texture = convert_srgb_surface_to_rgba(arena, surface);
     sdl_destroy_surface(surface);
     sdl_close_io(stream);
 

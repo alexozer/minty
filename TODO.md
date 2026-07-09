@@ -79,6 +79,7 @@ Upgrade SDL version
 Vendor some deps so things like the above are easier
 Prune SDL features to bring down binary size
 Forward decl generator
+Include file/line info in asserts / error messages, but only in non-release builds
 
 ## Error handling
 
@@ -223,7 +224,7 @@ API like:
 
 ```
 render_text("my text", font, pos, size)
-render_texture(CPUTexture, pos, size)
+render_texture(Texture, pos, size)
 ```
 
 # Texture cache POC
