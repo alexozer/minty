@@ -161,19 +161,17 @@ fn void layout_ui_impl(UI_Box *box) {
     }
 }
 
-fn Arr_TextureRequest render_ui(Arena *frame_arena, UI_Box *root) {
-    Vec_TextureRequest reqs = {};
-    render_ui_impl(frame_arena, root, &reqs);
-    return vec_arr(&reqs);
+fn void render_ui(Arena *frame_arena, UI_Box *root, FVec_TextureRequest *requests) {
+    render_ui_impl(frame_arena, root, requests);
 }
 
-fn void render_ui_impl(Arena *frame_arena, UI_Box *box, Vec_TextureRequest *reqs) {
+fn void render_ui_impl(Arena *frame_arena, UI_Box *box, FVec_TextureRequest *reqs) {
     if (box->flags & UI_Flag_DrawTexture) {
         log_assert(box->texture != nullptr);
 
         f32 texture_aspect_ratio = (f32)box->texture->dims.w / box->texture->dims.h;
         RectF transform = scale_rect_proportionally_to_fit(box->output_size, texture_aspect_ratio);
-        TextureRequest *req = vec_push_zero(frame_arena, reqs);
+        TextureRequest *req = fvec_push_zero(reqs);
         req->texture = some(box->texture, P_Texture);
         req->transform = transform;
         req->top_left_color = COLOR_WHITE;
@@ -204,38 +202,36 @@ fn RectF scale_rect_proportionally_to_fit(RectF outer, f32 inner_aspect_ratio) {
     return inner;
 }
 
-fn Arr_TextureRequest debug_render_ui(Arena *frame_arena, UI_Box *root) {
-    Vec_TextureRequest reqs = {};
-    debug_render_ui_impl(frame_arena, root, 0, &reqs);
-    return vec_arr(&reqs);
+fn void debug_render_ui(Arena *frame_arena, UI_Box *root, FVec_TextureRequest *requests) {
+    debug_render_ui_impl(root, 0, requests);
 }
 
-fn void debug_render_ui_impl(Arena *frame_arena, UI_Box *box, u64 depth, Vec_TextureRequest *reqs) {
+fn void debug_render_ui_impl(UI_Box *box, u64 depth, FVec_TextureRequest *reqs) {
     constexpr f32 BORDER_THICKNESS_PX = 2.f;
 
     RectF box_tf = box->output_size;
 
-    TextureRequest *top = vec_push_zero(frame_arena, reqs);
+    TextureRequest *top = fvec_push_zero(reqs);
     top->transform.x = box_tf.x;
     top->transform.y = box_tf.y;
     top->transform.w = box_tf.w;
     top->transform.h = BORDER_THICKNESS_PX;
-    top->top_left_color = COLOR_WHITE;
-    top->top_right_color = COLOR_WHITE;
-    top->bottom_left_color = COLOR_WHITE;
-    top->bottom_right_color = COLOR_WHITE;
+    top->top_left_color = COLOR_LIGHT_GRAY;
+    top->top_right_color = COLOR_LIGHT_GRAY;
+    top->bottom_left_color = COLOR_LIGHT_GRAY;
+    top->bottom_right_color = COLOR_LIGHT_GRAY;
 
-    TextureRequest *bottom = vec_push_zero(frame_arena, reqs);
+    TextureRequest *bottom = fvec_push_zero(reqs);
     bottom->transform.x = box_tf.x;
     bottom->transform.y = box_tf.y + box_tf.h - BORDER_THICKNESS_PX;
     bottom->transform.w = box_tf.w;
     bottom->transform.h = BORDER_THICKNESS_PX;
-    bottom->top_left_color = COLOR_WHITE;
-    bottom->top_right_color = COLOR_WHITE;
-    bottom->bottom_left_color = COLOR_WHITE;
-    bottom->bottom_right_color = COLOR_WHITE;
+    bottom->top_left_color = COLOR_LIGHT_GRAY;
+    bottom->top_right_color = COLOR_LIGHT_GRAY;
+    bottom->bottom_left_color = COLOR_LIGHT_GRAY;
+    bottom->bottom_right_color = COLOR_LIGHT_GRAY;
 
-    TextureRequest *left = vec_push_zero(frame_arena, reqs);
+    TextureRequest *left = fvec_push_zero(reqs);
     left->transform.x = box_tf.x;
     left->transform.y = box_tf.y;
     left->transform.w = BORDER_THICKNESS_PX;
@@ -245,7 +241,7 @@ fn void debug_render_ui_impl(Arena *frame_arena, UI_Box *box, u64 depth, Vec_Tex
     left->bottom_left_color = COLOR_BLUE;
     left->bottom_right_color = COLOR_BLUE;
 
-    TextureRequest *right = vec_push_zero(frame_arena, reqs);
+    TextureRequest *right = fvec_push_zero(reqs);
     right->transform.x = box_tf.x + box_tf.w - BORDER_THICKNESS_PX;
     right->transform.y = box_tf.y;
     right->transform.w = BORDER_THICKNESS_PX;
@@ -256,6 +252,6 @@ fn void debug_render_ui_impl(Arena *frame_arena, UI_Box *box, u64 depth, Vec_Tex
     right->bottom_right_color = COLOR_BLUE;
 
     for (u64 i = 0; i < box->childs.count; i++) {
-        debug_render_ui_impl(frame_arena, A(box->childs, i), depth + 1, reqs);
+        debug_render_ui_impl(A(box->childs, i), depth + 1, reqs);
     }
 }

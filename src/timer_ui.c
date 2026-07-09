@@ -37,7 +37,7 @@ fn UI_Box *build_ui_segments(Arena *arena, Session *session) {
     ui_flex_y(parent, 1);
 
     for (u64 i = 0; i < session->file.segments.count; i++) {
-        UI_Box *row = build_segment_ui(arena, session, 0);
+        UI_Box *row = build_segment_ui(arena, session, i);
         ui_parent(arena, row, parent);
     }
 

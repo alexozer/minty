@@ -1,3 +1,4 @@
+#include "SDL3/SDL_keycode.h"
 #include "base.h"
 
 #include <stdarg.h>
@@ -187,6 +188,10 @@ fn SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
             SDL_StopTextInput(app->window);
             app->insert_mode_enabled = false;
             vec_reset(&app->typed_text);
+            break;
+        }
+        case SDLK_GRAVE: {
+            app->debug_draw = !app->debug_draw;
             break;
         }
         }

@@ -118,10 +118,17 @@ fn void render(App *app) {
 
     if (swapchain_texture) {  // Apparently can be null if window is minimized
         UI_Box *root = build_timer_ui(frame_arena, app->session, window_size);
-        Arr_TextureRequest texture_requests = debug_render_ui(frame_arena, root);
 
-        Arr_P_RenderInst render_insts = tex_prepare_to_render(
-            frame_arena, app->texture_system, render_state, window_size, texture_requests);
+        FVec_TextureRequest texture_requests =
+            fvec_alloc(frame_arena, TextureRequest, MAX_QUAD_COUNT);
+        render_ui(frame_arena, root, &texture_requests);
+        if (app->debug_draw) {
+            debug_render_ui(frame_arena, root, &texture_requests);
+        }
+
+        Arr_P_RenderInst render_insts =
+            tex_prepare_to_render(frame_arena, app->texture_system, render_state, window_size,
+                                  fvec_arr(&texture_requests));
         arr_sort(render_insts, compare_render_insts);
 
         // Group render insts by type

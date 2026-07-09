@@ -148,6 +148,7 @@ struct Color {
 derive_struct(Color);
 
 constexpr Color COLOR_WHITE = {.r = 0xff, .g = 0xff, .b = 0xff, .a = 0xff};
+constexpr Color COLOR_LIGHT_GRAY = {.r = 0xbf, .g = 0xbf, .b = 0xbf, .a = 0xff};
 constexpr Color COLOR_BLACK = {.r = 0, .g = 0, .b = 0, .a = 0xff};
 constexpr Color COLOR_RED = {.r = 0xff, .g = 0, .b = 0, .a = 0xff};
 constexpr Color COLOR_GREEN = {.r = 0, .g = 0xff, .b = 0, .a = 0xff};
@@ -446,6 +447,7 @@ struct App {
     f32 scale;  // `scale + 1.0f` is actual scale
     bool insert_mode_enabled;
     Vec_u8 typed_text;
+    bool debug_draw;
 
     Arena *session_arena;
     Session *session;  // Nullable
