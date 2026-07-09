@@ -17,7 +17,7 @@
 // TODO toggle through build system or something
 constexpr bool RENDERER_DEBUG_MODE_ENABLED = true;
 
-constexpr u64 MAX_QUAD_COUNT = 512;
+constexpr u64 MAX_QUAD_COUNT = 2048;
 constexpr u64 MAX_VERTEX_COUNT = MAX_QUAD_COUNT * 4;
 constexpr u64 MAX_INDEX_COUNT = MAX_QUAD_COUNT * 6;
 

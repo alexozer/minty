@@ -18,6 +18,6 @@ Output main(Input input)
 {
     Output output;
     output.color.rgb = input.color.rgb;
-    output.color.a   = Texture.Sample(Sampler, input.texcoord).r;
+    output.color.a   = Texture.Sample(Sampler, input.texcoord).r * input.color.a;
     return output;
 }

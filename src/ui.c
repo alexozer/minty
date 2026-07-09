@@ -76,25 +76,6 @@ fn void layout_ui_main_axis(UI_Box *parent, Axis axis) {
             total_fixed_px += child_input->value;
         }
     }
-    if (total_fixed_px > parent_size) {
-        // Out of room! Make 'em flex instead!
-        total_fixed_px = 0;
-        for (u64 i = 0; i < parent->childs.count; i++) {
-            UI_Dim *in_size = &A(parent->childs, i)->input_size.dims[axis];
-
-            switch (in_size->type) {
-            case UI_DimType_FixedPX: {
-                in_size->type = UI_DimType_Flex;
-                in_size->value /= total_fixed_px;
-                break;
-            }
-            case UI_DimType_Flex: {
-                in_size->value = 0;
-                break;
-            }
-            }
-        }
-    }
 
     // Compute total flex units
     f32 total_flex_units = 0;
@@ -107,7 +88,7 @@ fn void layout_ui_main_axis(UI_Box *parent, Axis axis) {
     }
 
     // Compute all children pos/size
-    f32 total_flex_px = parent_size - total_fixed_px;
+    f32 total_flex_px = max(0, parent_size - total_fixed_px);
     f32 current_pos_px = 0;
     for (u64 i = 0; i < parent->childs.count; i++) {
         UI_Dim *in_size = &A(parent->childs, i)->input_size.dims[axis];
@@ -230,7 +211,7 @@ fn Arr_TextureRequest debug_render_ui(Arena *frame_arena, UI_Box *root) {
 }
 
 fn void debug_render_ui_impl(Arena *frame_arena, UI_Box *box, u64 depth, Vec_TextureRequest *reqs) {
-    constexpr f32 BORDER_THICKNESS_PX = 4.f;
+    constexpr f32 BORDER_THICKNESS_PX = 2.f;
 
     RectF box_tf = box->output_size;
 
@@ -239,24 +220,20 @@ fn void debug_render_ui_impl(Arena *frame_arena, UI_Box *box, u64 depth, Vec_Tex
     top->transform.y = box_tf.y;
     top->transform.w = box_tf.w;
     top->transform.h = BORDER_THICKNESS_PX;
-    top->top_left_color = COLOR_GREEN;
-    top->top_right_color = COLOR_GREEN;
-    top->bottom_left_color = COLOR_GREEN;
-    top->bottom_right_color = COLOR_GREEN;
-    top->bottom_left_color.a = 0xff / 4;
-    top->bottom_right_color.a = 0xff / 4;
+    top->top_left_color = COLOR_WHITE;
+    top->top_right_color = COLOR_WHITE;
+    top->bottom_left_color = COLOR_WHITE;
+    top->bottom_right_color = COLOR_WHITE;
 
     TextureRequest *bottom = vec_push_zero(frame_arena, reqs);
     bottom->transform.x = box_tf.x;
     bottom->transform.y = box_tf.y + box_tf.h - BORDER_THICKNESS_PX;
     bottom->transform.w = box_tf.w;
     bottom->transform.h = BORDER_THICKNESS_PX;
-    bottom->top_left_color = COLOR_GREEN;
-    bottom->top_right_color = COLOR_GREEN;
-    bottom->bottom_left_color = COLOR_GREEN;
-    bottom->bottom_right_color = COLOR_GREEN;
-    bottom->top_left_color.a = 0xff / 4;
-    bottom->top_right_color.a = 0xff / 4;
+    bottom->top_left_color = COLOR_WHITE;
+    bottom->top_right_color = COLOR_WHITE;
+    bottom->bottom_left_color = COLOR_WHITE;
+    bottom->bottom_right_color = COLOR_WHITE;
 
     TextureRequest *left = vec_push_zero(frame_arena, reqs);
     left->transform.x = box_tf.x;
@@ -267,8 +244,6 @@ fn void debug_render_ui_impl(Arena *frame_arena, UI_Box *box, u64 depth, Vec_Tex
     left->top_right_color = COLOR_BLUE;
     left->bottom_left_color = COLOR_BLUE;
     left->bottom_right_color = COLOR_BLUE;
-    left->top_right_color.a = 0xff / 4;
-    left->bottom_right_color.a = 0xff / 4;
 
     TextureRequest *right = vec_push_zero(frame_arena, reqs);
     right->transform.x = box_tf.x + box_tf.w - BORDER_THICKNESS_PX;
@@ -279,8 +254,6 @@ fn void debug_render_ui_impl(Arena *frame_arena, UI_Box *box, u64 depth, Vec_Tex
     right->top_right_color = COLOR_BLUE;
     right->bottom_left_color = COLOR_BLUE;
     right->bottom_right_color = COLOR_BLUE;
-    right->top_left_color.a = 0xff / 4;
-    right->bottom_left_color.a = 0xff / 4;
 
     for (u64 i = 0; i < box->childs.count; i++) {
         debug_render_ui_impl(frame_arena, A(box->childs, i), depth + 1, reqs);

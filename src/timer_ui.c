@@ -9,7 +9,7 @@ fn UI_Box *build_timer_ui(Arena *arena, Session *session, SizePX size) {
 
     UI_Box *child_template = ui_box(arena, S("child template"));
     ui_flex_x(child_template, 1);
-    ui_fixed_y(child_template, 40);
+    ui_fixed_y(child_template, 50);
     child_template->parent = root;
 
     // Game name
@@ -21,9 +21,9 @@ fn UI_Box *build_timer_ui(Arena *arena, Session *session, SizePX size) {
     UI_Box *category_name = ui_template(arena, child_template, S("category name"));
     category_name->flags |= UI_Flag_DrawText;
     category_name->text_content = session->file.game_name;
-    //
-    // UI_Box *segments = build_ui_segments(arena, session);
-    // ui_parent(arena, segments, root);
+
+    UI_Box *segments = build_ui_segments(arena, session);
+    ui_parent(arena, segments, root);
 
     layout_ui(root);
 
@@ -37,7 +37,7 @@ fn UI_Box *build_ui_segments(Arena *arena, Session *session) {
     ui_flex_y(parent, 1);
 
     for (u64 i = 0; i < session->file.segments.count; i++) {
-        UI_Box *row = build_segment_ui(arena, session, i);
+        UI_Box *row = build_segment_ui(arena, session, 0);
         ui_parent(arena, row, parent);
     }
 
