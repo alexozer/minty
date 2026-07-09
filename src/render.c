@@ -25,7 +25,7 @@ fn void render_init(ErrorContext *err, App *app) {
     RenderState *render_state = arena_push(app->app_arena, RenderState);
     app->render_state = render_state;
     render_state->device =
-        SDL_CreateGPUDevice(OS_SHADERS.format, RENDERER_DEBUG_MODE_ENABLED, nullptr);
+        SDL_CreateGPUDevice(OS_SHADER_FORMAT, RENDERER_DEBUG_MODE_ENABLED, nullptr);
     if (!render_state->device) {
         err_report(err, "%s", SDL_GetError());
     } else {
@@ -70,12 +70,17 @@ fn void init_vertex_buffers(ErrorContext *err, RenderState *render_state) {
 
 fn void init_render_pipelines(ErrorContext *err, SDL_Window *window, RenderState *render_state) {
     // Load shaders
+    Arr_u8 vert_shader = {.ptr = os_shader_vert, .count = os_shader_vert_len};
+    Arr_u8 frag_icon_shader = {.ptr = os_shader_frag_icon, .count = os_shader_frag_icon_len};
+    Arr_u8 frag_glyph_shader = {.ptr = os_shader_frag_glyph, .count = os_shader_frag_glyph_len};
+
     render_state->vertex_shader =
-        gpu_load_shader(err, render_state->device, OS_SHADERS.vert_shader, ShaderType_Vertex);
-    render_state->icon_frag_shader = gpu_load_shader(
-        err, render_state->device, OS_SHADERS.frag_icon_shader, ShaderType_Fragment);
-    render_state->glyph_frag_shader = gpu_load_shader(
-        err, render_state->device, OS_SHADERS.frag_glyph_shader, ShaderType_Fragment);
+        gpu_load_shader(err, render_state->device, vert_shader, ShaderStage_Vertex);
+    render_state->icon_frag_shader =
+        gpu_load_shader(err, render_state->device, frag_icon_shader, ShaderStage_Fragment);
+    render_state->glyph_frag_shader =
+        gpu_load_shader(err, render_state->device, frag_glyph_shader, ShaderStage_Fragment);
+
     if (err_occurred(err)) return;
 
     if (SDL_WindowSupportsGPUPresentMode(render_state->device, window,
@@ -113,19 +118,17 @@ fn void render(App *app) {
 
     if (swapchain_texture) {  // Apparently can be null if window is minimized
         UI_Box *root = build_timer_ui(frame_arena, app->session, window_size);
-        Arr_TextureRequest texture_requests = render_ui(frame_arena, root);
+        Arr_TextureRequest texture_requests = debug_render_ui(frame_arena, root);
 
         Arr_P_RenderInst render_insts = tex_prepare_to_render(
             frame_arena, app->texture_system, render_state, window_size, texture_requests);
         arr_sort(render_insts, compare_render_insts);
 
         // Group render insts by type
-        FixedVec_P_RenderInst clear_texture_insts =
+        FVec_P_RenderInst clear_texture_insts =
             fvec_alloc(frame_arena, P_RenderInst, render_insts.count);
-        FixedVec_P_RenderInst upload_insts =
-            fvec_alloc(frame_arena, P_RenderInst, render_insts.count);
-        FixedVec_P_RenderInst draw_insts =
-            fvec_alloc(frame_arena, P_RenderInst, render_insts.count);
+        FVec_P_RenderInst upload_insts = fvec_alloc(frame_arena, P_RenderInst, render_insts.count);
+        FVec_P_RenderInst draw_insts = fvec_alloc(frame_arena, P_RenderInst, render_insts.count);
         for (u64 i = 0; i < render_insts.count; i++) {
             switch (A(render_insts, i)->type) {
             case RenderInstType_ClearTexture: {
@@ -302,11 +305,11 @@ fn void do_draw_passes(RenderState *render_state,
 
     void *transfer_data = (Vertex *)SDL_MapGPUTransferBuffer(
         render_state->device, render_state->geom_transfer_buffer, true);
-    FixedVec_Vertex vertices = {
+    FVec_Vertex vertices = {
         .ptr = transfer_data,
         .capacity = MAX_VERTEX_COUNT,
     };
-    FixedVec_u16 indices = {
+    FVec_u16 indices = {
         .ptr = (u16 *)((Vertex *)transfer_data + MAX_VERTEX_COUNT),
         .capacity = MAX_INDEX_COUNT,
     };

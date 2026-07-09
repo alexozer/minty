@@ -2,12 +2,8 @@
 
 ## Next
 
-<!-- Put all glyph bitmaps for font in atlas -->
-    <!-- Continue using arrays for now, make packer eat empty textures -->
-<!-- Fix glyph color bug -->
-Layout research
-    Start with Ryan's simple layout system
-    Next goal: render basic timer view?
+Render split icons with new layout + texture + render systems
+    Debugging: reverify that layout system works for super basic layouts
 
 ## Prototyping
 
@@ -292,3 +288,9 @@ Maybe future do:
 - Split up types.h
 - Codegen typedef struct / enum
 - pub / fn for non-static / static
+
+# Shadercross build.zig integration
+
+- Call shadercross as external tool
+- Call xxd -i as external tool (todo: rewrite in C)
+- Include result of xxd as source file dependency

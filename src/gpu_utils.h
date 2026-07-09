@@ -15,7 +15,7 @@ SDL_GPUGraphicsPipeline *gpu_make_pipeline(ErrorContext *err,
 SDL_GPUShader *gpu_load_shader(ErrorContext *err,
                                SDL_GPUDevice *device,
                                Arr_u8 source,
-                               ShaderType type);
+                               ShaderStage type);
 SDL_GPUBuffer *sdl_create_gpu_buffer(ErrorContext *err,
                                      SDL_GPUDevice *device,
                                      SDL_GPUBufferCreateInfo *info,

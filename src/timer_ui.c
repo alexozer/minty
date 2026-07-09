@@ -21,9 +21,9 @@ fn UI_Box *build_timer_ui(Arena *arena, Session *session, SizePX size) {
     UI_Box *category_name = ui_template(arena, child_template, S("category name"));
     category_name->flags |= UI_Flag_DrawText;
     category_name->text_content = session->file.game_name;
-
-    UI_Box *segments = build_ui_segments(arena, session);
-    ui_parent(arena, segments, root);
+    //
+    // UI_Box *segments = build_ui_segments(arena, session);
+    // ui_parent(arena, segments, root);
 
     layout_ui(root);
 

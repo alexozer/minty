@@ -20,3 +20,5 @@ void layout_ui_impl(UI_Box *box);
 Arr_TextureRequest render_ui(Arena *frame_arena, UI_Box *root);
 void render_ui_impl(Arena *frame_arena, UI_Box *box, Vec_TextureRequest *reqs);
 RectF scale_rect_proportionally_to_fit(RectF outer, f32 inner_aspect_ratio);
+Arr_TextureRequest debug_render_ui(Arena *frame_arena, UI_Box *root);
+void debug_render_ui_impl(Arena *frame_arena, UI_Box *box, u64 depth, Vec_TextureRequest *reqs);

@@ -8,12 +8,16 @@ void *os_alloc(u64 size);
 void os_free(void *buf, u64 size);
 Arr_u8 os_read_file(ErrorContext *err, Arena *arena, Str path);
 
-struct OS_Shaders {
-    SDL_GPUShaderFormat format;
-    Arr_u8 vert_shader;
-    Arr_u8 frag_icon_shader;
-    Arr_u8 frag_glyph_shader;
-};
-derive_struct(OS_Shaders);
+extern const SDL_GPUShaderFormat OS_SHADER_FORMAT;
 
-extern OS_Shaders OS_SHADERS;
+// Compiled shaders linked in as C arrays by build system
+// Names are: `os_shader_{shader_source_filename_without_ext}`
+
+extern u8 os_shader_vert[];
+extern unsigned int os_shader_vert_len;
+
+extern u8 os_shader_frag_icon[];
+extern unsigned int os_shader_frag_icon_len;
+
+extern u8 os_shader_frag_glyph[];
+extern unsigned int os_shader_frag_glyph_len;

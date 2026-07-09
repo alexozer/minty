@@ -89,17 +89,17 @@ fn SDL_GPUGraphicsPipeline *gpu_make_pipeline(ErrorContext *err,
 fn SDL_GPUShader *gpu_load_shader(ErrorContext *err,
                                   SDL_GPUDevice *device,
                                   Arr_u8 source,
-                                  ShaderType type) {
+                                  ShaderStage type) {
     Scope scope = scope_open(err);
     Arena *scratch = arena_acquire();
 
     SDL_GPUShaderCreateInfo info = {};
     switch (type) {
-    case ShaderType_Vertex: {
+    case ShaderStage_Vertex: {
         info = (SDL_GPUShaderCreateInfo){
             .code_size = source.count,
             .code = (u8 *)source.ptr,
-            .format = OS_SHADERS.format,
+            .format = OS_SHADER_FORMAT,
             .stage = SDL_GPU_SHADERSTAGE_VERTEX,
             .num_samplers = 0,
             .num_storage_textures = 0,
@@ -109,11 +109,11 @@ fn SDL_GPUShader *gpu_load_shader(ErrorContext *err,
         };
         break;
     }
-    case ShaderType_Fragment: {
+    case ShaderStage_Fragment: {
         info = (SDL_GPUShaderCreateInfo){
             .code_size = source.count,
             .code = (u8 *)source.ptr,
-            .format = OS_SHADERS.format,
+            .format = OS_SHADER_FORMAT,
             .stage = SDL_GPU_SHADERSTAGE_FRAGMENT,
             .num_samplers = 1,
             .num_storage_textures = 0,

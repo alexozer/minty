@@ -187,18 +187,18 @@ fn Arr_TextureRequest render_ui(Arena *frame_arena, UI_Box *root) {
 }
 
 fn void render_ui_impl(Arena *frame_arena, UI_Box *box, Vec_TextureRequest *reqs) {
-    // if (box->flags & UI_Flag_DrawTexture) {
-    // log_assert(box->texture != nullptr);
+    if (box->flags & UI_Flag_DrawTexture) {
+        log_assert(box->texture != nullptr);
 
-    // f32 texture_aspect_ratio = (f32)box->texture->dims.w / box->texture->dims.h;
-    // RectF transform = scale_rect_proportionally_to_fit(box->output_size,
-    // texture_aspect_ratio);
-    if (box->childs.count == 0) {
-        RectF transform = box->output_size;
+        f32 texture_aspect_ratio = (f32)box->texture->dims.w / box->texture->dims.h;
+        RectF transform = scale_rect_proportionally_to_fit(box->output_size, texture_aspect_ratio);
         TextureRequest *req = vec_push_zero(frame_arena, reqs);
-        // req->texture = box->texture;
+        req->texture = some(box->texture, P_Texture);
         req->transform = transform;
-        req->color = COLOR_WHITE;
+        req->top_left_color = COLOR_WHITE;
+        req->top_right_color = COLOR_WHITE;
+        req->bottom_left_color = COLOR_WHITE;
+        req->bottom_right_color = COLOR_WHITE;
     }
 
     for (u64 i = 0; i < box->childs.count; i++) {
@@ -221,4 +221,68 @@ fn RectF scale_rect_proportionally_to_fit(RectF outer, f32 inner_aspect_ratio) {
         inner.y = outer.y;
     }
     return inner;
+}
+
+fn Arr_TextureRequest debug_render_ui(Arena *frame_arena, UI_Box *root) {
+    Vec_TextureRequest reqs = {};
+    debug_render_ui_impl(frame_arena, root, 0, &reqs);
+    return vec_arr(&reqs);
+}
+
+fn void debug_render_ui_impl(Arena *frame_arena, UI_Box *box, u64 depth, Vec_TextureRequest *reqs) {
+    constexpr f32 BORDER_THICKNESS_PX = 4.f;
+
+    RectF box_tf = box->output_size;
+
+    TextureRequest *top = vec_push_zero(frame_arena, reqs);
+    top->transform.x = box_tf.x;
+    top->transform.y = box_tf.y;
+    top->transform.w = box_tf.w;
+    top->transform.h = BORDER_THICKNESS_PX;
+    top->top_left_color = COLOR_GREEN;
+    top->top_right_color = COLOR_GREEN;
+    top->bottom_left_color = COLOR_GREEN;
+    top->bottom_right_color = COLOR_GREEN;
+    top->bottom_left_color.a = 0xff / 4;
+    top->bottom_right_color.a = 0xff / 4;
+
+    TextureRequest *bottom = vec_push_zero(frame_arena, reqs);
+    bottom->transform.x = box_tf.x;
+    bottom->transform.y = box_tf.y + box_tf.h - BORDER_THICKNESS_PX;
+    bottom->transform.w = box_tf.w;
+    bottom->transform.h = BORDER_THICKNESS_PX;
+    bottom->top_left_color = COLOR_GREEN;
+    bottom->top_right_color = COLOR_GREEN;
+    bottom->bottom_left_color = COLOR_GREEN;
+    bottom->bottom_right_color = COLOR_GREEN;
+    bottom->top_left_color.a = 0xff / 4;
+    bottom->top_right_color.a = 0xff / 4;
+
+    TextureRequest *left = vec_push_zero(frame_arena, reqs);
+    left->transform.x = box_tf.x;
+    left->transform.y = box_tf.y;
+    left->transform.w = BORDER_THICKNESS_PX;
+    left->transform.h = box_tf.h;
+    left->top_left_color = COLOR_BLUE;
+    left->top_right_color = COLOR_BLUE;
+    left->bottom_left_color = COLOR_BLUE;
+    left->bottom_right_color = COLOR_BLUE;
+    left->top_right_color.a = 0xff / 4;
+    left->bottom_right_color.a = 0xff / 4;
+
+    TextureRequest *right = vec_push_zero(frame_arena, reqs);
+    right->transform.x = box_tf.x + box_tf.w - BORDER_THICKNESS_PX;
+    right->transform.y = box_tf.y;
+    right->transform.w = BORDER_THICKNESS_PX;
+    right->transform.h = box_tf.h;
+    right->top_left_color = COLOR_BLUE;
+    right->top_right_color = COLOR_BLUE;
+    right->bottom_left_color = COLOR_BLUE;
+    right->bottom_right_color = COLOR_BLUE;
+    right->top_left_color.a = 0xff / 4;
+    right->bottom_left_color.a = 0xff / 4;
+
+    for (u64 i = 0; i < box->childs.count; i++) {
+        debug_render_ui_impl(frame_arena, A(box->childs, i), depth + 1, reqs);
+    }
 }

@@ -4,7 +4,6 @@
 
 #include <SDL3/SDL_gpu.h>
 #include <SDL3/SDL_keycode.h>
-#include <SDL3/SDL_main.h>
 #include <stb_rect_pack.h>
 #include <xao.h>
 
@@ -129,11 +128,11 @@ enum TimerAction {
 };
 derive_enum(TimerAction);
 
-enum ShaderType {
-    ShaderType_Vertex,
-    ShaderType_Fragment,
+enum ShaderStage {
+    ShaderStage_Vertex,
+    ShaderStage_Fragment,
 };
-derive_enum(ShaderType);
+derive_enum(ShaderStage);
 
 // Icons don't need color, but it's simpler to just have one format for now
 struct Vertex {
@@ -237,8 +236,8 @@ struct Mesh {
 derive_struct(Mesh);
 
 struct MeshBuilder {
-    FixedVec_Vertex vertices;
-    FixedVec_u16 indices;
+    FVec_Vertex vertices;
+    FVec_u16 indices;
 };
 derive_struct(MeshBuilder);
 
@@ -276,8 +275,8 @@ derive_struct(TextureCacheEntry);
 struct TextureSystem {
     Atlas *icon_atlas;
     Atlas *glyph_atlas;
-    FixedVec_TextureCacheEntry cache_entries;
-    FixedVec_TextureHandle free_handles;
+    FVec_TextureCacheEntry cache_entries;
+    FVec_TextureHandle free_handles;
     bool textures_cleared;
     SDL_GPUGraphicsPipeline *clear_icon_pipeline;
     SDL_GPUGraphicsPipeline *clear_glyph_pipeline;
@@ -290,7 +289,10 @@ struct TextureRequest {
     // TODO: make optional pointer types use nullptr as None (simple with union?)
     Opt_P_Texture texture;
     RectF transform;
-    Color color;
+    Color top_left_color;
+    Color top_right_color;
+    Color bottom_left_color;
+    Color bottom_right_color;
 };
 derive_struct(TextureRequest);
 

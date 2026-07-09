@@ -33,6 +33,7 @@ const cxx_flags: []const []const u8 = &.{
 const c_flags: []const []const u8 = .{
     "-std=c23",
 } ++ cxx_flags;
+const blitter_flags = c_flags ++ .{"-Werror"};
 
 const cpp_flags: []const []const u8 = .{
     "-std=c++20",
@@ -73,7 +74,11 @@ pub fn getSourceFiles(
     return try file_list.toOwnedSlice(b.allocator);
 }
 
-fn get_simdutf_library(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) *std.Build.Step.Compile {
+fn get_simdutf_library(
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+) *std.Build.Step.Compile {
     const simdutf = b.addLibrary(.{
         .name = "simdutf",
         .root_module = b.createModule(.{
@@ -93,6 +98,123 @@ fn get_simdutf_library(b: *std.Build, target: std.Build.ResolvedTarget, optimize
     return simdutf;
 }
 
+fn get_codegen_step(
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    sdl: *std.Build.Dependency,
+    simdutf: *std.Build.Step.Compile,
+) !*std.Build.Step.Compile {
+    const codegen_sources = &.{ "src/tools/codegen.c", "src/base.c" };
+    const platform_sources = get_platform_sources(target);
+
+    var codegen_sources_plat: std.ArrayList([]const u8) = .empty;
+    try codegen_sources_plat.appendSlice(b.allocator, codegen_sources);
+    try codegen_sources_plat.appendSlice(b.allocator, platform_sources);
+
+    const codegen = b.addExecutable(.{
+        .name = "codegen",
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+            .strip = false,
+            .link_libc = true,
+            .link_libcpp = false,
+        }),
+    });
+    codegen.root_module.addCSourceFiles(.{
+        .files = try codegen_sources_plat.toOwnedSlice(b.allocator),
+        .flags = blitter_flags,
+        .language = .c,
+    });
+    codegen.root_module.linkLibrary(sdl.artifact("SDL3"));
+    codegen.root_module.linkLibrary(simdutf);
+    return codegen;
+}
+
+const ShaderStage = enum {
+    vertex,
+    fragment,
+};
+
+const ShaderTarget = enum {
+    dxil,
+    msl,
+    spirv,
+};
+
+fn add_shadercross_dep(
+    b: *std.Build,
+    blitter: *std.Build.Step.Compile,
+    shader_source_path: []const u8,
+    stage: ShaderStage,
+    target: ShaderTarget,
+) !void {
+    const dest_target = try std.ascii.allocUpperString(b.allocator, @tagName(target));
+    const out_filename = try std.fmt.allocPrint(
+        b.allocator,
+        "{s}.{s}",
+        .{ std.fs.path.stem(shader_source_path), @tagName(target) },
+    );
+    const out_path = try std.fs.path.join(b.allocator, &.{
+        "shaders",
+        out_filename,
+    });
+
+    const shadercross = b.addSystemCommand(&.{"shadercross"});
+    shadercross.addFileArg(b.path(shader_source_path));
+    shadercross.addArgs(&.{
+        "--source",
+        "hlsl",
+        "--stage",
+        @tagName(stage),
+        "--dest",
+        dest_target,
+        "--output",
+    });
+    const compiled_shader_path = shadercross.addOutputFileArg(out_path);
+
+    // Embed by converting compiled shader to C and including in build
+    const embed_var_name = try std.fmt.allocPrint(
+        b.allocator,
+        "os_shader_{s}",
+        .{std.fs.path.stem(shader_source_path)},
+    );
+    add_xxd_dep(b, blitter, compiled_shader_path, embed_var_name);
+
+    // Output compiled shader for inspection
+    const shader_install = b.addInstallFile(compiled_shader_path, out_path);
+    blitter.step.dependOn(&shader_install.step);
+}
+
+// TODO avoid system xxd dependency
+fn add_xxd_dep(
+    b: *std.Build,
+    blitter: *std.Build.Step.Compile,
+    source: std.Build.LazyPath,
+    var_name: []const u8,
+) void {
+    const xxd = b.addSystemCommand(&.{"xxd"});
+    xxd.addArgs(&.{ "-n", var_name, "-i" });
+    xxd.addFileArg(source);
+    const output = xxd.captureStdOut(.{});
+
+    blitter.root_module.addCSourceFile(.{
+        .file = output,
+        .language = .c,
+        .flags = blitter_flags,
+    });
+}
+
+fn get_platform_sources(target: std.Build.ResolvedTarget) []const []const u8 {
+    return switch (target.result.os.tag) {
+        .macos => &.{ "src/platform_posix.c", "src/platform_macos.c" },
+        .linux => &.{ "src/platform_posix.c", "src/platform_linux.c" },
+        .windows => &.{"src/platform_windows.c"},
+        else => @panic("Unsupported OS"),
+    };
+}
+
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -102,14 +224,6 @@ pub fn build(b: *std.Build) !void {
     var cdb_targets: std.ArrayList(*std.Build.Step.Compile) = .empty;
 
     const blitter_sources = try getSourceFiles(b, "src", ".c");
-
-    const platform_sources: []const []const u8 = switch (target.result.os.tag) {
-        .macos => &.{ "src/platform_posix.c", "src/platform_macos.c" },
-        .linux => &.{ "src/platform_posix.c", "src/platform_linux.c" },
-        .windows => &.{"src/platform_windows.c"},
-        else => @panic("Unsupported OS"),
-    };
-    const blitter_flags = c_flags ++ .{"-Werror"};
 
     const sdl = b.dependency("sdl", .{ .optimize = optimize, .target = target });
     const sdl_native = b.dependency("sdl", .{ .target = native_target, .optimize = native_optimize });
@@ -126,28 +240,7 @@ pub fn build(b: *std.Build) !void {
     // codegen
     //
 
-    const codegen_sources = &.{ "src/tools/codegen.c", "src/base.c" };
-    var codegen_sources_plat: std.ArrayList([]const u8) = .empty;
-    try codegen_sources_plat.appendSlice(b.allocator, codegen_sources);
-    try codegen_sources_plat.appendSlice(b.allocator, platform_sources);
-
-    const codegen = b.addExecutable(.{
-        .name = "codegen",
-        .root_module = b.createModule(.{
-            .target = native_target,
-            .optimize = native_optimize,
-            .strip = false,
-            .link_libc = false,
-            .link_libcpp = false,
-        }),
-    });
-    codegen.root_module.addCSourceFiles(.{
-        .files = try codegen_sources_plat.toOwnedSlice(b.allocator),
-        .flags = blitter_flags,
-        .language = .c,
-    });
-    codegen.root_module.linkLibrary(sdl_native.artifact("SDL3"));
-    codegen.root_module.linkLibrary(simdutf_native);
+    const codegen = try get_codegen_step(b, native_target, native_optimize, sdl_native, simdutf_native);
     try cdb_targets.append(b.allocator, codegen);
     b.installArtifact(codegen);
 
@@ -157,7 +250,7 @@ pub fn build(b: *std.Build) !void {
 
     var blitter_sources_plat: std.ArrayList([]const u8) = .empty;
     try blitter_sources_plat.appendSlice(b.allocator, blitter_sources);
-    try blitter_sources_plat.appendSlice(b.allocator, platform_sources);
+    try blitter_sources_plat.appendSlice(b.allocator, get_platform_sources(target));
 
     const blitter = b.addExecutable(.{
         .name = "blitter",
@@ -196,6 +289,16 @@ pub fn build(b: *std.Build) !void {
         try codegen_step.step.addWatchInput(b.path(source));
     }
     blitter.step.dependOn(&codegen_step.step);
+
+    const shader_target: ShaderTarget = switch (target.result.os.tag) {
+        .macos => .msl,
+        .linux => .spirv,
+        .windows => .dxil,
+        else => @panic("Unsupported OS"),
+    };
+    try add_shadercross_dep(b, blitter, "src/shaders/vert.hlsl", .vertex, shader_target);
+    try add_shadercross_dep(b, blitter, "src/shaders/frag_icon.hlsl", .fragment, shader_target);
+    try add_shadercross_dep(b, blitter, "src/shaders/frag_glyph.hlsl", .fragment, shader_target);
 
     const run_blitter = b.addRunArtifact(blitter);
     if (b.args) |args| {

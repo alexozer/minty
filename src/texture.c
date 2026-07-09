@@ -36,8 +36,8 @@ fn TextureSystem *tex_init(ErrorContext *err,
 fn void init_dummy_white_texture(Arena *arena, Texture *texture) {
     texture->dims.w = 4;
     texture->dims.h = 4;
-    texture->format = ICON_TEXTURE_FORMAT;
-    texture->buffer = arena_push_arr(arena, u8, texture->dims.w * texture->dims.h * 4);
+    texture->format = GLYPH_TEXTURE_FORMAT;
+    texture->buffer = arena_push_arr(arena, u8, texture->dims.w * texture->dims.h);
     arr_memset(texture->buffer, 0xff);
 }
 
@@ -131,7 +131,7 @@ fn Arr_P_RenderInst tex_prepare_to_render(Arena *frame_arena,
                                           RenderState *render_state,
                                           SizePX window_size,
                                           Arr_TextureRequest requests) {
-    FixedVec_P_RenderInst render_insts = fvec_alloc(frame_arena, P_RenderInst, (u64)8);
+    FVec_P_RenderInst render_insts = fvec_alloc(frame_arena, P_RenderInst, (u64)8);
     if (!ctx->textures_cleared) {
         tex_build_clear_insts(frame_arena, ctx, render_state, &render_insts);
         ctx->textures_cleared = true;
@@ -145,7 +145,7 @@ fn Arr_P_RenderInst tex_prepare_to_render(Arena *frame_arena,
 fn void tex_build_clear_insts(Arena *frame_arena,
                               TextureSystem *ctx,
                               RenderState *render_state,
-                              FixedVec_P_RenderInst *render_insts) {
+                              FVec_P_RenderInst *render_insts) {
     // Clear atlas textures by performing render pass with no draw calls
     RenderInst *icon_clear_inst = arena_push(frame_arena, RenderInst);
     icon_clear_inst->type = RenderInstType_ClearTexture;
@@ -173,13 +173,11 @@ fn void tex_build_upload_insts(Arena *frame_arena,
                                TextureSystem *ctx,
                                RenderState *render_state,
                                Arr_TextureRequest requests,
-                               FixedVec_P_RenderInst *render_insts) {
+                               FVec_P_RenderInst *render_insts) {
     Arena *scratch = arena_acquire();
 
-    FixedVec_P_Texture uncached_icon_requests =
-        fvec_alloc(scratch, P_Texture, requests.count);
-    FixedVec_P_Texture uncached_glyph_requests =
-        fvec_alloc(scratch, P_Texture, requests.count);
+    FVec_P_Texture uncached_icon_requests = fvec_alloc(scratch, P_Texture, requests.count);
+    FVec_P_Texture uncached_glyph_requests = fvec_alloc(scratch, P_Texture, requests.count);
     for (u64 i = 0; i < requests.count; i++) {
         TextureRequest *request = &A(requests, i);
         Texture *texture = request->texture.present ? request->texture.opt : &ctx->dummy_texture;
@@ -232,7 +230,7 @@ fn void pack_textures_into_existing_atlas(Arena *frame_arena,
                                           Atlas *atlas,
                                           RenderState *render_state,
                                           Arr_P_Texture textures,
-                                          FixedVec_P_RenderInst *render_insts) {
+                                          FVec_P_RenderInst *render_insts) {
     Arena *scratch = arena_acquire();
 
     //
@@ -312,7 +310,7 @@ fn void tex_build_draw_insts(Arena *frame_arena,
                              RenderState *render_state,
                              SizePX window_size,
                              Arr_TextureRequest requests,
-                             FixedVec_P_RenderInst *render_insts) {
+                             FVec_P_RenderInst *render_insts) {
     // Max vertex/index count are global limits, but are reused here as the per draw-call limit too
     // - there'll be some unused space for sure.
     MeshBuilder icon_mesh = {
@@ -327,23 +325,12 @@ fn void tex_build_draw_insts(Arena *frame_arena,
     for (u64 i = 0; i < requests.count; i++) {
         TextureRequest *req = &A(requests, i);
 
-        // TODO think harder about when/how to round glyph coords to pixels. Don't want to end up
-        // with a stretched glyph!
-        // We also may not want to round non-glyph things to pixels, or may not want to during
-        // animations...
-        RectPX dest = {
-            .x = (u16)SDL_lroundf(req->transform.x),
-            .y = (u16)SDL_lroundf(req->transform.y),
-            .w = (u16)SDL_lroundf(req->transform.w),
-            .h = (u16)SDL_lroundf(req->transform.h),
-        };
-
         Texture *texture = req->texture.present ? req->texture.opt : &ctx->dummy_texture;
         RectPX src = A(ctx->cache_entries, texture->handle.idx).placement;
         if (texture->format == ICON_TEXTURE_FORMAT) {
-            push_atlas_quad(window_size, ctx->icon_atlas, &icon_mesh, src, dest, req->color);
+            push_atlas_quad(window_size, ctx->icon_atlas, &icon_mesh, src, req);
         } else if (texture->format == GLYPH_TEXTURE_FORMAT) {
-            push_atlas_quad(window_size, ctx->glyph_atlas, &glyph_mesh, src, dest, req->color);
+            push_atlas_quad(window_size, ctx->glyph_atlas, &glyph_mesh, src, req);
         }
     }
 
@@ -380,8 +367,13 @@ fn void push_atlas_quad(SizePX window_size,
                         Atlas *atlas,
                         MeshBuilder *mesh,
                         RectPX src,
-                        RectPX dst,
-                        Color color) {
+                        TextureRequest *req) {
+    // TODO think harder about when/how to round glyph coords to pixels. Don't want to end up
+    // with a stretched glyph!
+    // We also may not want to round non-glyph things to pixels, or may not want to during
+    // animations...
+    RectF dst = req->transform;
+
     Arr_u16 indices = fvec_extend_zero(&mesh->indices, 6);
     A(indices, 0) = (u16)(mesh->vertices.count + 0);
     A(indices, 1) = (u16)(mesh->vertices.count + 1);
@@ -398,10 +390,10 @@ fn void push_atlas_quad(SizePX window_size,
         .z = 0,
         .u = (f32)src.x / (f32)atlas->size.w,
         .v = (f32)src.y / (f32)atlas->size.h,
-        .r = color.r,
-        .g = color.g,
-        .b = color.b,
-        .a = color.a,
+        .r = req->top_left_color.r,
+        .g = req->top_left_color.g,
+        .b = req->top_left_color.b,
+        .a = req->top_left_color.a,
     };
     // Top right
     A(vertices, 1) = (Vertex){
@@ -410,10 +402,10 @@ fn void push_atlas_quad(SizePX window_size,
         .z = 0,
         .u = (f32)(src.x + src.w) / (f32)atlas->size.w,
         .v = (f32)src.y / (f32)atlas->size.h,
-        .r = color.r,
-        .g = color.g,
-        .b = color.b,
-        .a = color.a,
+        .r = req->top_right_color.r,
+        .g = req->top_right_color.g,
+        .b = req->top_right_color.b,
+        .a = req->top_right_color.a,
     };
     // Bottom left
     A(vertices, 2) = (Vertex){
@@ -422,10 +414,10 @@ fn void push_atlas_quad(SizePX window_size,
         .z = 0,
         .u = (f32)src.x / (f32)atlas->size.w,
         .v = (f32)(src.y + src.h) / (f32)atlas->size.h,
-        .r = color.r,
-        .g = color.g,
-        .b = color.b,
-        .a = color.a,
+        .r = req->bottom_left_color.r,
+        .g = req->bottom_left_color.g,
+        .b = req->bottom_left_color.b,
+        .a = req->bottom_left_color.a,
     };
     // Bottom right
     A(vertices, 3) = (Vertex){
@@ -434,10 +426,10 @@ fn void push_atlas_quad(SizePX window_size,
         .z = 0,
         .u = (f32)(src.x + src.w) / (f32)atlas->size.w,
         .v = (f32)(src.y + src.h) / (f32)atlas->size.h,
-        .r = color.r,
-        .g = color.g,
-        .b = color.b,
-        .a = color.a,
+        .r = req->bottom_right_color.r,
+        .g = req->bottom_right_color.g,
+        .b = req->bottom_right_color.b,
+        .a = req->bottom_right_color.a,
     };
 
     // Kinda awkward but whatever

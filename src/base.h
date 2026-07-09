@@ -45,13 +45,13 @@ typedef double f64;
         CONCAT(Arr_, name) __to_arr[0];               \
     } CONCAT(Vec_, name);                             \
                                                       \
-    typedef struct CONCAT(FixedVec_, name) {          \
+    typedef struct CONCAT(FVec_, name) {          \
         u64 count;                                    \
         name *ptr __attribute__((counted_by(count))); \
         u64 capacity;                                 \
         void *__typeid_fixed_vec[0];                  \
         CONCAT(Arr_, name) __to_arr[0];               \
-    } CONCAT(FixedVec_, name);                        \
+    } CONCAT(FVec_, name);                        \
                                                       \
     typedef struct CONCAT(Opt_, name) {               \
         bool present;                                 \
@@ -225,12 +225,12 @@ StrPair str_split2(Str base, u8 delim);
 
 #define c_arr_count(a) (sizeof((a)) / sizeof((a)[0]))
 
-#define arr_eq(a, b)                                                      \
-    ({                                                                    \
-        typeof(a) _a_ = (a);                                              \
-        typeof(b) _b_ = (b);                                              \
-        (_a_.count == _b_.count &&                                        \
-         SDL_memcmp(_a_.ptr, _b_.ptr, _a_.count * sizeof(*_a_.ptr)) == 0) \
+#define arr_eq(a, b)                                                       \
+    ({                                                                     \
+        typeof(a) _a_ = (a);                                               \
+        typeof(_a_) _b_ = (b);                                             \
+        (_a_.count == _b_.count && sizeof(*_a_.ptr) == sizeof(*_b_.ptr) && \
+         SDL_memcmp(_a_.ptr, _b_.ptr, _a_.count * sizeof(*_a_.ptr)) == 0)  \
     })
 
 #define arr_slice(arr, start, end)          \
@@ -423,14 +423,14 @@ void vec__grow(Arena *arena, GenericVec *vec, u64 elem_size, u64 elem_align, u64
     })
 
 //
-// FixedVec
+// FVec
 //
 
 #define fvec_alloc(arena, t, cap)                                            \
     ({                                                                       \
         typeof(arena) _arena_ = (arena);                                     \
         typeof(cap) _cap_ = (cap);                                           \
-        (CONCAT(FixedVec_, t)){                                              \
+        (CONCAT(FVec_, t)){                                              \
             .ptr = arena_push_bytes(_arena_, sizeof(t) * _cap_, alignof(t)), \
             .count = 0,                                                      \
             .capacity = _cap_,                                               \
