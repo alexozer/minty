@@ -45,13 +45,13 @@ typedef double f64;
         CONCAT(Arr_, name) __to_arr[0];               \
     } CONCAT(Vec_, name);                             \
                                                       \
-    typedef struct CONCAT(FVec_, name) {          \
+    typedef struct CONCAT(FVec_, name) {              \
         u64 count;                                    \
         name *ptr __attribute__((counted_by(count))); \
         u64 capacity;                                 \
         void *__typeid_fixed_vec[0];                  \
         CONCAT(Arr_, name) __to_arr[0];               \
-    } CONCAT(FVec_, name);                        \
+    } CONCAT(FVec_, name);                            \
                                                       \
     typedef struct CONCAT(Opt_, name) {               \
         bool present;                                 \
@@ -271,14 +271,16 @@ StrPair str_split2(Str base, u8 delim);
         }                                                                                \
     })
 
-#define arr_clone(arena, arr)                                                       \
-    ({                                                                              \
-        typeof(arena) _arena_ = (arena);                                            \
-        typeof(arr) _arr_ = (arr);                                                  \
-        void *new_ptr = arena_push_bytes(_arena_, _arr_.count * sizeof(*_arr_.ptr), \
-                                         alignof(typeof(*_arr_.ptr)));              \
-        SDL_memcpy(new_ptr, _arr_.ptr, _arr_.count * sizeof(*_arr_.ptr));           \
-        (typeof(_arr_)){.ptr = new_ptr, .count = _arr_.count};                      \
+#define arr_clone(arena, arr)                                                           \
+    ({                                                                                  \
+        typeof(arena) _arena_ = (arena);                                                \
+        typeof(arr) _arr_ = (arr);                                                      \
+        if (_arr_.count > 0) {                                                          \
+            void *new_ptr = arena_push_bytes(_arena_, _arr_.count * sizeof(*_arr_.ptr), \
+                                             alignof(typeof(*_arr_.ptr)));              \
+            SDL_memcpy(new_ptr, _arr_.ptr, _arr_.count * sizeof(*_arr_.ptr));           \
+        }                                                                               \
+        (typeof(_arr_)){.ptr = new_ptr, .count = _arr_.count};                          \
     })
 
 #define arr_sort(arr, compare)                                                                 \
@@ -368,7 +370,9 @@ void vec__grow(Arena *arena, GenericVec *vec, u64 elem_size, u64 elem_align, u64
             .ptr = _vec_->ptr + start,                                           \
             .count = _vec_->count - start,                                       \
         };                                                                       \
-        SDL_memcpy(a.ptr, arr.ptr, a.count * sizeof(*a.ptr));                    \
+        if (_arr_.count > 0) {                                                   \
+            SDL_memcpy(a.ptr, _arr_.ptr, a.count * sizeof(*a.ptr));              \
+        }                                                                        \
     })
 
 #define vec_extend_zero(arena, vec, new_count)                                   \
@@ -430,7 +434,7 @@ void vec__grow(Arena *arena, GenericVec *vec, u64 elem_size, u64 elem_align, u64
     ({                                                                       \
         typeof(arena) _arena_ = (arena);                                     \
         typeof(cap) _cap_ = (cap);                                           \
-        (CONCAT(FVec_, t)){                                              \
+        (CONCAT(FVec_, t)){                                                  \
             .ptr = arena_push_bytes(_arena_, sizeof(t) * _cap_, alignof(t)), \
             .count = 0,                                                      \
             .capacity = _cap_,                                               \
@@ -467,19 +471,21 @@ void vec__grow(Arena *arena, GenericVec *vec, u64 elem_size, u64 elem_align, u64
         elem;                                                    \
     })
 
-#define fvec_extend(vec, arr)                                      \
-    ({                                                             \
-        typeof(vec) _vec_ = (vec);                                 \
-        typeof(arr) _arr_ = (arr);                                 \
-        _vec_->__typeid_fixed_vec;                                 \
-        log_assert(_vec_->count + _arr_.count <= _vec_->capacity); \
-        u64 start = _vec_->count;                                  \
-        _vec_->count += _arr_.count;                               \
-        typeof(_arr_) a = {                                        \
-            .ptr = _vec_->ptr + start,                             \
-            .count = _vec_->count - start,                         \
-        };                                                         \
-        SDL_memcpy(a.ptr, arr.ptr, a.count * sizeof(*a.ptr));      \
+#define fvec_extend(vec, arr)                                       \
+    ({                                                              \
+        typeof(vec) _vec_ = (vec);                                  \
+        typeof(arr) _arr_ = (arr);                                  \
+        _vec_->__typeid_fixed_vec;                                  \
+        log_assert(_vec_->count + _arr_.count <= _vec_->capacity);  \
+        u64 start = _vec_->count;                                   \
+        _vec_->count += _arr_.count;                                \
+        typeof(_arr_) a = {                                         \
+            .ptr = _vec_->ptr + start,                              \
+            .count = _vec_->count - start,                          \
+        };                                                          \
+        if (_arr_.count > 0) {                                      \
+            SDL_memcpy(a.ptr, _arr_.ptr, a.count * sizeof(*a.ptr)); \
+        }                                                           \
     })
 
 #define fvec_extend_zero(vec, new_count)                           \

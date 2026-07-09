@@ -89,7 +89,9 @@ void *arena_realloc_bytes(Arena *arena, void *ptr, u64 old_size, u64 new_size, u
         return ptr;
     } else {
         void *new_ptr = arena_push_bytes(arena, new_size, alignment);
-        SDL_memcpy(new_ptr, ptr, old_size);
+        if (old_size > 0) {
+            SDL_memcpy(new_ptr, ptr, old_size);
+        }
         return new_ptr;
     }
 }
@@ -291,7 +293,9 @@ derive_type(char);
 
 char *str_to_c(Arena *arena, Str s) {
     Arr_char cstr = arena_push_arr(arena, char, s.count + 1);
-    SDL_memcpy(cstr.ptr, s.ptr, s.count);
+    if (s.count > 0) {
+        SDL_memcpy(cstr.ptr, s.ptr, s.count);
+    }
     return cstr.ptr;
 }
 
@@ -336,7 +340,9 @@ Opt_u64 packer_try_push(Packer *packer, Arr_u8 buf, u64 alignment) {
     if (end > packer->capacity) {
         return none(u64);
     }
-    SDL_memcpy(packer->ptr + start, buf.ptr, end - start);
+    if (buf.count > 0) {
+        SDL_memcpy(packer->ptr + start, buf.ptr, end - start);
+    }
     packer->offset = end;
     return some(start, u64);
 }
