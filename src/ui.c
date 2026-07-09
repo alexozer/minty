@@ -211,45 +211,47 @@ fn void debug_render_ui_impl(UI_Box *box, u64 depth, FVec_TextureRequest *reqs) 
 
     RectF box_tf = box->output_size;
 
+    Color color = {.g = 0xff, .a = (u8)((1.f / ((f32)depth + 1)) * 0xff)};
+
     TextureRequest *top = fvec_push_zero(reqs);
     top->transform.x = box_tf.x;
     top->transform.y = box_tf.y;
     top->transform.w = box_tf.w;
     top->transform.h = BORDER_THICKNESS_PX;
-    top->top_left_color = COLOR_LIGHT_GRAY;
-    top->top_right_color = COLOR_LIGHT_GRAY;
-    top->bottom_left_color = COLOR_LIGHT_GRAY;
-    top->bottom_right_color = COLOR_LIGHT_GRAY;
+    top->top_left_color = color;
+    top->top_right_color = color;
+    top->bottom_left_color = color;
+    top->bottom_right_color = color;
 
     TextureRequest *bottom = fvec_push_zero(reqs);
     bottom->transform.x = box_tf.x;
     bottom->transform.y = box_tf.y + box_tf.h - BORDER_THICKNESS_PX;
     bottom->transform.w = box_tf.w;
     bottom->transform.h = BORDER_THICKNESS_PX;
-    bottom->top_left_color = COLOR_LIGHT_GRAY;
-    bottom->top_right_color = COLOR_LIGHT_GRAY;
-    bottom->bottom_left_color = COLOR_LIGHT_GRAY;
-    bottom->bottom_right_color = COLOR_LIGHT_GRAY;
+    bottom->top_left_color = color;
+    bottom->top_right_color = color;
+    bottom->bottom_left_color = color;
+    bottom->bottom_right_color = color;
 
     TextureRequest *left = fvec_push_zero(reqs);
     left->transform.x = box_tf.x;
     left->transform.y = box_tf.y;
     left->transform.w = BORDER_THICKNESS_PX;
     left->transform.h = box_tf.h;
-    left->top_left_color = COLOR_BLUE;
-    left->top_right_color = COLOR_BLUE;
-    left->bottom_left_color = COLOR_BLUE;
-    left->bottom_right_color = COLOR_BLUE;
+    left->top_left_color = color;
+    left->top_right_color = color;
+    left->bottom_left_color = color;
+    left->bottom_right_color = color;
 
     TextureRequest *right = fvec_push_zero(reqs);
     right->transform.x = box_tf.x + box_tf.w - BORDER_THICKNESS_PX;
     right->transform.y = box_tf.y;
     right->transform.w = BORDER_THICKNESS_PX;
     right->transform.h = box_tf.h;
-    right->top_left_color = COLOR_BLUE;
-    right->top_right_color = COLOR_BLUE;
-    right->bottom_left_color = COLOR_BLUE;
-    right->bottom_right_color = COLOR_BLUE;
+    right->top_left_color = color;
+    right->top_right_color = color;
+    right->bottom_left_color = color;
+    right->bottom_right_color = color;
 
     for (u64 i = 0; i < box->childs.count; i++) {
         debug_render_ui_impl(A(box->childs, i), depth + 1, reqs);

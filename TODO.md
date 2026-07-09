@@ -291,3 +291,11 @@ Maybe future do:
 <!-- - Call shadercross as external tool -->
 <!-- - Call xxd -i as external tool (todo: rewrite in C) -->
 <!-- - Include result of xxd as source file dependency -->
+
+# UI Next Steps
+
+Pad split icons
+    What does an immediate-mode API look like for this? Maybe we don't give AF for now?
+    Rewatch file pilot episode to try to get a feel for this
+Improve UI API (style stacks, except it's just a template system)
+Start working on text

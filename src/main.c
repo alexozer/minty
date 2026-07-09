@@ -58,8 +58,7 @@ fn SDL_Window *init_window(ErrorContext *err) {
         err_report(err, "%s", SDL_GetError());
     }
 
-    SDL_WindowFlags window_flags =
-        SDL_WINDOW_BORDERLESS | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
+    SDL_WindowFlags window_flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
     SDL_Window *window =
         sdl_create_window(err, S("Blitter"), DEFAULT_WINDOW_SIZE, MIN_WINDOW_SIZE, window_flags);
 
