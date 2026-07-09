@@ -2,9 +2,6 @@
 
 ## Next
 
-Render split icons with new layout + texture + render systems
-    Debugging: reverify that layout system works for super basic layouts
-
 ## Prototyping
 
 <!-- Render Roboto font -->
@@ -291,6 +288,6 @@ Maybe future do:
 
 # Shadercross build.zig integration
 
-- Call shadercross as external tool
-- Call xxd -i as external tool (todo: rewrite in C)
-- Include result of xxd as source file dependency
+<!-- - Call shadercross as external tool -->
+<!-- - Call xxd -i as external tool (todo: rewrite in C) -->
+<!-- - Include result of xxd as source file dependency -->
