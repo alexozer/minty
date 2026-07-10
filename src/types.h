@@ -255,16 +255,8 @@ enum QuadRequestType : u8 {
 };
 derive_enum(QuadRequestType);
 
-// Output of UI system
-struct QuadRequest {
-    QuadRequestType type;
-    u8 order;
-    RectF transform;
-    Texture *texture;
-    Str text_content;
-    Color color;
-};
-derive_struct(QuadRequest);
+struct FontSystem {};
+derive_struct(FontSystem);
 
 struct TextureCacheEntry {
     TextureHandle handle;

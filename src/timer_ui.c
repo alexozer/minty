@@ -5,27 +5,34 @@ fn UI_Box *build_timer_ui(Arena *arena, Session *session, SizePX size) {
     UI_Style style = {};
     UI_Style *s = &style;
 
+    constexpr f32 OUTER_PADDING = 12.f;
+
+    // Outer root
     ui_width_px(s, size.w);
     ui_height_px(s, size.h);
-    ui_flags(s, UI_Flag_ChildLayoutY);
     UI_Box *root = ui_box(arena, s);
 
+    // Inner root
+    build_padding(arena, s, root, OUTER_PADDING);
+    ui_flags(s, UI_Flag_ChildLayoutY);
+    UI_Box *base = ui_box(arena, s);
+
     // Game name
-    ui_parent(s, root);
+    ui_parent(s, base);
     ui_width_flex(s);
     ui_height_px(s, 80);
     ui_text(s, session->file.game_name);
     ui_box(arena, s);
 
     // Category name
-    ui_parent(s, root);
+    ui_parent(s, base);
     ui_width_flex(s);
     ui_height_px(s, 80);
     ui_text(s, session->file.category_name);
     ui_box(arena, s);
 
     // Segments container
-    ui_parent(s, root);
+    ui_parent(s, base);
     ui_width_flex(s);
     ui_height_flex(s);
     ui_flags(s, UI_Flag_ChildLayoutY);
