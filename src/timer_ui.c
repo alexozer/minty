@@ -2,7 +2,8 @@
 #include "ui.h"
 
 fn UI_Box *build_timer_ui(Arena *arena, Session *session, SizePX size) {
-    UI_Style *s = arena_push(arena, UI_Style);
+    UI_Style style = {};
+    UI_Style *s = &style;
 
     ui_width_px(s, size.w);
     ui_height_px(s, size.h);
@@ -30,24 +31,19 @@ fn UI_Box *build_timer_ui(Arena *arena, Session *session, SizePX size) {
     ui_flags(s, UI_Flag_ChildLayoutY);
     UI_Box *segments_container = ui_box(arena, s);
 
-    build_ui_segments(arena, s, segments_container, session);
+    for (u64 i = 0; i < session->file.segments.count; i++) {
+        build_segment_ui(arena, segments_container, session, i);
+    }
 
     layout_ui(root);
 
     return root;
 }
 
-fn void build_ui_segments(Arena *arena, UI_Style *s, UI_Box *parent, Session *session) {
-    for (u64 i = 0; i < session->file.segments.count; i++) {
-        build_segment_ui(arena, s, parent, session, i);
-    }
-}
+fn void build_segment_ui(Arena *arena, UI_Box *parent, Session *session, u64 segment_idx) {
+    UI_Style style = {};
+    UI_Style *s = &style;
 
-fn void build_segment_ui(Arena *arena,
-                         UI_Style *s,
-                         UI_Box *parent,
-                         Session *session,
-                         u64 segment_idx) {
     SegmentDef *segment = &A(session->file.segments, segment_idx);
 
     // Row
