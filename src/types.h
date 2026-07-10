@@ -17,7 +17,7 @@
 // TODO toggle through build system or something
 constexpr bool RENDERER_DEBUG_MODE_ENABLED = true;
 
-constexpr u64 MAX_QUAD_COUNT = 2048;
+constexpr u64 MAX_QUAD_COUNT = 4096;
 constexpr u64 MAX_VERTEX_COUNT = MAX_QUAD_COUNT * 4;
 constexpr u64 MAX_INDEX_COUNT = MAX_QUAD_COUNT * 6;
 
@@ -365,19 +365,28 @@ derive_enum(UI_Flag);
 
 derive_struct_pre(UI_Box);
 struct UI_Box {
+    UI_Flag flags;
     UI_Size input_size;
     Str text_content;
-    UI_Flag flags;
     Texture *texture;
+    Color color;
 
     UI_Box *parent;
     Vec_P_UI_Box childs;
 
     RectF output_size;
-
-    Str id;
 };
 derive_struct_post(UI_Box);
+
+struct UI_Style {
+    UI_Size input_size;
+    Str text_content;
+    UI_Box *parent;
+    UI_Flag flags;
+    Texture *texture;
+    Color color;
+};
+derive_struct(UI_Style);
 
 enum RenderInstType : u8 {
     RenderInstType_ClearTexture,

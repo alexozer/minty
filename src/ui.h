@@ -6,13 +6,17 @@
 
 #include "types.h"
 
-UI_Box *ui_box(Arena *arena, Str id);
-void ui_flex_x(UI_Box *box, f32 ratio);
-void ui_flex_y(UI_Box *box, f32 ratio);
-void ui_fixed_x(UI_Box *box, f32 size_px);
-void ui_fixed_y(UI_Box *box, f32 size_px);
-void ui_parent(Arena *arena, UI_Box *child, UI_Box *parent);
-UI_Box *ui_template(Arena *arena, UI_Box *template, Str id);
+UI_Box *ui_box(Arena *frame_arena, UI_Style *s);
+void ui_width_px(UI_Style *s, f32 px);
+void ui_height_px(UI_Style *s, f32 px);
+void ui_width_flex(UI_Style *s);
+void ui_height_flex(UI_Style *s);
+void ui_width_flex_ratio(UI_Style *s, f32 ratio);
+void ui_height_flex_ratio(UI_Style *s, f32 ratio);
+void ui_flags(UI_Style *style, UI_Flag flags);
+void ui_parent(UI_Style *s, UI_Box *parent);
+void ui_text(UI_Style *s, Str text);
+void ui_texture(UI_Style *s, Texture *texture);
 void layout_ui(UI_Box *root);
 void layout_ui_main_axis(UI_Box *parent, Axis axis);
 void layout_ui_cross_axis(UI_Box *parent, Axis axis);

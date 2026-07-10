@@ -2,54 +2,76 @@
 #include "types.h"
 
 // TODO don't require ID for every box
-fn UI_Box *ui_box(Arena *arena, Str id) {
-    UI_Box *box = arena_push(arena, UI_Box);
-    return box;
-}
+fn UI_Box *ui_box(Arena *frame_arena, UI_Style *s) {
+    UI_Box *box = arena_push(frame_arena, UI_Box);
+    box->flags = s->flags;
+    box->input_size = s->input_size;
+    box->text_content = s->text_content;
+    box->texture = s->texture;
+    box->color = s->color;
 
-fn void ui_flex_x(UI_Box *box, f32 ratio) {
-    box->input_size.w = (UI_Dim){
-        .type = UI_DimType_Flex,
-        .value = ratio,
-    };
-}
-
-fn void ui_flex_y(UI_Box *box, f32 ratio) {
-    box->input_size.h = (UI_Dim){
-        .type = UI_DimType_Flex,
-        .value = ratio,
-    };
-}
-
-fn void ui_fixed_x(UI_Box *box, f32 size_px) {
-    box->input_size.w = (UI_Dim){
-        .type = UI_DimType_FixedPX,
-        .value = size_px,
-    };
-}
-fn void ui_fixed_y(UI_Box *box, f32 size_px) {
-    box->input_size.h = (UI_Dim){
-        .type = UI_DimType_FixedPX,
-        .value = size_px,
-    };
-}
-
-fn void ui_parent(Arena *arena, UI_Box *child, UI_Box *parent) {
-    child->parent = parent;
-    vec_push(arena, &parent->childs, child);
-}
-
-fn UI_Box *ui_template(Arena *arena, UI_Box *template, Str id) {
-    // TODO do this in a more principled way
-    UI_Box *box = ui_box(arena, id);
-    box->input_size = template->input_size;
-    box->text_content = template->text_content;
-    box->flags = template->flags;
-    box->texture = template->texture;
-    if (template->parent) {
-        ui_parent(arena, box, template->parent);
+    if (s->parent != nullptr) {
+        box->parent = s->parent;
+        vec_push(frame_arena, &s->parent->childs, box);
     }
+
+    *s = (UI_Style){};
+
     return box;
+}
+
+fn void ui_width_px(UI_Style *s, f32 px) {
+    s->input_size.w = (UI_Dim){
+        .type = UI_DimType_FixedPX,
+        .value = px,
+    };
+}
+
+fn void ui_height_px(UI_Style *s, f32 px) {
+    s->input_size.h = (UI_Dim){
+        .type = UI_DimType_FixedPX,
+        .value = px,
+    };
+}
+
+fn void ui_width_flex(UI_Style *s) {
+    ui_width_flex_ratio(s, 1.f);
+}
+
+fn void ui_height_flex(UI_Style *s) {
+    ui_height_flex_ratio(s, 1.f);
+}
+
+fn void ui_width_flex_ratio(UI_Style *s, f32 ratio) {
+    s->input_size.w = (UI_Dim){
+        .type = UI_DimType_Flex,
+        .value = ratio,
+    };
+}
+
+fn void ui_height_flex_ratio(UI_Style *s, f32 ratio) {
+    s->input_size.h = (UI_Dim){
+        .type = UI_DimType_Flex,
+        .value = ratio,
+    };
+}
+
+fn void ui_flags(UI_Style *style, UI_Flag flags) {
+    style->flags |= flags;
+}
+
+fn void ui_parent(UI_Style *s, UI_Box *parent) {
+    s->parent = parent;
+}
+
+fn void ui_text(UI_Style *s, Str text) {
+    s->flags |= UI_Flag_DrawText;
+    s->text_content = text;
+}
+
+fn void ui_texture(UI_Style *s, Texture *texture) {
+    s->flags |= UI_Flag_DrawTexture;
+    s->texture = texture;
 }
 
 fn void layout_ui(UI_Box *root) {
