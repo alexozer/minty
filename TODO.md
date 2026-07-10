@@ -2,6 +2,8 @@
 
 ## Next
 
+Text system
+
 ## Prototyping
 
 <!-- Render Roboto font -->
@@ -294,8 +296,8 @@ Maybe future do:
 
 # UI Next Steps
 
-Pad split icons
-    What does an immediate-mode API look like for this? Maybe we don't give AF for now?
-    Rewatch file pilot episode to try to get a feel for this
-Improve UI API (style stacks, except it's just a template system)
+<!-- Pad split icons -->
+<!--     What does an immediate-mode API look like for this? Maybe we don't give AF for now? -->
+<!--     Rewatch file pilot episode to try to get a feel for this -->
+<!-- Improve UI API (style stacks, except it's just a template system) -->
 Start working on text
