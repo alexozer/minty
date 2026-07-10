@@ -343,6 +343,24 @@ void vec__grow(Arena *arena, GenericVec *vec, u64 elem_size, u64 elem_align, u64
         (&_vec_->ptr[_vec_->count - 1]);                                 \
     })
 
+#define vec_insert(arena, vec, idx, val)                                 \
+    ({                                                                   \
+        typeof(arena) _arena_ = (arena);                                 \
+        typeof(vec) _vec_ = (vec);                                       \
+        typeof(val) _val_ = (val);                                       \
+        u64 _idx_ = (idx);                                               \
+        _vec_->__typeid_vec;                                             \
+        log_assert(_idx_ <= _vec_->count);                               \
+        if (_vec_->count == _vec_->capacity) {                           \
+            vec__grow(_arena_, (GenericVec *)_vec_, sizeof(*_vec_->ptr), \
+                      alignof(typeof(*_vec_->ptr)), _vec_->count + 1);   \
+        }                                                                \
+        _vec_->count++;                                                  \
+        SDL_memmove(_vec_->ptr + _idx_ + 1, _vec_->ptr + _idx_,          \
+                    (_vec_->count - idx - 1) * sizeof(*_vec_->ptr));     \
+        _vec_->ptr[_idx_] = _val_;                                       \
+    })
+
 #define vec_pop(vec)                                             \
     ({                                                           \
         typeof(vec) _vec_ = (vec);                               \

@@ -12,7 +12,11 @@ fn UI_Box *ui_box(Arena *frame_arena, UI_Style *s) {
 
     if (s->parent != nullptr) {
         box->parent = s->parent;
-        vec_push(frame_arena, &s->parent->childs, box);
+        if (box->flags & UI_Flag_InsertChildAtIndex) {
+            vec_insert(frame_arena, &s->parent->childs, s->child_idx, box);
+        } else {
+            vec_push(frame_arena, &s->parent->childs, box);
+        }
     }
 
     *s = (UI_Style){};
@@ -62,6 +66,11 @@ fn void ui_flags(UI_Style *style, UI_Flag flags) {
 
 fn void ui_parent(UI_Style *s, UI_Box *parent) {
     s->parent = parent;
+}
+
+fn void ui_child_idx(UI_Style *s, u16 idx) {
+    s->flags |= UI_Flag_InsertChildAtIndex;
+    s->child_idx = idx;
 }
 
 fn void ui_text(UI_Style *s, Str text) {

@@ -17,7 +17,7 @@
 // TODO toggle through build system or something
 constexpr bool RENDERER_DEBUG_MODE_ENABLED = true;
 
-constexpr u64 MAX_QUAD_COUNT = 4096;
+constexpr u64 MAX_QUAD_COUNT = 10000;
 constexpr u64 MAX_VERTEX_COUNT = MAX_QUAD_COUNT * 4;
 constexpr u64 MAX_INDEX_COUNT = MAX_QUAD_COUNT * 6;
 
@@ -360,6 +360,7 @@ enum UI_Flag : u16 {
     UI_Flag_DrawTexture = bit(3),
     UI_Flag_TextAlignLeft = bit(4),
     UI_Flag_TextAlignRight = bit(5),
+    UI_Flag_InsertChildAtIndex = bit(6),
 };
 derive_enum(UI_Flag);
 
@@ -385,6 +386,7 @@ struct UI_Style {
     UI_Flag flags;
     Texture *texture;
     Color color;
+    u16 child_idx;
 };
 derive_struct(UI_Style);
 
