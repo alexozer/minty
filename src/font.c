@@ -3,15 +3,17 @@
 #include "platform.h"
 
 // TODO thread through program properly
-Str FONT_PATH = S("data/Roboto-Medium.ttf");
+
+// TODO thread through program properly
+// Str FONT_PATH = S("data/Roboto-Medium.ttf");
 // Str FONT_PATH = S("data/NotoSans-Regular.ttf");
 // Str FONT_PATH = S("data/NotoSans-Bold.ttf");
-// Str FONT_PATH = S("data/KosugiMaru-Regular.otf");
-// constexpr u32 FONT_SIZE_PX = 40;
+Str FONT_PATH = S("data/KosugiMaru-Regular.otf");
+constexpr u32 FONT_SIZE_PX = 20;
 
 fn void font_init(ErrorContext *err, FontSystem *ctx) {
     Scope scope = scope_open(err);
-    ctx->inst = create_font_inst(err, FONT_PATH, 30);
+    ctx->inst = create_font_inst(err, FONT_PATH, FONT_SIZE_PX);
     scope_close(scope, "Initialize font rendering system");
 }
 

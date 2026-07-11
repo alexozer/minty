@@ -113,7 +113,9 @@ fn void render(App *app) {
         FVec_TextureRequest texture_requests =
             fvec_alloc(frame_arena, TextureRequest, MAX_QUAD_COUNT);
         render_ui(frame_arena, root, &texture_requests);
-        font_prepare_to_render(&app->font_system, S("Hello, world!"), (PosF){.x = 100, .y = 100},
+
+        Str text = S("人類社会のすべての構成員の固有の尊厳と平等で譲ることので");
+        font_prepare_to_render(&app->font_system, text, (PosF){.x = 100, .y = 100},
                                &texture_requests);
         if (app->debug_draw) {
             debug_render_ui(frame_arena, root, &texture_requests);
