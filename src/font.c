@@ -157,19 +157,32 @@ fn void font_prepare_to_render(FontSystem *ctx, Str text, PosF pos, FVec_Texture
         // Calculate X subpixel position without bitmap X offset because
         // 1) We can't know bitmap X offset until we compute subpixel position -> bitmap step
         // 2) Bitmap X offset is in integer pixels
-        u64 step_idx = (u64)SDL_lroundf((pos.x + glyph_px_x) * 4.f) % 4;
-        if (debug_glyph_step < 4) {
-            step_idx = (u64)debug_glyph_step;  // TODO remove
+        u64 step_idx = (u64)SDL_floorf((glyph_px_x) * 4.f) % 4;
+        if (debug_glyph_step == 0) {
+            step_idx = 0;
         }
         GlyphBitmap *bitmap = &A(bitmap_set->steps, step_idx);
+
+        Color color = COLOR_WHITE;
+        if (debug_glyph_step == 2) {
+            if (step_idx == 0) {
+                color = COLOR_WHITE;
+            } else if (step_idx == 1) {
+                color = COLOR_RED;
+            } else if (step_idx == 2) {
+                color = COLOR_GREEN;
+            } else if (step_idx == 3) {
+                color = COLOR_BLUE;
+            }
+        }
 
         if (bitmap->texture.dims.w > 0 && bitmap->texture.dims.h > 0) {
             TextureRequest *req = fvec_push_zero(reqs);
             req->texture = some(&bitmap->texture, P_Texture);
-            req->top_left_color = COLOR_WHITE;
-            req->top_right_color = COLOR_WHITE;
-            req->bottom_left_color = COLOR_WHITE;
-            req->bottom_right_color = COLOR_WHITE;
+            req->top_left_color = color;
+            req->top_right_color = color;
+            req->bottom_left_color = color;
+            req->bottom_right_color = color;
 
             // Position of glyph bitmap
             f32 window_px_x = pos.x + glyph_px_x + (f32)bitmap->offset_x;

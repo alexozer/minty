@@ -35,7 +35,8 @@ fn UI_Box *build_timer_ui(Arena *arena, Session *session, SizePX size) {
     ui_parent(s, base);
     ui_width_flex(s);
     ui_height_px(s, 80);
-    ui_text(s, S("iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii"));
+    ui_text(
+        s, S("iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii"));
     ui_box(arena, s);
 
     // Debug row 2
