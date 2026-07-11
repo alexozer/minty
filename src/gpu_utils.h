@@ -25,3 +25,5 @@ SDL_GPUTransferBuffer *sdl_create_gpu_transfer_buffer(ErrorContext *err,
                                                       SDL_GPUTransferBufferCreateInfo *info);
 SDL_GPUCommandBuffer *sdl_acquire_gpu_command_buffer(ErrorContext *err, SDL_GPUDevice *device);
 void sdl_submit_gpu_command_buffer(SDL_GPUCommandBuffer *command_buffer);
+u64 quad_vertices(u64 quad_count);
+u64 quad_indices(u64 quad_count);

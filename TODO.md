@@ -2,7 +2,9 @@
 
 ## Next
 
-Text system
+Text: centering
+Text: subpixel positioning?
+Avoid zeroing large empty vertex buffers
 
 ## Prototyping
 
@@ -75,6 +77,8 @@ Vendor some deps so things like the above are easier
 Prune SDL features to bring down binary size
 Forward decl generator
 Include file/line info in asserts / error messages, but only in non-release builds
+Only increase max quad count for debug UI
+    Don't want to see zeroing frame arena show up in profiler
 
 ## Error handling
 

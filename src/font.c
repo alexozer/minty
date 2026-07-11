@@ -5,9 +5,10 @@
 // TODO thread through program properly
 
 // TODO thread through program properly
-Str FONT_PATH = S("data/Roboto-Medium.ttf");
+// Str FONT_PATH = S("data/Roboto-Medium.ttf");
 // Str FONT_PATH = S("data/NotoSans-Regular.ttf");
 // Str FONT_PATH = S("data/NotoSans-Bold.ttf");
+Str FONT_PATH = S("data/NunitoSans-Bold.ttf");
 // Str FONT_PATH = S("data/KosugiMaru-Regular.otf");
 constexpr u32 FONT_SIZE_PX = 40;
 

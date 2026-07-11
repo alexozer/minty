@@ -29,6 +29,13 @@ fn TextureSystem *tex_init(ErrorContext *err,
 
     init_dummy_white_texture(arena, &ctx->dummy_texture);
 
+    constexpr u32 MAX_ICON_QUADS = MAX_QUAD_COUNT / 10;
+    constexpr u32 MAX_GLYPH_QUADS = MAX_QUAD_COUNT - MAX_ICON_QUADS;
+    ctx->icon_mesh.vertices = fvec_alloc(arena, Vertex, quad_vertices(MAX_ICON_QUADS));
+    ctx->icon_mesh.indices = fvec_alloc(arena, u16, quad_indices(MAX_ICON_QUADS));
+    ctx->glyph_mesh.vertices = fvec_alloc(arena, Vertex, quad_vertices(MAX_GLYPH_QUADS));
+    ctx->glyph_mesh.indices = fvec_alloc(arena, u16, quad_indices(MAX_GLYPH_QUADS));
+
     scope_close(scope, "Initialize texture system");
     return ctx;
 }
@@ -132,6 +139,11 @@ fn Arr_P_RenderInst tex_prepare_to_render(Arena *frame_arena,
                                           SizePX window_size,
                                           Arr_TextureRequest requests) {
     FVec_P_RenderInst render_insts = fvec_alloc(frame_arena, P_RenderInst, (u64)8);
+    fvec_reset(&ctx->icon_mesh.vertices);
+    fvec_reset(&ctx->icon_mesh.indices);
+    fvec_reset(&ctx->glyph_mesh.vertices);
+    fvec_reset(&ctx->glyph_mesh.indices);
+
     if (!ctx->textures_cleared) {
         tex_build_clear_insts(frame_arena, ctx, render_state, &render_insts);
         ctx->textures_cleared = true;
@@ -311,26 +323,15 @@ fn void tex_build_draw_insts(Arena *frame_arena,
                              SizePX window_size,
                              Arr_TextureRequest requests,
                              FVec_P_RenderInst *render_insts) {
-    // Max vertex/index count are global limits, but are reused here as the per draw-call limit too
-    // - there'll be some unused space for sure.
-    MeshBuilder icon_mesh = {
-        .vertices = fvec_alloc(frame_arena, Vertex, MAX_VERTEX_COUNT),
-        .indices = fvec_alloc(frame_arena, u16, MAX_INDEX_COUNT),
-    };
-    MeshBuilder glyph_mesh = {
-        .vertices = fvec_alloc(frame_arena, Vertex, MAX_VERTEX_COUNT),
-        .indices = fvec_alloc(frame_arena, u16, MAX_INDEX_COUNT),
-    };
-
     for (u64 i = 0; i < requests.count; i++) {
         TextureRequest *req = &A(requests, i);
 
         Texture *texture = req->texture.present ? req->texture.opt : &ctx->dummy_texture;
         RectPX src = A(ctx->cache_entries, texture->handle.idx).placement;
         if (texture->format == ICON_TEXTURE_FORMAT) {
-            push_atlas_quad(window_size, ctx->icon_atlas, &icon_mesh, src, req);
+            push_atlas_quad(window_size, ctx->icon_atlas, &ctx->icon_mesh, src, req);
         } else if (texture->format == GLYPH_TEXTURE_FORMAT) {
-            push_atlas_quad(window_size, ctx->glyph_atlas, &glyph_mesh, src, req);
+            push_atlas_quad(window_size, ctx->glyph_atlas, &ctx->glyph_mesh, src, req);
         }
     }
 
@@ -343,8 +344,8 @@ fn void tex_build_draw_insts(Arena *frame_arena,
     icon_inst->vertex_shader = render_state->vertex_shader;
     icon_inst->fragment_shader = render_state->icon_frag_shader;
     icon_inst->mesh = (Mesh){
-        .vertices = fvec_arr(&icon_mesh.vertices),
-        .indices = fvec_arr(&icon_mesh.indices),
+        .vertices = fvec_arr(&ctx->icon_mesh.vertices),
+        .indices = fvec_arr(&ctx->icon_mesh.indices),
     };
     fvec_push(render_insts, icon_inst);
 
@@ -357,8 +358,8 @@ fn void tex_build_draw_insts(Arena *frame_arena,
     glyph_inst->vertex_shader = render_state->vertex_shader;
     glyph_inst->fragment_shader = render_state->glyph_frag_shader;
     glyph_inst->mesh = (Mesh){
-        .vertices = fvec_arr(&glyph_mesh.vertices),
-        .indices = fvec_arr(&glyph_mesh.indices),
+        .vertices = fvec_arr(&ctx->glyph_mesh.vertices),
+        .indices = fvec_arr(&ctx->glyph_mesh.indices),
     };
     fvec_push(render_insts, glyph_inst);
 }

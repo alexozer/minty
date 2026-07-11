@@ -14,6 +14,7 @@ fn void render_init(ErrorContext *err, App *app) {
 
     RenderState *render_state = arena_push(app->app_arena, RenderState);
     app->render_state = render_state;
+    render_state->texture_requests = fvec_alloc(app->app_arena, TextureRequest, MAX_QUAD_COUNT);
     render_state->device =
         SDL_CreateGPUDevice(OS_SHADER_FORMAT, RENDERER_DEBUG_MODE_ENABLED, nullptr);
     if (!render_state->device) {
@@ -37,21 +38,21 @@ fn void init_vertex_buffers(ErrorContext *err, RenderState *render_state) {
 
     SDL_GPUBufferCreateInfo vert_info = {
         .usage = SDL_GPU_BUFFERUSAGE_VERTEX,
-        .size = sizeof(Vertex) * MAX_VERTEX_COUNT,
+        .size = (u32)(sizeof(Vertex) * quad_vertices(MAX_QUAD_COUNT)),
     };
     render_state->vertex_buffer =
         sdl_create_gpu_buffer(err, render_state->device, &vert_info, S("THE vertex buffer"));
 
     SDL_GPUBufferCreateInfo index_info = {
         .usage = SDL_GPU_BUFFERUSAGE_INDEX,
-        .size = sizeof(u16) * MAX_INDEX_COUNT,
+        .size = (u32)(sizeof(u16) * quad_indices(MAX_QUAD_COUNT)),
     };
     render_state->index_buffer =
         sdl_create_gpu_buffer(err, render_state->device, &index_info, S("THE index buffer"));
 
     SDL_GPUTransferBufferCreateInfo transfer_buffer_info = {
         .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-        .size = (sizeof(Vertex) * MAX_VERTEX_COUNT) + (sizeof(u16) * MAX_INDEX_COUNT),
+        .size = vert_info.size + index_info.size,
     };
     render_state->geom_transfer_buffer =
         sdl_create_gpu_transfer_buffer(err, render_state->device, &transfer_buffer_info);
@@ -108,22 +109,23 @@ fn void render(App *app) {
     SizePX window_size = {(u16)width, (u16)height};
 
     if (swapchain_texture) {  // Apparently can be null if window is minimized
+        FVec_TextureRequest *texture_requests = &render_state->texture_requests;
+        fvec_reset(texture_requests);
+
         UI_Box *root = build_timer_ui(frame_arena, app->session, window_size);
 
-        FVec_TextureRequest texture_requests =
-            fvec_alloc(frame_arena, TextureRequest, MAX_QUAD_COUNT);
-        render_ui(frame_arena, root, &app->font_system, &texture_requests);
+        render_ui(frame_arena, root, &app->font_system, texture_requests);
 
         // Str text = S("人類社会のすべての構成員の固有の尊厳と平等で譲ることので");
         // font_prepare_to_render(&app->font_system, text, (PosF){.x = 100, .y = 100},
         //                        &texture_requests);
         if (app->debug_draw) {
-            debug_render_ui(frame_arena, root, &texture_requests);
+            debug_render_ui(frame_arena, root, texture_requests);
         }
 
         Arr_P_RenderInst render_insts =
             tex_prepare_to_render(frame_arena, app->texture_system, render_state, window_size,
-                                  fvec_arr(&texture_requests));
+                                  fvec_arr(texture_requests));
         arr_sort(render_insts, compare_render_insts);
 
         // Group render insts by type
@@ -249,7 +251,7 @@ fn void do_upload_geometry_pass(RenderState *render_state,
     // Upload index data
     SDL_GPUTransferBufferLocation index_src = {
         .transfer_buffer = render_state->geom_transfer_buffer,
-        .offset = MAX_VERTEX_COUNT * sizeof(Vertex),
+        .offset = (u32)(quad_vertices(MAX_QUAD_COUNT) * sizeof(Vertex)),
     };
     SDL_GPUBufferRegion index_dest = {
         .buffer = render_state->index_buffer,
@@ -317,11 +319,11 @@ fn void do_draw_passes(RenderState *render_state,
         render_state->device, render_state->geom_transfer_buffer, true);
     FVec_Vertex vertices = {
         .ptr = transfer_data,
-        .capacity = MAX_VERTEX_COUNT,
+        .capacity = quad_vertices(MAX_QUAD_COUNT),
     };
     FVec_u16 indices = {
-        .ptr = (u16 *)((Vertex *)transfer_data + MAX_VERTEX_COUNT),
-        .capacity = MAX_INDEX_COUNT,
+        .ptr = (u16 *)((Vertex *)transfer_data + quad_vertices(MAX_QUAD_COUNT)),
+        .capacity = quad_indices(MAX_QUAD_COUNT),
     };
 
     Arr_VertexBufferRegion regions = arena_push_arr(scratch, VertexBufferRegion, draw_insts.count);

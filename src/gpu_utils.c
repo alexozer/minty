@@ -184,3 +184,11 @@ fn SDL_GPUCommandBuffer *sdl_acquire_gpu_command_buffer(ErrorContext *err, SDL_G
 fn void sdl_submit_gpu_command_buffer(SDL_GPUCommandBuffer *command_buffer) {
     if (command_buffer) SDL_SubmitGPUCommandBuffer(command_buffer);
 }
+
+fn u64 quad_vertices(u64 quad_count) {
+    return quad_count * 4;
+}
+
+fn u64 quad_indices(u64 quad_count) {
+    return quad_count * 6;
+}

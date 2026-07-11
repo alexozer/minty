@@ -19,8 +19,6 @@
 constexpr bool RENDERER_DEBUG_MODE_ENABLED = true;
 
 constexpr u64 MAX_QUAD_COUNT = 10000;
-constexpr u64 MAX_VERTEX_COUNT = MAX_QUAD_COUNT * 4;
-constexpr u64 MAX_INDEX_COUNT = MAX_QUAD_COUNT * 6;
 
 struct SizePX {
     u16 w, h;
@@ -293,6 +291,8 @@ struct TextureSystem {
     SDL_GPUGraphicsPipeline *clear_icon_pipeline;
     SDL_GPUGraphicsPipeline *clear_glyph_pipeline;
     Texture dummy_texture;
+    MeshBuilder icon_mesh;
+    MeshBuilder glyph_mesh;
 };
 derive_struct(TextureSystem);
 
@@ -456,6 +456,9 @@ struct RenderState {
     SDL_GPUTransferBuffer *geom_transfer_buffer;
     SDL_GPUBuffer *vertex_buffer;
     SDL_GPUBuffer *index_buffer;
+
+    // Per-frame buffers
+    FVec_TextureRequest texture_requests;
 };
 derive_struct(RenderState);
 
