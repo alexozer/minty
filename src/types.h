@@ -215,20 +215,6 @@ struct Atlas {
 };
 derive_struct(Atlas);
 
-struct GlyphMetrics {
-    f32 bearing_px_x;  // Distance from left start to glyph start
-    f32 bearing_px_y;  // Distance from baseline to top of glyph
-};
-derive_struct(GlyphMetrics);
-
-struct GlyphAtlas {
-    Atlas *atlas;
-    u16 px_per_em;  // AKA the face size in pixels
-    u16 units_per_em;
-    Arr_GlyphMetrics metrics;
-};
-derive_struct(GlyphAtlas);
-
 struct Mesh {
     Arr_Vertex vertices;
     Arr_u16 indices;
@@ -249,13 +235,18 @@ struct ShapedGlyph {
 derive_struct(ShapedGlyph);
 
 struct GlyphBitmap {
-    bool rendered;
-    u32 glyph_id;
     Texture texture;
-    f32 bearing_px_x;
-    f32 bearing_px_y;
+    // Can actually go negative!
+    i16 offset_x;
+    i16 offset_y;
 };
 derive_struct(GlyphBitmap);
+
+struct GlyphBitmapSet {
+    bool rendered;
+    Arr_GlyphBitmap steps;
+};
+derive_struct(GlyphBitmapSet);
 
 struct FontInst {
     Arena *arena;
@@ -266,7 +257,7 @@ struct FontInst {
     kbts_shape_context *kbts_ctx;
 
     // Keyed by glyph ID
-    Arr_GlyphBitmap bitmaps;
+    Arr_GlyphBitmapSet bitmap_sets;
 };
 derive_struct(FontInst);
 
@@ -469,9 +460,6 @@ struct App {
     SDL_Keycode prev_keys;
     // TODO: float-based scrolling on NDC could mess with pixel-perfect alignment
     f32 scroll;
-    f32 scale;  // `scale + 1.0f` is actual scale
-    bool insert_mode_enabled;
-    Vec_u8 typed_text;
     bool debug_draw;
 
     Arena *session_arena;

@@ -101,8 +101,27 @@ derive_type(f64);
 #define align_to(n, a) ((n) + (a - 1)) & ~(a - 1);
 u64 next_pow2(u64 x);
 
-#define min(a, b) ((a) < (b) ? (a) : (b))
-#define max(a, b) ((a) > (b) ? (a) : (b))
+#define min(a, b)                              \
+    ({                                         \
+        typeof(a) _min_a_ = (a);               \
+        typeof(b) _min_b_ = (b);               \
+        _min_a_ < _min_b_ ? _min_a_ : _min_b_; \
+    })
+
+#define max(a, b)                              \
+    ({                                         \
+        typeof(a) _max_a_ = (a);               \
+        typeof(b) _max_b_ = (b);               \
+        _max_a_ > _max_b_ ? _max_a_ : _max_b_; \
+    })
+
+#define clamp(v, v_min, v_max)           \
+    ({                                   \
+        typeof(v) _v_ = (v);             \
+        typeof(v) _v_min_ = (v_min);     \
+        typeof(v) _v_max_ = (v_max);     \
+        max(_v_min_, min(_v_max_, _v_)); \
+    })
 
 #define c_arr_count(a) (sizeof((a)) / sizeof((a)[0]))
 

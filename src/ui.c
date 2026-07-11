@@ -120,7 +120,7 @@ fn void layout_ui_main_axis(UI_Box *parent, Axis axis) {
     }
 
     // Compute all children pos/size
-    f32 total_flex_px = max(0, parent_size - total_fixed_px);
+    f32 total_flex_px = max(0.f, parent_size - total_fixed_px);
     f32 current_pos_px = 0;
     for (u64 i = 0; i < parent->childs.count; i++) {
         UI_Dim *in_size = &A(parent->childs, i)->input_size.dims[axis];

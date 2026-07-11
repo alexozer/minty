@@ -126,6 +126,8 @@ fn SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
 //     app->session = session;
 // }
 
+extern i32 debug_glyph_step;
+
 fn SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
     App *app = (App *)appstate;
 
@@ -160,29 +162,16 @@ fn SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
             timer_apply_action(app->app_arena, app->session, TimerAction_Pause, t);
             break;
         }
-        case SDLK_BACKSPACE: {
-            if (app->insert_mode_enabled) {
-                if (app->typed_text.count > 0) {
-                    vec_pop(&app->typed_text);
-                }
-            } else {
-                timer_apply_action(app->app_arena, app->session, TimerAction_ResetAndSave, t);
-            }
-            break;
-        }
-        case SDLK_I: {
-            SDL_StartTextInput(app->window);
-            app->insert_mode_enabled = true;
-            break;
-        }
-        case SDLK_ESCAPE: {
-            SDL_StopTextInput(app->window);
-            app->insert_mode_enabled = false;
-            vec_reset(&app->typed_text);
-            break;
-        }
         case SDLK_GRAVE: {
             app->debug_draw = !app->debug_draw;
+            break;
+        }
+        case SDLK_LEFT: {
+            debug_glyph_step = clamp(debug_glyph_step - 1, 0, 4);
+            break;
+        }
+        case SDLK_RIGHT: {
+            debug_glyph_step = clamp(debug_glyph_step + 1, 0, 4);
             break;
         }
         }
@@ -206,11 +195,6 @@ fn SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
 
     if (event->common.type == SDL_EVENT_MOUSE_WHEEL) {
         app->scroll += event->wheel.y;
-    }
-
-    if (event->common.type == SDL_EVENT_TEXT_INPUT) {
-        Str text = str_from_c(event->text.text);
-        vec_extend(app->app_arena, &app->typed_text, text);
     }
 
     return SDL_APP_CONTINUE;

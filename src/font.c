@@ -39,7 +39,7 @@ fn FontInst *create_font_inst(ErrorContext *err, Str font_path, u32 face_size_px
         err_report(err, "Failed to set font face size");
     }
 
-    inst->bitmaps = arena_push_arr(inst->arena, GlyphBitmap, (u64)inst->ft_face->num_glyphs);
+    inst->bitmap_sets = arena_push_arr(inst->arena, GlyphBitmapSet, (u64)inst->ft_face->num_glyphs);
 
     inst->kbts_ctx = kbts_CreateShapeContext(0, 0);
     kbts_ShapePushFontFromMemory(inst->kbts_ctx, inst->font_file.ptr, (int)inst->font_file.count,
@@ -58,29 +58,39 @@ fn void destroy_font_inst(FontInst *inst) {
 }
 
 fn void rasterize_glyph(FontInst *inst, u32 glyph_id) {
-    GlyphBitmap *bitmap = &A(inst->bitmaps, glyph_id);
-    log_assert(!bitmap->rendered);  // Callers should check before calling
+    GlyphBitmapSet *bitmap_set = &A(inst->bitmap_sets, glyph_id);
+    log_assert(!bitmap_set->rendered);  // Callers should check before calling
 
-    // TODO re-enable hinting once we can account for spacing discrepancies
-    // Also maybe disable on macos for more native look?
-    FT_Load_Glyph(inst->ft_face, glyph_id, FT_LOAD_NO_HINTING);
-    // if (face->glyph->format == FT_GLYPH_FORMAT_BITMAP) {
-    //     bail(err, "TODO: handle bitmap glyph");
-    // }
-    FT_Render_Glyph(inst->ft_face->glyph, FT_RENDER_MODE_NORMAL);
+    bitmap_set->rendered = true;
+    bitmap_set->steps = arena_push_arr(inst->arena, GlyphBitmap, 4);
 
-    FT_Bitmap ft_bitmap = inst->ft_face->glyph->bitmap;
-    Arr_u8 tmp_buffer = {.ptr = ft_bitmap.buffer, .count = ft_bitmap.width * ft_bitmap.rows};
+    for (u64 step_idx = 0; step_idx < bitmap_set->steps.count; step_idx++) {
+        GlyphBitmap *bitmap = &A(bitmap_set->steps, step_idx);
 
-    bitmap->rendered = true;
+        // 2x2 transform matrix with 16.16 fixed-point coefficients
+        FT_Matrix matrix = {.xx = 0x10000, .yy = 0x10000};
+        // Pen position in 26.6 fixed-point
+        FT_Vector pen = {.x = (i32)(16 * step_idx), .y = 0};
+        FT_Set_Transform(inst->ft_face, &matrix, &pen);
 
-    bitmap->texture.format = GLYPH_TEXTURE_FORMAT;
-    bitmap->texture.buffer = arr_clone(inst->arena, tmp_buffer);
-    bitmap->texture.dims = (SizePX){(u16)ft_bitmap.width, (u16)ft_bitmap.rows};
+        // TODO re-enable hinting once we can account for spacing discrepancies
+        // Also maybe disable on macos for more native look?
+        FT_Load_Glyph(inst->ft_face, glyph_id, FT_LOAD_NO_HINTING);
+        // if (face->glyph->format == FT_GLYPH_FORMAT_BITMAP) {
+        //     bail(err, "TODO: handle bitmap glyph");
+        // }
+        FT_Render_Glyph(inst->ft_face->glyph, FT_RENDER_MODE_NORMAL);
 
-    // Convert from 26.6 fixed point pixels to f32 pixels
-    bitmap->bearing_px_x = (f32)inst->ft_face->glyph->bitmap_left;
-    bitmap->bearing_px_y = (f32)inst->ft_face->glyph->bitmap_top;
+        FT_Bitmap ft_bitmap = inst->ft_face->glyph->bitmap;
+        Arr_u8 tmp_buffer = {.ptr = ft_bitmap.buffer, .count = ft_bitmap.width * ft_bitmap.rows};
+
+        bitmap->texture.format = GLYPH_TEXTURE_FORMAT;
+        bitmap->texture.buffer = arr_clone(inst->arena, tmp_buffer);
+        bitmap->texture.dims = (SizePX){(u16)ft_bitmap.width, (u16)ft_bitmap.rows};
+
+        bitmap->offset_x = (i16)inst->ft_face->glyph->bitmap_left;
+        bitmap->offset_y = (i16)inst->ft_face->glyph->bitmap_top;
+    }
 }
 
 // TODO check font for errors on load, but afterwards assume it's good
@@ -122,6 +132,9 @@ fn Arr_ShapedGlyph shape_text(Arena *arena, FontInst *inst, Str text) {
     return vec_arr(&output);
 }
 
+// TODO REMOVE!!
+i32 debug_glyph_step;
+
 fn void font_prepare_to_render(FontSystem *ctx, Str text, PosF pos, FVec_TextureRequest *reqs) {
     Arena *scratch = arena_acquire();
 
@@ -129,11 +142,26 @@ fn void font_prepare_to_render(FontSystem *ctx, Str text, PosF pos, FVec_Texture
     for (u64 i = 0; i < shape_result.count; i++) {
         ShapedGlyph shaped_glyph = A(shape_result, i);
         u32 glyph_id = shaped_glyph.glyph_id;
-        GlyphBitmap *bitmap = &A(ctx->inst->bitmaps, glyph_id);
+        GlyphBitmapSet *bitmap_set = &A(ctx->inst->bitmap_sets, glyph_id);
 
-        if (!bitmap->rendered) {
+        if (!bitmap_set->rendered) {
             rasterize_glyph(ctx->inst, glyph_id);
         }
+
+        // Shaping position of glyph
+        f32 glyph_px_x = (f32)shaped_glyph.glyph_x_fu * (f32)ctx->inst->face_size_px /
+                         (f32)ctx->inst->ft_face->units_per_EM;
+        f32 glyph_px_y = (f32)shaped_glyph.glyph_y_fu * (f32)ctx->inst->face_size_px /
+                         (f32)ctx->inst->ft_face->units_per_EM;
+
+        // Calculate X subpixel position without bitmap X offset because
+        // 1) We can't know bitmap X offset until we compute subpixel position -> bitmap step
+        // 2) Bitmap X offset is in integer pixels
+        u64 step_idx = (u64)SDL_lroundf((pos.x + glyph_px_x) * 4.f) % 4;
+        if (debug_glyph_step < 4) {
+            step_idx = (u64)debug_glyph_step;  // TODO remove
+        }
+        GlyphBitmap *bitmap = &A(bitmap_set->steps, step_idx);
 
         if (bitmap->texture.dims.w > 0 && bitmap->texture.dims.h > 0) {
             TextureRequest *req = fvec_push_zero(reqs);
@@ -143,21 +171,17 @@ fn void font_prepare_to_render(FontSystem *ctx, Str text, PosF pos, FVec_Texture
             req->bottom_left_color = COLOR_WHITE;
             req->bottom_right_color = COLOR_WHITE;
 
-            // Shaping position of glyph
-            f32 glyph_px_x = (f32)shaped_glyph.glyph_x_fu * (f32)ctx->inst->face_size_px /
-                             (f32)ctx->inst->ft_face->units_per_EM;
-            f32 glyph_px_y = (f32)shaped_glyph.glyph_y_fu * (f32)ctx->inst->face_size_px /
-                             (f32)ctx->inst->ft_face->units_per_EM;
-
             // Position of glyph bitmap
-            f32 bitmap_px_x = glyph_px_x + bitmap->bearing_px_x;
-            f32 bitmap_px_y = glyph_px_y + bitmap->bearing_px_y;
+            f32 window_px_x = pos.x + glyph_px_x + (f32)bitmap->offset_x;
+            f32 window_px_y = pos.y - (glyph_px_y + (f32)bitmap->offset_y);
 
             // Snap position nearest pixel to render glyph pixel-perfect
             // (maybe we shouldn't snap during animations?)
             req->transform = (RectF){
-                .x = SDL_roundf(pos.x + bitmap_px_x),
-                .y = SDL_roundf(pos.y - bitmap_px_y),
+                // Floor because we round to nearest subpixel in bitmap selection
+                .x = SDL_floorf(window_px_x),
+                // Snap to nearest pixel
+                .y = SDL_roundf(window_px_y),
                 .w = (f32)bitmap->texture.dims.w,
                 .h = (f32)bitmap->texture.dims.h,
             };

@@ -31,6 +31,20 @@ fn UI_Box *build_timer_ui(Arena *arena, Session *session, SizePX size) {
     ui_text(s, session->file.category_name);
     ui_box(arena, s);
 
+    // Debug row 1
+    ui_parent(s, base);
+    ui_width_flex(s);
+    ui_height_px(s, 80);
+    ui_text(s, S("iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii"));
+    ui_box(arena, s);
+
+    // Debug row 2
+    ui_parent(s, base);
+    ui_width_flex(s);
+    ui_height_px(s, 80);
+    ui_text(s, S("人類社会のすべての構成員の固有の尊厳と平等で譲ることので"));
+    ui_box(arena, s);
+
     // Segments container
     ui_parent(s, base);
     ui_width_flex(s);
