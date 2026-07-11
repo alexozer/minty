@@ -10,6 +10,8 @@ fn UI_Box *ui_box(Arena *frame_arena, UI_Style *s) {
     box->text_content = s->text_content;
     box->texture = s->texture;
     box->color = s->color;
+    box->font_file = s->font_file;
+    box->font_size_px = s->font_size_px;
 
     if (s->parent != nullptr) {
         box->parent = s->parent;
@@ -74,9 +76,11 @@ fn void ui_child_idx(UI_Style *s, u16 idx) {
     s->child_idx = idx;
 }
 
-fn void ui_text(UI_Style *s, Str text) {
+fn void ui_text(UI_Style *s, Str text, FontFile *font_file, u32 font_size_px) {
     s->flags |= UI_Flag_DrawText;
     s->text_content = text;
+    s->font_file = font_file;
+    s->font_size_px = font_size_px;
 }
 
 fn void ui_texture(UI_Style *s, Texture *texture) {
@@ -196,34 +200,41 @@ fn void layout_ui_impl(UI_Box *box) {
 fn void render_ui(Arena *frame_arena,
                   UI_Box *root,
                   FontSystem *font_system,
-                  FVec_TextureRequest *requests) {
+                  FVec_QuadRequest *requests) {
     render_ui_impl(frame_arena, root, font_system, requests);
 }
 
 fn void render_ui_impl(Arena *frame_arena,
                        UI_Box *box,
                        FontSystem *font_system,
-                       FVec_TextureRequest *reqs) {
+                       FVec_QuadRequest *quad_reqs) {
     if (box->flags & UI_Flag_DrawTexture) {
         log_assert(box->texture != nullptr);
 
         f32 texture_aspect_ratio = (f32)box->texture->dims.w / box->texture->dims.h;
         RectF transform = scale_rect_proportionally_to_fit(box->output_size, texture_aspect_ratio);
-        TextureRequest *req = fvec_push_zero(reqs);
-        req->texture = some(box->texture, P_Texture);
-        req->transform = transform;
-        req->top_left_color = COLOR_WHITE;
-        req->top_right_color = COLOR_WHITE;
-        req->bottom_left_color = COLOR_WHITE;
-        req->bottom_right_color = COLOR_WHITE;
+        QuadRequest *quad_req = fvec_push_zero(quad_reqs);
+        quad_req->texture = some(box->texture, P_Texture);
+        quad_req->transform = transform;
+        quad_req->top_left_color = COLOR_WHITE;
+        quad_req->top_right_color = COLOR_WHITE;
+        quad_req->bottom_left_color = COLOR_WHITE;
+        quad_req->bottom_right_color = COLOR_WHITE;
     }
 
     if (box->flags & UI_Flag_DrawText) {
-        font_prepare_to_render(font_system, box->text_content, box->output_size.pos, reqs);
+        FontRequest font_req = {
+            .text = box->text_content,
+            .bbox = box->output_size,
+            .font_file = box->font_file,
+            .font_size_px = box->font_size_px,
+            .color = COLOR_WHITE,
+        };
+        font_prepare_to_render(font_system, &font_req, quad_reqs);
     }
 
     for (u64 i = 0; i < box->childs.count; i++) {
-        render_ui_impl(frame_arena, A(box->childs, i), font_system, reqs);
+        render_ui_impl(frame_arena, A(box->childs, i), font_system, quad_reqs);
     }
 }
 
@@ -244,18 +255,18 @@ fn RectF scale_rect_proportionally_to_fit(RectF outer, f32 inner_aspect_ratio) {
     return inner;
 }
 
-fn void debug_render_ui(Arena *frame_arena, UI_Box *root, FVec_TextureRequest *requests) {
+fn void debug_render_ui(Arena *frame_arena, UI_Box *root, FVec_QuadRequest *requests) {
     debug_render_ui_impl(root, 0, requests);
 }
 
-fn void debug_render_ui_impl(UI_Box *box, u64 depth, FVec_TextureRequest *reqs) {
+fn void debug_render_ui_impl(UI_Box *box, u64 depth, FVec_QuadRequest *reqs) {
     constexpr f32 BORDER_THICKNESS_PX = 2.f;
 
     RectF box_tf = box->output_size;
 
     Color color = {.g = 0xff, .a = (u8)((1.f / ((f32)depth + 1)) * 0xff)};
 
-    TextureRequest *top = fvec_push_zero(reqs);
+    QuadRequest *top = fvec_push_zero(reqs);
     top->transform.x = box_tf.x;
     top->transform.y = box_tf.y;
     top->transform.w = box_tf.w;
@@ -265,7 +276,7 @@ fn void debug_render_ui_impl(UI_Box *box, u64 depth, FVec_TextureRequest *reqs) 
     top->bottom_left_color = color;
     top->bottom_right_color = color;
 
-    TextureRequest *bottom = fvec_push_zero(reqs);
+    QuadRequest *bottom = fvec_push_zero(reqs);
     bottom->transform.x = box_tf.x;
     bottom->transform.y = box_tf.y + box_tf.h - BORDER_THICKNESS_PX;
     bottom->transform.w = box_tf.w;
@@ -275,7 +286,7 @@ fn void debug_render_ui_impl(UI_Box *box, u64 depth, FVec_TextureRequest *reqs) 
     bottom->bottom_left_color = color;
     bottom->bottom_right_color = color;
 
-    TextureRequest *left = fvec_push_zero(reqs);
+    QuadRequest *left = fvec_push_zero(reqs);
     left->transform.x = box_tf.x;
     left->transform.y = box_tf.y;
     left->transform.w = BORDER_THICKNESS_PX;
@@ -285,7 +296,7 @@ fn void debug_render_ui_impl(UI_Box *box, u64 depth, FVec_TextureRequest *reqs) 
     left->bottom_left_color = color;
     left->bottom_right_color = color;
 
-    TextureRequest *right = fvec_push_zero(reqs);
+    QuadRequest *right = fvec_push_zero(reqs);
     right->transform.x = box_tf.x + box_tf.w - BORDER_THICKNESS_PX;
     right->transform.y = box_tf.y;
     right->transform.w = BORDER_THICKNESS_PX;

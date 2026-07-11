@@ -21,29 +21,31 @@ fn UI_Box *build_timer_ui(Arena *arena, Session *session, SizePX size) {
     ui_parent(s, base);
     ui_width_flex(s);
     ui_height_px(s, 80);
-    ui_text(s, session->file.game_name);
+    ui_text(s, session->file.game_name, &session->layout.nunito_sans_bold, 35);
     ui_box(arena, s);
 
     // Category name
     ui_parent(s, base);
     ui_width_flex(s);
     ui_height_px(s, 80);
-    ui_text(s, session->file.category_name);
+    ui_text(s, session->file.category_name, &session->layout.nunito_sans_bold, 35);
     ui_box(arena, s);
 
     // Debug row 1
     ui_parent(s, base);
     ui_width_flex(s);
     ui_height_px(s, 80);
-    ui_text(
-        s, S("iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii"));
+    ui_text(s,
+            S("iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii"),
+            &session->layout.nunito_sans_bold, 20);
     ui_box(arena, s);
 
     // Debug row 2
     ui_parent(s, base);
     ui_width_flex(s);
     ui_height_px(s, 80);
-    ui_text(s, S("人類社会のすべての構成員の固有の尊厳と平等で譲ることので"));
+    ui_text(s, S("人類社会のすべての構成員の固有の尊厳と平等で譲ることので"),
+            &session->layout.kosugi_maru_regular, 25);
     ui_box(arena, s);
 
     // Segments container

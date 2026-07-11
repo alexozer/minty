@@ -10,11 +10,11 @@
 fn void render_init(ErrorContext *err, App *app) {
     Scope scope = scope_open(err);
 
-    // TODO initialize in font system
+    font_init(&app->font_system, app->app_arena);
 
     RenderState *render_state = arena_push(app->app_arena, RenderState);
     app->render_state = render_state;
-    render_state->texture_requests = fvec_alloc(app->app_arena, TextureRequest, MAX_QUAD_COUNT);
+    render_state->quad_requests = fvec_alloc(app->app_arena, QuadRequest, MAX_QUAD_COUNT);
     render_state->device =
         SDL_CreateGPUDevice(OS_SHADER_FORMAT, RENDERER_DEBUG_MODE_ENABLED, nullptr);
     if (!render_state->device) {
@@ -28,7 +28,6 @@ fn void render_init(ErrorContext *err, App *app) {
     }
     app->texture_system = tex_init(err, app->app_arena, render_state->device,
                                    render_state->vertex_shader, render_state->glyph_frag_shader);
-    font_init(err, &app->font_system);
 
     scope_close(scope, "Initialize renderer");
 }
@@ -109,20 +108,19 @@ fn void render(App *app) {
     SizePX window_size = {(u16)width, (u16)height};
 
     if (swapchain_texture) {  // Apparently can be null if window is minimized
-        FVec_TextureRequest *texture_requests = &render_state->texture_requests;
-        fvec_reset(texture_requests);
+        FVec_QuadRequest *quad_requests = &render_state->quad_requests;
+        fvec_reset(quad_requests);
 
         UI_Box *root = build_timer_ui(frame_arena, app->session, window_size);
 
-        render_ui(frame_arena, root, &app->font_system, texture_requests);
+        render_ui(frame_arena, root, &app->font_system, quad_requests);
 
         if (app->debug_draw) {
-            debug_render_ui(frame_arena, root, texture_requests);
+            debug_render_ui(frame_arena, root, quad_requests);
         }
 
-        Arr_P_RenderInst render_insts =
-            tex_prepare_to_render(frame_arena, app->texture_system, render_state, window_size,
-                                  fvec_arr(texture_requests));
+        Arr_P_RenderInst render_insts = tex_prepare_to_render(
+            frame_arena, app->texture_system, render_state, window_size, fvec_arr(quad_requests));
         arr_sort(render_insts, compare_render_insts);
 
         // Group render insts by type

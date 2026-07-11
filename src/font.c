@@ -1,6 +1,5 @@
 #include "font.h"
 #include "base.h"
-#include "platform.h"
 
 // TODO thread through program properly
 
@@ -10,42 +9,85 @@
 // Str FONT_PATH = S("data/NotoSans-Bold.ttf");
 Str FONT_PATH = S("data/NunitoSans-Bold.ttf");
 // Str FONT_PATH = S("data/KosugiMaru-Regular.otf");
-constexpr u32 FONT_SIZE_PX = 40;
 
-fn void font_init(ErrorContext *err, FontSystem *ctx) {
-    Scope scope = scope_open(err);
-    ctx->inst = create_font_inst(err, FONT_PATH, FONT_SIZE_PX);
-    scope_close(scope, "Initialize font rendering system");
+bool fn font_handle_eq(FontHandle h1, FontHandle h2) {
+    return h1.idx == h2.idx && h1.generation == h2.generation;
 }
 
-fn FontInst *create_font_inst(ErrorContext *err, Str font_path, u32 face_size_px) {
+FontHandle next_font_handle(FontSystem *ctx) {
+    ctx->last_handle.idx++;
+    return ctx->last_handle;
+}
+
+fn FontInst *get_or_create_font_inst(FontSystem *ctx, FontRequest *req) {
+    FontInst *inst = nullptr;
+    for (u64 i = 0; i < ctx->fonts.count; i++) {
+        FontInst *curr_inst = &A(ctx->fonts, i);
+        bool handles_eq = font_handle_eq(curr_inst->font_file->handle, req->font_file->handle);
+        bool size_eq = curr_inst->face_size_px == req->font_size_px;
+        if (handles_eq && size_eq) {
+            inst = curr_inst;
+        }
+    }
+
+    if (inst == nullptr) {
+        // TODO do font loading / error handling outside render loop
+        Arena *err_arena = arena_acquire();
+        ErrorContext err_base = {.arena = err_arena};
+        ErrorContext *err = &err_base;
+
+        inst = add_font_inst(err, ctx, req->font_file, req->font_size_px);
+
+        if (err_occurred(err)) {
+            err_log(err);
+            abort();
+        }
+        arena_release(err_arena);
+    }
+
+    return inst;
+}
+
+fn void font_init(FontSystem *ctx, Arena *arena) {
+    ctx->fonts = fvec_alloc(arena, FontInst, (u64)8);
+}
+
+fn FontInst *add_font_inst(ErrorContext *err,
+                           FontSystem *ctx,
+                           FontFile *font_file,
+                           u32 face_size_px) {
     Scope scope = scope_open(err);
 
-    Arena *inst_arena = arena_acquire();
-    FontInst *inst = arena_push(inst_arena, FontInst);
-    inst->arena = inst_arena;
+    FontInst *inst = fvec_push_zero(&ctx->fonts);
 
-    inst->font_file = os_read_file(err, inst->arena, font_path);
-    inst->face_size_px = face_size_px;
+    Arena *inst_arena = arena_acquire();
+    inst->arena = inst_arena;
+    inst->font_file = font_file;
 
     if (FT_Init_FreeType(&inst->ft_ctx) != FT_Err_Ok) {
         err_report(err, "Failed to initialize freetype");
     }
-    if (FT_New_Memory_Face(inst->ft_ctx, inst->font_file.ptr, (long)inst->font_file.count, 0,
-                           &inst->ft_face) != FT_Err_Ok) {
+    if (FT_New_Memory_Face(inst->ft_ctx, inst->font_file->contents.ptr,
+                           (long)inst->font_file->contents.count, 0, &inst->ft_face) != FT_Err_Ok) {
         err_report(err, "Failed to load font face for glyph rendering");
     }
     if (FT_Set_Pixel_Sizes(inst->ft_face, face_size_px, 0) != FT_Err_Ok) {
         err_report(err, "Failed to set font face size");
     }
 
+    font_file->handle = next_font_handle(ctx);
+    inst->font_file = font_file;
+    inst->face_size_px = face_size_px;
+    inst->family_name = str_clone(inst->arena, str_from_c(inst->ft_face->family_name));
+    inst->style_name = str_clone(inst->arena, str_from_c(inst->ft_face->style_name));
     inst->bitmap_sets = arena_push_arr(inst->arena, GlyphBitmapSet, (u64)inst->ft_face->num_glyphs);
 
     inst->kbts_ctx = kbts_CreateShapeContext(0, 0);
-    kbts_ShapePushFontFromMemory(inst->kbts_ctx, inst->font_file.ptr, (int)inst->font_file.count,
-                                 0);
+    kbts_ShapePushFontFromMemory(inst->kbts_ctx, inst->font_file->contents.ptr,
+                                 (int)inst->font_file->contents.count, 0);
 
-    scope_close(scope, "Load font: %.*s", SF(font_path));
+    scope_close(scope, "Load font: family = '%.*s', style = '%.*s'", SF(inst->family_name),
+                SF(inst->style_name));
     return inst;
 }
 
@@ -102,7 +144,6 @@ fn void rasterize_glyph(FontInst *inst, u32 glyph_id) {
 }
 
 // TODO check font for errors on load, but afterwards assume it's good
-// TODO cache shaping context
 // TODO arena allocate kbts stuff
 // TODO handling style/direction/face runs etc.
 fn Arr_ShapedGlyph shape_text(Arena *arena, FontInst *inst, Str text) {
@@ -140,24 +181,28 @@ fn Arr_ShapedGlyph shape_text(Arena *arena, FontInst *inst, Str text) {
     return vec_arr(&output);
 }
 
-fn void font_prepare_to_render(FontSystem *ctx, Str text, PosF pos, FVec_TextureRequest *reqs) {
+fn void font_prepare_to_render(FontSystem *ctx,
+                               FontRequest *font_req,
+                               FVec_QuadRequest *quad_reqs) {
     Arena *scratch = arena_acquire();
 
-    Arr_ShapedGlyph shape_result = shape_text(scratch, ctx->inst, text);
+    FontInst *inst = get_or_create_font_inst(ctx, font_req);
+
+    Arr_ShapedGlyph shape_result = shape_text(scratch, inst, font_req->text);
     for (u64 i = 0; i < shape_result.count; i++) {
         ShapedGlyph shaped_glyph = A(shape_result, i);
         u32 glyph_id = shaped_glyph.glyph_id;
-        GlyphBitmapSet *bitmap_set = &A(ctx->inst->bitmap_sets, glyph_id);
+        GlyphBitmapSet *bitmap_set = &A(inst->bitmap_sets, glyph_id);
 
         if (!bitmap_set->rendered) {
-            rasterize_glyph(ctx->inst, glyph_id);
+            rasterize_glyph(inst, glyph_id);
         }
 
         // Shaping position of glyph
-        f32 glyph_px_x = (f32)shaped_glyph.glyph_x_fu * (f32)ctx->inst->face_size_px /
-                         (f32)ctx->inst->ft_face->units_per_EM;
-        f32 glyph_px_y = (f32)shaped_glyph.glyph_y_fu * (f32)ctx->inst->face_size_px /
-                         (f32)ctx->inst->ft_face->units_per_EM;
+        f32 glyph_px_x = (f32)shaped_glyph.glyph_x_fu * (f32)inst->face_size_px /
+                         (f32)inst->ft_face->units_per_EM;
+        f32 glyph_px_y = (f32)shaped_glyph.glyph_y_fu * (f32)inst->face_size_px /
+                         (f32)inst->ft_face->units_per_EM;
 
         // Calculate X subpixel position without bitmap X offset because
         // 1) We can't know bitmap X offset until we compute subpixel position -> bitmap step
@@ -169,20 +214,20 @@ fn void font_prepare_to_render(FontSystem *ctx, Str text, PosF pos, FVec_Texture
         Color color = COLOR_WHITE;
 
         if (bitmap->texture.dims.w > 0 && bitmap->texture.dims.h > 0) {
-            TextureRequest *req = fvec_push_zero(reqs);
-            req->texture = some(&bitmap->texture, P_Texture);
-            req->top_left_color = color;
-            req->top_right_color = color;
-            req->bottom_left_color = color;
-            req->bottom_right_color = color;
+            QuadRequest *quad_req = fvec_push_zero(quad_reqs);
+            quad_req->texture = some(&bitmap->texture, P_Texture);
+            quad_req->top_left_color = color;
+            quad_req->top_right_color = color;
+            quad_req->bottom_left_color = color;
+            quad_req->bottom_right_color = color;
 
             // Position of glyph bitmap
-            f32 window_px_x = pos.x + glyph_px_x + (f32)bitmap->offset_x;
-            f32 window_px_y = pos.y - (glyph_px_y + (f32)bitmap->offset_y);
+            f32 window_px_x = font_req->bbox.x + glyph_px_x + (f32)bitmap->offset_x;
+            f32 window_px_y = font_req->bbox.y - (glyph_px_y + (f32)bitmap->offset_y);
 
             // Snap position nearest pixel to render glyph pixel-perfect
             // (maybe we shouldn't snap during animations?)
-            req->transform = (RectF){
+            quad_req->transform = (RectF){
                 // Floor because we round to nearest subpixel in bitmap selection
                 .x = SDL_floorf(window_px_x),
                 // Snap to nearest pixel

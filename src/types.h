@@ -94,12 +94,6 @@ struct Timer {
 };
 derive_struct(Timer);
 
-struct Session {
-    FileDef file;
-    Timer timer;
-};
-derive_struct(Session);
-
 struct SegSummary {
     Opt_Duration live_split;
     Opt_Duration live_seg;
@@ -254,11 +248,42 @@ struct FontHandle {
 };
 derive_struct(FontHandle);
 
+// TODO: more principled way to load/cache non-GPU resources like this
+struct FontFile {
+    FontHandle handle;
+    Arr_u8 contents;
+};
+derive_struct(FontFile);
+
+struct Layout {
+    FontFile nunito_sans_bold;
+    FontFile kosugi_maru_regular;
+};
+derive_struct(Layout);
+
+struct Session {
+    FileDef file;
+    Layout layout;
+    Timer timer;
+};
+derive_struct(Session);
+
+struct FontRequest {
+    Str text;
+    RectF bbox;
+    Color color;
+    FontFile *font_file;
+    u32 font_size_px;
+};
+derive_struct(FontRequest);
+
 struct FontInst {
     Arena *arena;
 
     FontHandle font_handle;
-    Arr_u8 font_file;
+    FontFile *font_file;
+    Str family_name;
+    Str style_name;
     u32 face_size_px;  // AKA size of EM square in pixels
 
     FT_Library ft_ctx;
@@ -271,7 +296,8 @@ struct FontInst {
 derive_struct(FontInst);
 
 struct FontSystem {
-    FVec_FontInst *fonts;
+    FVec_FontInst fonts;
+    FontHandle last_handle;
 };
 derive_struct(FontSystem);
 
@@ -296,7 +322,7 @@ struct TextureSystem {
 };
 derive_struct(TextureSystem);
 
-struct TextureRequest {
+struct QuadRequest {
     // No texture means plain colored rectangle.
     // TODO: make optional pointer types use nullptr as None (simple with union?)
     Opt_P_Texture texture;
@@ -306,7 +332,7 @@ struct TextureRequest {
     Color bottom_left_color;
     Color bottom_right_color;
 };
-derive_struct(TextureRequest);
+derive_struct(QuadRequest);
 
 enum BlendType {
     BlendType_None,
@@ -379,9 +405,11 @@ derive_struct_pre(UI_Box);
 struct UI_Box {
     UI_Flag flags;
     UI_Size input_size;
-    Str text_content;
     Texture *texture;
     Color color;
+    Str text_content;
+    FontFile *font_file;
+    u32 font_size_px;
 
     UI_Box *parent;
     Vec_P_UI_Box childs;
@@ -398,6 +426,8 @@ struct UI_Style {
     Texture *texture;
     Color color;
     u16 child_idx;
+    FontFile *font_file;
+    u32 font_size_px;
 };
 derive_struct(UI_Style);
 
@@ -458,7 +488,7 @@ struct RenderState {
     SDL_GPUBuffer *index_buffer;
 
     // Per-frame buffers
-    FVec_TextureRequest texture_requests;
+    FVec_QuadRequest quad_requests;
 };
 derive_struct(RenderState);
 

@@ -8,6 +8,7 @@
 #include <SDL3/SDL_clipboard.h>
 
 #include "main.h"
+#include "platform.h"
 #include "render.h"
 #include "timer_load.h"
 #include "timer_update.h"
@@ -59,9 +60,14 @@ fn SDL_Window *init_window(ErrorContext *err) {
     return window;
 }
 
+// TODO move to timer
 fn Session *make_session(ErrorContext *err, Arena *arena, App *app, Str path) {
     Session *session = arena_push(arena, Session);
     load_livesplit_lss(err, arena, path, &session->file);
+    session->layout.nunito_sans_bold.contents =
+        os_read_file(err, arena, S("data/NunitoSans-Bold.ttf"));
+    session->layout.kosugi_maru_regular.contents =
+        os_read_file(err, arena, S("data/KosugiMaru-Regular.otf"));
     return session;
 }
 

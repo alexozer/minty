@@ -137,7 +137,7 @@ fn Arr_P_RenderInst tex_prepare_to_render(Arena *frame_arena,
                                           TextureSystem *ctx,
                                           RenderState *render_state,
                                           SizePX window_size,
-                                          Arr_TextureRequest requests) {
+                                          Arr_QuadRequest requests) {
     FVec_P_RenderInst render_insts = fvec_alloc(frame_arena, P_RenderInst, (u64)8);
     fvec_reset(&ctx->icon_mesh.vertices);
     fvec_reset(&ctx->icon_mesh.indices);
@@ -184,14 +184,14 @@ fn void tex_build_clear_insts(Arena *frame_arena,
 fn void tex_build_upload_insts(Arena *frame_arena,
                                TextureSystem *ctx,
                                RenderState *render_state,
-                               Arr_TextureRequest requests,
+                               Arr_QuadRequest requests,
                                FVec_P_RenderInst *render_insts) {
     Arena *scratch = arena_acquire();
 
     FVec_P_Texture uncached_icon_requests = fvec_alloc(scratch, P_Texture, requests.count);
     FVec_P_Texture uncached_glyph_requests = fvec_alloc(scratch, P_Texture, requests.count);
     for (u64 i = 0; i < requests.count; i++) {
-        TextureRequest *request = &A(requests, i);
+        QuadRequest *request = &A(requests, i);
         Texture *texture = request->texture.present ? request->texture.opt : &ctx->dummy_texture;
 
         if (texture->handle.idx == 0) {
@@ -321,10 +321,10 @@ fn void tex_build_draw_insts(Arena *frame_arena,
                              TextureSystem *ctx,
                              RenderState *render_state,
                              SizePX window_size,
-                             Arr_TextureRequest requests,
+                             Arr_QuadRequest requests,
                              FVec_P_RenderInst *render_insts) {
     for (u64 i = 0; i < requests.count; i++) {
-        TextureRequest *req = &A(requests, i);
+        QuadRequest *req = &A(requests, i);
 
         Texture *texture = req->texture.present ? req->texture.opt : &ctx->dummy_texture;
         RectPX src = A(ctx->cache_entries, texture->handle.idx).placement;
@@ -368,7 +368,7 @@ fn void push_atlas_quad(SizePX window_size,
                         Atlas *atlas,
                         MeshBuilder *mesh,
                         RectPX src,
-                        TextureRequest *req) {
+                        QuadRequest *req) {
     // TODO think harder about when/how to round glyph coords to pixels. Don't want to end up
     // with a stretched glyph!
     // We also may not want to round non-glyph things to pixels, or may not want to during
