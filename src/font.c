@@ -69,8 +69,16 @@ fn void rasterize_glyph(FontInst *inst, u32 glyph_id) {
 
         // 2x2 transform matrix with 16.16 fixed-point coefficients
         FT_Matrix matrix = {.xx = 0x10000, .yy = 0x10000};
+
+        // We rasterize at quarter-pixel midpoints. This allows us to floor() the glyph's float X
+        // pixel position when determining the subpixel glyph. round() has a problem: if for ex.
+        // pixel position 0.8f (subpixel 3.2) is rounded up to 1.0f (subpixel 4.0), this will wrap
+        // from step 4 -> step 0 but require offsetting the final glyph position by +1 pixel.
+        // Rasterizing at quarter-pixel midpoints avoids needing to distinguish the round-up and
+        // round-down cases for step 0.
+        //
         // Pen position in 26.6 fixed-point
-        FT_Vector pen = {.x = (i32)(16 * step_idx), .y = 0};
+        FT_Vector pen = {.x = (i32)(8 + 16 * step_idx), .y = 0};
         FT_Set_Transform(inst->ft_face, &matrix, &pen);
 
         // TODO re-enable hinting once we can account for spacing discrepancies
@@ -157,6 +165,7 @@ fn void font_prepare_to_render(FontSystem *ctx, Str text, PosF pos, FVec_Texture
         // Calculate X subpixel position without bitmap X offset because
         // 1) We can't know bitmap X offset until we compute subpixel position -> bitmap step
         // 2) Bitmap X offset is in integer pixels
+        // Also, refer to subpixel rasterization to understand why this is floor() and not round().
         u64 step_idx = (u64)SDL_floorf((glyph_px_x) * 4.f) % 4;
         if (debug_glyph_step == 0) {
             step_idx = 0;
