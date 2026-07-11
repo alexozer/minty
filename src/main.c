@@ -7,13 +7,6 @@
 
 #include <SDL3/SDL_clipboard.h>
 
-#include <ft2build.h>
-#include FT_FREETYPE_H
-
-#include <stb_rect_pack.h>
-#include <xao.h>
-#include <yyjson.h>
-
 #include "main.h"
 #include "render.h"
 #include "timer_load.h"

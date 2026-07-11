@@ -1,31 +1,103 @@
 #include "font.h"
+#include "platform.h"
 
-#include <kb_text_shape.h>
+// TODO thread through program properly
+Str FONT_PATH = S("data/Roboto-Medium.ttf");
+// Str FONT_PATH = S("data/NotoSans-Regular.ttf");
+// Str FONT_PATH = S("data/NotoSans-Bold.ttf");
+// Str FONT_PATH = S("data/KosugiMaru-Regular.otf");
+// constexpr u32 FONT_SIZE_PX = 40;
+
+fn void font_init(ErrorContext *err, FontSystem *ctx) {
+    Scope scope = scope_open(err);
+    ctx->inst = create_font_inst(err, FONT_PATH, 12);
+    scope_close(scope, "Initialize font rendering system");
+}
+
+fn FontInst *create_font_inst(ErrorContext *err, Str font_path, u32 face_size_px) {
+    Scope scope = scope_open(err);
+
+    Arena *inst_arena = arena_acquire();
+    FontInst *inst = arena_push(inst_arena, FontInst);
+    inst->arena = inst_arena;
+
+    inst->font_file = os_read_file(err, inst->arena, font_path);
+    inst->face_size_px = face_size_px;
+
+    if (FT_Init_FreeType(&inst->ft_ctx) != FT_Err_Ok) {
+        err_report(err, "Failed to initialize freetype");
+    }
+    if (FT_New_Memory_Face(inst->ft_ctx, inst->font_file.ptr, (long)inst->font_file.count, 0,
+                           &inst->ft_face) != FT_Err_Ok) {
+        err_report(err, "Failed to load font face for glyph rendering");
+    }
+    if (FT_Set_Pixel_Sizes(inst->ft_face, face_size_px, 0) != FT_Err_Ok) {
+        err_report(err, "Failed to set font face size");
+    }
+
+    inst->bitmaps = arena_push_arr(inst->arena, GlyphBitmap, (u64)inst->ft_face->num_glyphs);
+
+    inst->kbts_ctx = kbts_CreateShapeContext(0, 0);
+    kbts_ShapePushFontFromMemory(inst->kbts_ctx, inst->font_file.ptr, (int)inst->font_file.count,
+                                 0);
+
+    scope_close(scope, "Load font: %.*s", SF(font_path));
+    return inst;
+}
+
+fn void destroy_font_inst(FontInst *inst) {
+    // TODO arena allocate kbts to avoid needing to destroy it
+    // (but I don't think we can do the same for freetype)
+    kbts_DestroyShapeContext(inst->kbts_ctx);
+    FT_Done_FreeType(inst->ft_ctx);
+}
+
+fn void rasterize_glyph(FontInst *inst, u32 glyph_id) {
+    GlyphBitmap *bitmap = &A(inst->bitmaps, glyph_id);
+    log_assert(!bitmap->rendered);  // Callers should check before calling
+
+    // TODO re-enable hinting once we can account for spacing discrepancies
+    // Also maybe disable on macos for more native look?
+    FT_Load_Glyph(inst->ft_face, glyph_id, FT_LOAD_NO_HINTING);
+    // if (face->glyph->format == FT_GLYPH_FORMAT_BITMAP) {
+    //     bail(err, "TODO: handle bitmap glyph");
+    // }
+    FT_Render_Glyph(inst->ft_face->glyph, FT_RENDER_MODE_NORMAL);
+
+    FT_Bitmap ft_bitmap = inst->ft_face->glyph->bitmap;
+    Arr_u8 tmp_buffer = {.ptr = ft_bitmap.buffer, .count = ft_bitmap.width * ft_bitmap.rows};
+
+    bitmap->rendered = true;
+
+    bitmap->texture.format = GLYPH_TEXTURE_FORMAT;
+    bitmap->texture.buffer = arr_clone(inst->arena, tmp_buffer);
+    bitmap->texture.dims = (SizePX){(u16)ft_bitmap.width, (u16)ft_bitmap.rows};
+
+    // Convert from 26.6 fixed point pixels to f32 pixels
+    bitmap->bearing_px_x = (f32)inst->ft_face->glyph->bitmap_left;
+    bitmap->bearing_px_y = (f32)inst->ft_face->glyph->bitmap_top;
+}
 
 // TODO check font for errors on load, but afterwards assume it's good
 // TODO cache shaping context
 // TODO arena allocate kbts stuff
 // TODO handling style/direction/face runs etc.
-fn Arr_ShapedGlyph shape_text_naive(Arena *arena, Arr_u8 font, Str text) {
+fn Arr_ShapedGlyph shape_text(Arena *arena, FontInst *inst, Str text) {
     if (text.count == 0) return (Arr_ShapedGlyph){};
 
     Vec_ShapedGlyph output = {};
-    kbts_shape_context *context = NULL;
 
-    context = kbts_CreateShapeContext(0, 0);
-    kbts_ShapePushFontFromMemory(context, font.ptr, (int)font.count, 0);
-
-    kbts_ShapeBegin(context, KBTS_DIRECTION_DONT_KNOW, KBTS_LANGUAGE_DONT_KNOW);
-    kbts_ShapeUtf8(context, (char *)text.ptr, (i32)text.count,
+    kbts_ShapeBegin(inst->kbts_ctx, KBTS_DIRECTION_DONT_KNOW, KBTS_LANGUAGE_DONT_KNOW);
+    kbts_ShapeUtf8(inst->kbts_ctx, (char *)text.ptr, (i32)text.count,
                    KBTS_USER_ID_GENERATION_MODE_CODEPOINT_INDEX);
-    kbts_ShapeEnd(context);
+    kbts_ShapeEnd(inst->kbts_ctx);
 
     // Layout runs naively left to right.
     kbts_run Run = {};
     i32 cursor_x = 0, cursor_y = 0;
     // u32 run_idx = 0;
     vec_prealloc(arena, &output, text.count);
-    while (kbts_ShapeRun(context, &Run)) {
+    while (kbts_ShapeRun(inst->kbts_ctx, &Run)) {
         kbts_glyph *glyph = nullptr;
         while (kbts_GlyphIteratorNext(&Run.Glyphs, &glyph)) {
             i32 glyph_x = cursor_x + glyph->OffsetX;
@@ -42,82 +114,21 @@ fn Arr_ShapedGlyph shape_text_naive(Arena *arena, Arr_u8 font, Str text) {
         // run_idx++;
     }
 
-    kbts_DestroyShapeContext(context);
     return vec_arr(&output);
 }
 
-// TODO split fallible font sanity check vs. infallible atlas creation
-// GlyphAtlas make_and_upload_glyph_atlas(ErrorContext *err,
-//                                        Arena *arena,
-//                                        SDL_GPUDevice *device,
-//                                        SDL_GPUCommandBuffer *command_buffer,
-//                                        SDL_GPUGraphicsPipeline *clear_texture_pipeline,
-//                                        FT_Library freetype_handle,
-//                                        Arr_u8 font_file,
-//                                        u16 face_size_px) {
-//     if (!command_buffer) return (GlyphAtlas){};
-//     if (!clear_texture_pipeline) return (GlyphAtlas){};
-//     if (!freetype_handle) return (GlyphAtlas){};
-//
-//     log_assert(face_size_px > 0);
-//     Arena *scratch = arena_acquire();
-//     Scope scope = scope_open(err);
-//
-//     FT_Face face = {};
-//     if (FT_New_Memory_Face(freetype_handle, font_file.ptr, (long)font_file.count, 0, &face) !=
-//         FT_Err_Ok) {
-//         // TODO
-//         // break;
-//     }
-//
-//     if (FT_Set_Pixel_Sizes(face, face_size_px, 0) != FT_Err_Ok) {
-//         // TODO
-//         // break;
-//     }
-//
-//     Arr_Texture textures = arena_push_arr(scratch, Texture, (u64)face->num_glyphs);
-//     Arr_GlyphMetrics metrics = arena_push_arr(arena, GlyphMetrics, (u64)face->num_glyphs);
-//
-//     for (u64 glyph_idx = 0; glyph_idx < face->num_glyphs; glyph_idx++) {
-//         // TODO re-enable hinting once we can account for spacing discrepancies
-//         // Also maybe disable on macos for more native look?
-//         FT_Load_Glyph(face, (u32)glyph_idx, FT_LOAD_NO_HINTING);
-//         // if (face->glyph->format == FT_GLYPH_FORMAT_BITMAP) {
-//         //     bail(err, "TODO: handle bitmap glyph");
-//         // }
-//         FT_Render_Glyph(face->glyph, FT_RENDER_MODE_NORMAL);
-//
-//         FT_Bitmap bitmap = face->glyph->bitmap;
-//         Texture *texture = &A(textures, glyph_idx);
-//         Arr_u8 tmp_buffer = {.ptr = bitmap.buffer, .count = bitmap.width * bitmap.rows};
-//         texture->format = GLYPH_TEXTURE_FORMAT;
-//         texture->buffer = arr_clone(scratch, tmp_buffer);
-//         texture->dims = (SizePX){(u16)bitmap.width, (u16)bitmap.rows};
-//
-//         // Convert from 26.6 fixed point pixels to f32 pixels
-//         A(metrics, glyph_idx).bearing_px_x = (f32)face->glyph->bitmap_left;
-//         A(metrics, glyph_idx).bearing_px_y = (f32)face->glyph->bitmap_top;
-//     }
-//
-//     SizePX font_atlas_size = {.w = 2048, .h = 2048};
-//     Str texture_name = str_format(scratch, "Glyph atlas: family = '%s', style = '%s', size =
-//     %dpx",
-//                                   face->family_name, face->style_name, face_size_px);
-//     Atlas *atlas =
-//         make_and_upload_atlas(err, arena, device, command_buffer, clear_texture_pipeline,
-//                               texture_name, textures, font_atlas_size, FilterType_Nearest);
-//     GlyphAtlas ret = {
-//         .atlas = atlas,
-//         .px_per_em = face_size_px,
-//         .units_per_em = face->units_per_EM,
-//         .metrics = metrics,
-//     };
-//
-//     FT_Done_Face(face);
-//     scope_close(scope, "Create and upload glyph atlas");
-//     arena_release(scratch);
-//     return ret;
-// }
+fn void font_test(FontInst *inst) {
+    Arena *scratch = arena_acquire();
+
+    Arr_ShapedGlyph shape_result = shape_text(scratch, inst, S("Hello, world!"));
+    for (u64 i = 0; i < shape_result.count; i++) {
+        if (!A(inst->bitmaps, i).rendered) {
+            rasterize_glyph(inst, A(shape_result, i).glyph_id);
+        }
+    }
+
+    arena_release(scratch);
+}
 
 // u64 make_glyph_mesh(SizePX window_size,
 //                     Arr_u8 font_file,

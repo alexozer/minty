@@ -271,16 +271,16 @@ StrPair str_split2(Str base, u8 delim);
         }                                                                                \
     })
 
-#define arr_clone(arena, arr)                                                           \
-    ({                                                                                  \
-        typeof(arena) _arena_ = (arena);                                                \
-        typeof(arr) _arr_ = (arr);                                                      \
-        if (_arr_.count > 0) {                                                          \
-            void *new_ptr = arena_push_bytes(_arena_, _arr_.count * sizeof(*_arr_.ptr), \
-                                             alignof(typeof(*_arr_.ptr)));              \
-            SDL_memcpy(new_ptr, _arr_.ptr, _arr_.count * sizeof(*_arr_.ptr));           \
-        }                                                                               \
-        (typeof(_arr_)){.ptr = new_ptr, .count = _arr_.count};                          \
+#define arr_clone(arena, arr)                                                       \
+    ({                                                                              \
+        typeof(arena) _arena_ = (arena);                                            \
+        typeof(arr) _arr_ = (arr);                                                  \
+        void *new_ptr = arena_push_bytes(_arena_, _arr_.count * sizeof(*_arr_.ptr), \
+                                         alignof(typeof(*_arr_.ptr)));              \
+        if (_arr_.count > 0) {                                                      \
+            SDL_memcpy(new_ptr, _arr_.ptr, _arr_.count * sizeof(*_arr_.ptr));       \
+        }                                                                           \
+        (typeof(_arr_)){.ptr = new_ptr, .count = _arr_.count};                      \
     })
 
 #define arr_sort(arr, compare)                                                                 \

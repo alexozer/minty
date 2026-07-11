@@ -4,6 +4,7 @@
 
 #include <SDL3/SDL_gpu.h>
 #include <SDL3/SDL_keycode.h>
+#include <kb_text_shape.h>
 #include <stb_rect_pack.h>
 #include <xao.h>
 
@@ -249,13 +250,31 @@ struct ShapedGlyph {
 };
 derive_struct(ShapedGlyph);
 
-enum QuadRequestType : u8 {
-    QuadRequestType_Texture,
-    QuadRequestType_Text,
+struct GlyphBitmap {
+    bool rendered;
+    u32 glyph_id;
+    Texture texture;
+    f32 bearing_px_x;
+    f32 bearing_px_y;
 };
-derive_enum(QuadRequestType);
+derive_struct(GlyphBitmap);
 
-struct FontSystem {};
+struct FontInst {
+    Arena *arena;
+    Arr_u8 font_file;
+    u32 face_size_px;
+    FT_Library ft_ctx;
+    FT_Face ft_face;
+    kbts_shape_context *kbts_ctx;
+
+    // Keyed by glyph ID
+    Arr_GlyphBitmap bitmaps;
+};
+derive_struct(FontInst);
+
+struct FontSystem {
+    FontInst *inst;  // TODO support more than one instance
+};
 derive_struct(FontSystem);
 
 struct TextureCacheEntry {
@@ -457,9 +476,6 @@ struct App {
 
     RenderState *render_state;
     TextureSystem *texture_system;
-
-    // Text stuff
-    FT_Library freetype;
-    Arr_u8 font_file;
+    FontSystem font_system;
 };
 derive_struct(App);

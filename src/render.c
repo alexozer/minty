@@ -6,21 +6,10 @@
 #include "types.h"
 #include "ui.h"
 
-// TODO thread through program properly
-Str FONT_PATH = S("data/Roboto-Medium.ttf");
-// Str FONT_PATH = S("data/NotoSans-Regular.ttf");
-// Str FONT_PATH = S("data/NotoSans-Bold.ttf");
-// Str FONT_PATH = S("data/KosugiMaru-Regular.otf");
-// constexpr u32 FONT_SIZE_PX = 40;
-
 fn void render_init(ErrorContext *err, App *app) {
     Scope scope = scope_open(err);
 
     // TODO initialize in font system
-    if (FT_Init_FreeType(&app->freetype) != FT_Err_Ok) {
-        err_report(err, "Failed to initialize freetype");
-    }
-    app->font_file = os_read_file(err, app->app_arena, FONT_PATH);
 
     RenderState *render_state = arena_push(app->app_arena, RenderState);
     app->render_state = render_state;
