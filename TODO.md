@@ -2,9 +2,11 @@
 
 ## Next
 
+<!-- Text: subpixel positioning? -->
+Text: Remove subpixel positioning demo code
 Text: centering
-Text: subpixel positioning?
-Avoid zeroing large empty vertex buffers
+Text: Multifont
+<!-- Avoid zeroing large empty vertex buffers -->
 
 ## Prototyping
 
@@ -304,4 +306,4 @@ Maybe future do:
 <!--     What does an immediate-mode API look like for this? Maybe we don't give AF for now? -->
 <!--     Rewatch file pilot episode to try to get a feel for this -->
 <!-- Improve UI API (style stacks, except it's just a template system) -->
-Start working on text
+<!-- Start working on text -->

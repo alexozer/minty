@@ -166,14 +166,6 @@ fn SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
             app->debug_draw = !app->debug_draw;
             break;
         }
-        case SDLK_LEFT: {
-            debug_glyph_step = clamp(debug_glyph_step - 1, 0, 2);
-            break;
-        }
-        case SDLK_RIGHT: {
-            debug_glyph_step = clamp(debug_glyph_step + 1, 0, 2);
-            break;
-        }
         }
     }
 

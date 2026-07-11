@@ -126,22 +126,19 @@ fn Arr_ShapedGlyph shape_text(Arena *arena, FontInst *inst, Str text) {
             i32 glyph_x = cursor_x + glyph->OffsetX;
             i32 glyph_y = cursor_y + glyph->OffsetY;
 
-            cursor_x += glyph->AdvanceX;
-            cursor_y += glyph->AdvanceY;
-
             ShapedGlyph *g = vec_push_zero(arena, &output);
             g->glyph_id = glyph->Id;
             g->glyph_x_fu = glyph_x;
             g->glyph_y_fu = glyph_y;
+
+            cursor_x += glyph->AdvanceX;
+            cursor_y += glyph->AdvanceY;
         }
         // run_idx++;
     }
 
     return vec_arr(&output);
 }
-
-// TODO REMOVE!!
-i32 debug_glyph_step;
 
 fn void font_prepare_to_render(FontSystem *ctx, Str text, PosF pos, FVec_TextureRequest *reqs) {
     Arena *scratch = arena_acquire();
@@ -167,23 +164,9 @@ fn void font_prepare_to_render(FontSystem *ctx, Str text, PosF pos, FVec_Texture
         // 2) Bitmap X offset is in integer pixels
         // Also, refer to subpixel rasterization to understand why this is floor() and not round().
         u64 step_idx = (u64)SDL_floorf((glyph_px_x) * 4.f) % 4;
-        if (debug_glyph_step == 0) {
-            step_idx = 0;
-        }
         GlyphBitmap *bitmap = &A(bitmap_set->steps, step_idx);
 
         Color color = COLOR_WHITE;
-        if (debug_glyph_step == 2) {
-            if (step_idx == 0) {
-                color = COLOR_WHITE;
-            } else if (step_idx == 1) {
-                color = COLOR_RED;
-            } else if (step_idx == 2) {
-                color = COLOR_GREEN;
-            } else if (step_idx == 3) {
-                color = COLOR_BLUE;
-            }
-        }
 
         if (bitmap->texture.dims.w > 0 && bitmap->texture.dims.h > 0) {
             TextureRequest *req = fvec_push_zero(reqs);

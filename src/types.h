@@ -248,10 +248,19 @@ struct GlyphBitmapSet {
 };
 derive_struct(GlyphBitmapSet);
 
+struct FontHandle {
+    u16 idx;
+    u16 generation;
+};
+derive_struct(FontHandle);
+
 struct FontInst {
     Arena *arena;
+
+    FontHandle font_handle;
     Arr_u8 font_file;
     u32 face_size_px;  // AKA size of EM square in pixels
+
     FT_Library ft_ctx;
     FT_Face ft_face;
     kbts_shape_context *kbts_ctx;
@@ -262,7 +271,7 @@ struct FontInst {
 derive_struct(FontInst);
 
 struct FontSystem {
-    FontInst *inst;  // TODO support more than one instance
+    FVec_FontInst *fonts;
 };
 derive_struct(FontSystem);
 
