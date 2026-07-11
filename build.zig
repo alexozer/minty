@@ -132,6 +132,31 @@ fn get_codegen_step(
     return codegen;
 }
 
+fn get_xxd_step(
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+) !*std.Build.Step.Compile {
+    const xxd_sources = &.{"3rdparty/xxd.c"};
+
+    const xxd = b.addExecutable(.{
+        .name = "codegen",
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+            .strip = false,
+            .link_libc = true,
+            .link_libcpp = false,
+        }),
+    });
+    xxd.root_module.addCSourceFiles(.{
+        .files = xxd_sources,
+        .flags = blitter_flags,
+        .language = .c,
+    });
+    return xxd;
+}
+
 const ShaderStage = enum {
     vertex,
     fragment,
@@ -146,6 +171,7 @@ const ShaderTarget = enum {
 fn add_shadercross_dep(
     b: *std.Build,
     blitter: *std.Build.Step.Compile,
+    xxd: *std.Build.Step.Compile,
     shader_source_path: []const u8,
     stage: ShaderStage,
     target: ShaderTarget,
@@ -180,7 +206,7 @@ fn add_shadercross_dep(
         "os_shader_{s}",
         .{std.fs.path.stem(shader_source_path)},
     );
-    add_xxd_dep(b, blitter, compiled_shader_path, embed_var_name);
+    add_xxd_dep(b, blitter, xxd, compiled_shader_path, embed_var_name);
 
     // Output compiled shader for inspection
     const shader_install = b.addInstallFile(compiled_shader_path, out_path);
@@ -191,13 +217,14 @@ fn add_shadercross_dep(
 fn add_xxd_dep(
     b: *std.Build,
     blitter: *std.Build.Step.Compile,
+    xxd: *std.Build.Step.Compile,
     source: std.Build.LazyPath,
     var_name: []const u8,
 ) void {
-    const xxd = b.addSystemCommand(&.{"xxd"});
-    xxd.addArgs(&.{ "-n", var_name, "-i" });
-    xxd.addFileArg(source);
-    const output = xxd.captureStdOut(.{});
+    const run_xxd = b.addRunArtifact(xxd);
+    run_xxd.addArgs(&.{ "-n", var_name, "-i" });
+    run_xxd.addFileArg(source);
+    const output = run_xxd.captureStdOut(.{});
 
     blitter.root_module.addCSourceFile(.{
         .file = output,
@@ -290,15 +317,16 @@ pub fn build(b: *std.Build) !void {
     }
     blitter.step.dependOn(&codegen_step.step);
 
+    const xxd = try get_xxd_step(b, native_target, native_optimize);
     const shader_target: ShaderTarget = switch (target.result.os.tag) {
         .macos => .msl,
         .linux => .spirv,
         .windows => .dxil,
         else => @panic("Unsupported OS"),
     };
-    try add_shadercross_dep(b, blitter, "src/shaders/vert.hlsl", .vertex, shader_target);
-    try add_shadercross_dep(b, blitter, "src/shaders/frag_icon.hlsl", .fragment, shader_target);
-    try add_shadercross_dep(b, blitter, "src/shaders/frag_glyph.hlsl", .fragment, shader_target);
+    try add_shadercross_dep(b, blitter, xxd, "src/shaders/vert.hlsl", .vertex, shader_target);
+    try add_shadercross_dep(b, blitter, xxd, "src/shaders/frag_icon.hlsl", .fragment, shader_target);
+    try add_shadercross_dep(b, blitter, xxd, "src/shaders/frag_glyph.hlsl", .fragment, shader_target);
 
     const run_blitter = b.addRunArtifact(blitter);
     if (b.args) |args| {
