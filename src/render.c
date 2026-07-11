@@ -1,4 +1,5 @@
 #include "render.h"
+#include "font.h"
 #include "gpu_utils.h"
 #include "platform.h"
 #include "texture.h"
@@ -26,6 +27,7 @@ fn void render_init(ErrorContext *err, App *app) {
     }
     app->texture_system = tex_init(err, app->app_arena, render_state->device,
                                    render_state->vertex_shader, render_state->glyph_frag_shader);
+    font_init(err, &app->font_system);
 
     scope_close(scope, "Initialize renderer");
 }
@@ -111,6 +113,8 @@ fn void render(App *app) {
         FVec_TextureRequest texture_requests =
             fvec_alloc(frame_arena, TextureRequest, MAX_QUAD_COUNT);
         render_ui(frame_arena, root, &texture_requests);
+        font_prepare_to_render(&app->font_system, S("Hello, world!"), (PosF){.x = 100, .y = 100},
+                               &texture_requests);
         if (app->debug_draw) {
             debug_render_ui(frame_arena, root, &texture_requests);
         }

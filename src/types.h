@@ -262,7 +262,7 @@ derive_struct(GlyphBitmap);
 struct FontInst {
     Arena *arena;
     Arr_u8 font_file;
-    u32 face_size_px;
+    u32 face_size_px;  // AKA size of EM square in pixels
     FT_Library ft_ctx;
     FT_Face ft_face;
     kbts_shape_context *kbts_ctx;

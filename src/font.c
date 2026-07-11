@@ -1,4 +1,5 @@
 #include "font.h"
+#include "base.h"
 #include "platform.h"
 
 // TODO thread through program properly
@@ -10,7 +11,7 @@ Str FONT_PATH = S("data/Roboto-Medium.ttf");
 
 fn void font_init(ErrorContext *err, FontSystem *ctx) {
     Scope scope = scope_open(err);
-    ctx->inst = create_font_inst(err, FONT_PATH, 12);
+    ctx->inst = create_font_inst(err, FONT_PATH, 30);
     scope_close(scope, "Initialize font rendering system");
 }
 
@@ -50,6 +51,7 @@ fn void destroy_font_inst(FontInst *inst) {
     // (but I don't think we can do the same for freetype)
     kbts_DestroyShapeContext(inst->kbts_ctx);
     FT_Done_FreeType(inst->ft_ctx);
+    arena_release(inst->arena);
 }
 
 fn void rasterize_glyph(FontInst *inst, u32 glyph_id) {
@@ -117,56 +119,47 @@ fn Arr_ShapedGlyph shape_text(Arena *arena, FontInst *inst, Str text) {
     return vec_arr(&output);
 }
 
-fn void font_test(FontInst *inst) {
+fn void font_prepare_to_render(FontSystem *ctx, Str text, PosF pos, FVec_TextureRequest *reqs) {
     Arena *scratch = arena_acquire();
 
-    Arr_ShapedGlyph shape_result = shape_text(scratch, inst, S("Hello, world!"));
+    Arr_ShapedGlyph shape_result = shape_text(scratch, ctx->inst, text);
     for (u64 i = 0; i < shape_result.count; i++) {
-        if (!A(inst->bitmaps, i).rendered) {
-            rasterize_glyph(inst, A(shape_result, i).glyph_id);
+        ShapedGlyph shaped_glyph = A(shape_result, i);
+        u32 glyph_id = shaped_glyph.glyph_id;
+        GlyphBitmap *bitmap = &A(ctx->inst->bitmaps, glyph_id);
+
+        if (!bitmap->rendered) {
+            rasterize_glyph(ctx->inst, glyph_id);
+        }
+
+        if (bitmap->texture.dims.w > 0 && bitmap->texture.dims.h > 0) {
+            TextureRequest *req = fvec_push_zero(reqs);
+            req->texture = some(&bitmap->texture, P_Texture);
+            req->top_left_color = COLOR_WHITE;
+            req->top_right_color = COLOR_WHITE;
+            req->bottom_left_color = COLOR_WHITE;
+            req->bottom_right_color = COLOR_WHITE;
+
+            // Shaping position of glyph
+            f32 glyph_px_x = (f32)shaped_glyph.glyph_x_fu * (f32)ctx->inst->face_size_px /
+                             (f32)ctx->inst->ft_face->units_per_EM;
+            f32 glyph_px_y = (f32)shaped_glyph.glyph_y_fu * (f32)ctx->inst->face_size_px /
+                             (f32)ctx->inst->ft_face->units_per_EM;
+
+            // Position of glyph bitmap
+            f32 bitmap_px_x = glyph_px_x + bitmap->bearing_px_x;
+            f32 bitmap_px_y = glyph_px_y + bitmap->bearing_px_y;
+
+            // Snap position nearest pixel to render glyph pixel-perfect
+            // (maybe we shouldn't snap during animations?)
+            req->transform = (RectF){
+                .x = SDL_roundf(pos.x + bitmap_px_x),
+                .y = SDL_roundf(pos.y - bitmap_px_y),
+                .w = (f32)bitmap->texture.dims.w,
+                .h = (f32)bitmap->texture.dims.h,
+            };
         }
     }
 
     arena_release(scratch);
 }
-
-// u64 make_glyph_mesh(SizePX window_size,
-//                     Arr_u8 font_file,
-//                     GlyphAtlas *atlas,
-//                     Str text,
-//                     Mesh *mesh) {
-//     Arena *scratch = arena_acquire();
-//
-//     u64 start_vertex_count = mesh->vertices.count;
-//
-//     Arr_ShapedGlyph shaped_glyphs = shape_text_naive(scratch, font_file, text);
-//     for (u64 i = 0; i < shaped_glyphs.count; i++) {
-//         u32 glyph_id = A(shaped_glyphs, i).glyph_id;
-//
-//         // Shaping position of glyph
-//         f32 glyph_px_x =
-//             (f32)A(shaped_glyphs, i).glyph_x_fu * atlas->px_per_em / atlas->units_per_em;
-//         f32 glyph_px_y =
-//             (f32)A(shaped_glyphs, i).glyph_y_fu * atlas->px_per_em / atlas->units_per_em;
-//
-//         // Position of glyph bitmap
-//         f32 bitmap_px_x = glyph_px_x + A(atlas->metrics, glyph_id).bearing_px_x;
-//         f32 bitmap_px_y = glyph_px_y + A(atlas->metrics, glyph_id).bearing_px_y;
-//
-//         // Convert/round to window space pixel coord
-//         u16 dest_px_x = (u16)SDL_lroundf(200.f + bitmap_px_x);
-//         u16 dest_px_y = (u16)SDL_lroundf(200.f - bitmap_px_y);
-//
-//         u32 shaped_id = A(shaped_glyphs, i).glyph_id;
-//         RectPX src = A(atlas->atlas->placements, shaped_id);
-//         RectPX dst = {.x = dest_px_x, .y = dest_px_y, .w = src.w, .h = src.h};
-//         Color color = {.r = 255, .g = 255, .b = 255, .a = 255};
-//         push_atlas_quad(window_size, atlas->atlas, mesh, src, dst, color);
-//     }
-//
-//     u64 end_vertex_count = mesh->vertices.count;
-//     u64 quad_count = (end_vertex_count - start_vertex_count) / 4;
-//
-//     arena_release(scratch);
-//     return quad_count;
-// }
