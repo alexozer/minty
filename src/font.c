@@ -77,7 +77,7 @@ fn void rasterize_glyph(FontInst *inst, u32 glyph_id) {
         // Rasterizing at quarter-pixel midpoints avoids needing to distinguish the round-up and
         // round-down cases for step 0.
         //
-        // Pen position in 26.6 fixed-point
+        // Pen position in 26.6 fixed-point pixels (so 64 = 1 pixel)
         FT_Vector pen = {.x = (i32)(8 + 16 * step_idx), .y = 0};
         FT_Set_Transform(inst->ft_face, &matrix, &pen);
 
