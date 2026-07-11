@@ -1,4 +1,5 @@
 #include "ui.h"
+#include "font.h"
 #include "types.h"
 
 // TODO don't require ID for every box
@@ -192,11 +193,17 @@ fn void layout_ui_impl(UI_Box *box) {
     }
 }
 
-fn void render_ui(Arena *frame_arena, UI_Box *root, FVec_TextureRequest *requests) {
-    render_ui_impl(frame_arena, root, requests);
+fn void render_ui(Arena *frame_arena,
+                  UI_Box *root,
+                  FontSystem *font_system,
+                  FVec_TextureRequest *requests) {
+    render_ui_impl(frame_arena, root, font_system, requests);
 }
 
-fn void render_ui_impl(Arena *frame_arena, UI_Box *box, FVec_TextureRequest *reqs) {
+fn void render_ui_impl(Arena *frame_arena,
+                       UI_Box *box,
+                       FontSystem *font_system,
+                       FVec_TextureRequest *reqs) {
     if (box->flags & UI_Flag_DrawTexture) {
         log_assert(box->texture != nullptr);
 
@@ -211,8 +218,12 @@ fn void render_ui_impl(Arena *frame_arena, UI_Box *box, FVec_TextureRequest *req
         req->bottom_right_color = COLOR_WHITE;
     }
 
+    if (box->flags & UI_Flag_DrawText) {
+        font_prepare_to_render(font_system, box->text_content, box->output_size.pos, reqs);
+    }
+
     for (u64 i = 0; i < box->childs.count; i++) {
-        render_ui_impl(frame_arena, A(box->childs, i), reqs);
+        render_ui_impl(frame_arena, A(box->childs, i), font_system, reqs);
     }
 }
 

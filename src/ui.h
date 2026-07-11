@@ -22,8 +22,14 @@ void layout_ui(UI_Box *root);
 void layout_ui_main_axis(UI_Box *parent, Axis axis);
 void layout_ui_cross_axis(UI_Box *parent, Axis axis);
 void layout_ui_impl(UI_Box *box);
-void render_ui(Arena *frame_arena, UI_Box *root, FVec_TextureRequest *requests);
-void render_ui_impl(Arena *frame_arena, UI_Box *box, FVec_TextureRequest *reqs);
+void render_ui(Arena *frame_arena,
+               UI_Box *root,
+               FontSystem *font_system,
+               FVec_TextureRequest *requests);
+void render_ui_impl(Arena *frame_arena,
+                    UI_Box *box,
+                    FontSystem *font_system,
+                    FVec_TextureRequest *reqs);
 RectF scale_rect_proportionally_to_fit(RectF outer, f32 inner_aspect_ratio);
 void debug_render_ui(Arena *frame_arena, UI_Box *root, FVec_TextureRequest *requests);
 void debug_render_ui_impl(UI_Box *box, u64 depth, FVec_TextureRequest *reqs);
