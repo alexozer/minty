@@ -239,6 +239,7 @@ derive_struct(GlyphBitmap);
 struct GlyphBitmapSet {
     bool rendered;
     Arr_GlyphBitmap steps;
+    RectF bbox;
 };
 derive_struct(GlyphBitmapSet);
 

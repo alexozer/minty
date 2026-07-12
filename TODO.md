@@ -2,10 +2,10 @@
 
 ## Next
 
-<!-- Text: subpixel positioning? -->
-Text: Remove subpixel positioning demo code
 Text: centering
-Text: Multifont
+<!-- Text: subpixel positioning? -->
+<!-- Text: Remove subpixel positioning demo code -->
+<!-- Text: Multifont -->
 <!-- Avoid zeroing large empty vertex buffers -->
 
 ## Prototyping
