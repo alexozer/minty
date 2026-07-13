@@ -223,8 +223,7 @@ derive_struct(MeshBuilder);
 
 struct ShapedGlyph {
     u32 glyph_id;
-    i32 glyph_x_fu;  // fu = font unit
-    i32 glyph_y_fu;
+    PosF pos_px;
 };
 derive_struct(ShapedGlyph);
 

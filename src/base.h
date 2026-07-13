@@ -127,6 +127,10 @@ u64 next_pow2(u64 x);
 
 #define bit(x) (1 << (x))
 
+static inline u64 pos_mod(i64 v, u64 m) {
+    return (u64)(((v % (i64)m) + (i64)m) % (i64)m);
+}
+
 //
 // Arenas
 //
