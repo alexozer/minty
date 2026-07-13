@@ -1,6 +1,18 @@
 #include "timer_load.h"
 #include "platform.h"
 
+fn Session *make_session(ErrorContext *err, Arena *arena, App *app, Str path) {
+    Session *session = arena_push(arena, Session);
+    load_livesplit_lss(err, arena, path, &session->file);
+    session->layout.nunito_sans_bold.contents =
+        os_read_file(err, arena, S("data/NunitoSans-Bold.ttf"));
+    session->layout.kosugi_maru_regular.contents =
+        os_read_file(err, arena, S("data/KosugiMaru-Regular.otf"));
+    session->layout.departure_mono_regular.contents =
+        os_read_file(err, arena, S("data/DepartureMono-Regular.otf"));
+    return session;
+}
+
 fn void load_livesplit_lss(ErrorContext *err, Arena *arena, Str lss_path, FileDef *file) {
     Arena *scratch = arena_acquire();
     Scope scope = scope_open(err);

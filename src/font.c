@@ -113,15 +113,10 @@ fn void rasterize_glyph(FontInst *inst, u32 glyph_id) {
         // 2x2 transform matrix with 16.16 fixed-point coefficients
         FT_Matrix matrix = {.xx = 0x10000, .yy = 0x10000};
 
-        // We rasterize at quarter-pixel midpoints. This allows us to floor() the glyph's float X
-        // pixel position when determining the subpixel glyph. round() has a problem: if for ex.
-        // pixel position 0.8f (subpixel 3.2) is rounded up to 1.0f (subpixel 4.0), this will wrap
-        // from step 4 -> step 0 but require offsetting the final glyph position by +1 pixel.
-        // Rasterizing at quarter-pixel midpoints avoids needing to distinguish the round-up and
-        // round-down cases for step 0.
-        //
+        // Another option is to rasterize at quarter-pixel midpoints instead of starts, but that
+        // breaks pixel fonts which really expect to be rendered at whole pixel offsets.
         // Pen position in 26.6 fixed-point pixels (so 64 = 1 pixel)
-        FT_Vector pen = {.x = (i32)(8 + 16 * step_idx), .y = 0};
+        FT_Vector pen = {.x = (i32)(16 * step_idx), .y = 0};
         FT_Set_Transform(inst->ft_face, &matrix, &pen);
 
         // TODO re-enable hinting once we can account for spacing discrepancies
@@ -137,9 +132,6 @@ fn void rasterize_glyph(FontInst *inst, u32 glyph_id) {
             FT_Done_Glyph(ft_glyph);
         }
 
-        // if (face->glyph->format == FT_GLYPH_FORMAT_BITMAP) {
-        //     bail(err, "TODO: handle bitmap glyph");
-        // }
         FT_Render_Glyph(inst->ft_face->glyph, FT_RENDER_MODE_NORMAL);
 
         FT_Bitmap ft_bitmap = inst->ft_face->glyph->bitmap;
@@ -223,7 +215,10 @@ fn void font_prepare_to_render(FontSystem *ctx,
         // Calculate X subpixel position without bitmap X offset because
         // 1) We can't know bitmap X offset until we compute subpixel position -> bitmap step
         // 2) Bitmap X offset is in integer pixels
-        // Also, refer to subpixel rasterization to understand why this is floor() and not round().
+        // Why floor() and not round()? Technically round() picks the more correct subpixel offset
+        // glyph, BUT rounding e.g. offset 0.8 up to 1.0 would require adding 1 to the x offset (as
+        // opposed to rounding an offset of 0.2 down to 0). floor() avoids this, at the cost of
+        // incorrectly shifting glyphs -0.125px. This is fine for now.
         u64 step_idx = (u64)SDL_floorf((glyph_px_x) * 4.f) % 4;
         GlyphBitmap *bitmap = &A(bitmap_set->steps, step_idx);
 

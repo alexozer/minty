@@ -6,6 +6,7 @@
 
 #include "types.h"
 
+Session *make_session(ErrorContext *err, Arena *arena, App *app, Str path);
 void load_livesplit_lss(ErrorContext *err, Arena *arena, Str lss_path, FileDef *file);
 void parse_livesplit_lss(ErrorContext *err, Arena *arena, FileDef *file, Arr_u8 xml);
 Arr_SegmentDef parse_livesplit_segments(ErrorContext *err,

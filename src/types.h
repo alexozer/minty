@@ -259,6 +259,7 @@ derive_struct(FontFile);
 struct Layout {
     FontFile nunito_sans_bold;
     FontFile kosugi_maru_regular;
+    FontFile departure_mono_regular;
 };
 derive_struct(Layout);
 
