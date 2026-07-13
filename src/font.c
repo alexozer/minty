@@ -107,23 +107,6 @@ fn void rasterize_glyph(FontInst *inst, u32 glyph_id) {
     bitmap_set->rendered = true;
     bitmap_set->steps = arena_push_arr(inst->arena, GlyphBitmap, 4);
 
-    // TODO re-enable hinting once we can account for spacing discrepancies
-    // Also maybe disable on macos for more native look?
-    FT_Load_Glyph(inst->ft_face, glyph_id, FT_LOAD_NO_HINTING);
-
-    FT_Glyph ft_glyph = {};
-    FT_Get_Glyph(inst->ft_face->glyph, &ft_glyph);
-
-    FT_BBox ft_bbox = {};
-    // TODO wtf is grid fitting?
-    FT_Glyph_Get_CBox(ft_glyph, FT_GLYPH_BBOX_SUBPIXELS, &ft_bbox);
-    FT_Done_Glyph(ft_glyph);
-
-    bitmap_set->bbox.x = (f32)ft_bbox.xMin / 64.f;
-    bitmap_set->bbox.y = (f32)ft_bbox.yMin / 64.f;
-    bitmap_set->bbox.w = (f32)(ft_bbox.xMax - ft_bbox.xMin) / 64.f;
-    bitmap_set->bbox.h = (f32)(ft_bbox.yMax - ft_bbox.yMin) / 64.f;
-
     for (u64 step_idx = 0; step_idx < bitmap_set->steps.count; step_idx++) {
         GlyphBitmap *bitmap = &A(bitmap_set->steps, step_idx);
 
@@ -141,6 +124,19 @@ fn void rasterize_glyph(FontInst *inst, u32 glyph_id) {
         FT_Vector pen = {.x = (i32)(8 + 16 * step_idx), .y = 0};
         FT_Set_Transform(inst->ft_face, &matrix, &pen);
 
+        // TODO re-enable hinting once we can account for spacing discrepancies
+        // Also maybe disable on macos for more native look?
+        FT_Load_Glyph(inst->ft_face, glyph_id, FT_LOAD_NO_HINTING);
+
+        FT_BBox ft_bbox = {};
+        {
+            FT_Glyph ft_glyph = {};
+            FT_Get_Glyph(inst->ft_face->glyph, &ft_glyph);
+            // TODO wtf is grid fitting?
+            FT_Glyph_Get_CBox(ft_glyph, FT_GLYPH_BBOX_SUBPIXELS, &ft_bbox);
+            FT_Done_Glyph(ft_glyph);
+        }
+
         // if (face->glyph->format == FT_GLYPH_FORMAT_BITMAP) {
         //     bail(err, "TODO: handle bitmap glyph");
         // }
@@ -149,12 +145,17 @@ fn void rasterize_glyph(FontInst *inst, u32 glyph_id) {
         FT_Bitmap ft_bitmap = inst->ft_face->glyph->bitmap;
         Arr_u8 tmp_buffer = {.ptr = ft_bitmap.buffer, .count = ft_bitmap.width * ft_bitmap.rows};
 
-        bitmap->texture.format = GLYPH_TEXTURE_FORMAT;
-        bitmap->texture.buffer = arr_clone(inst->arena, tmp_buffer);
-        bitmap->texture.dims = (SizePX){(u16)ft_bitmap.width, (u16)ft_bitmap.rows};
-
-        bitmap->offset_x = (i16)inst->ft_face->glyph->bitmap_left;
-        bitmap->offset_y = (i16)inst->ft_face->glyph->bitmap_top;
+        *bitmap = (GlyphBitmap){
+            .texture.format = GLYPH_TEXTURE_FORMAT,
+            .texture.buffer = arr_clone(inst->arena, tmp_buffer),
+            .texture.dims = (SizePX){(u16)ft_bitmap.width, (u16)ft_bitmap.rows},
+            .bbox.x = (f32)ft_bbox.xMin / 64.f,
+            .bbox.y = (f32)ft_bbox.yMin / 64.f,
+            .bbox.w = (f32)(ft_bbox.xMax - ft_bbox.xMin) / 64.f,
+            .bbox.h = (f32)(ft_bbox.yMax - ft_bbox.yMin) / 64.f,
+            .offset_x = (i16)inst->ft_face->glyph->bitmap_left,
+            .offset_y = (i16)inst->ft_face->glyph->bitmap_top,
+        };
     }
 }
 

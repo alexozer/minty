@@ -233,13 +233,13 @@ struct GlyphBitmap {
     // Can actually go negative!
     i16 offset_x;
     i16 offset_y;
+    RectF bbox;
 };
 derive_struct(GlyphBitmap);
 
 struct GlyphBitmapSet {
     bool rendered;
     Arr_GlyphBitmap steps;
-    RectF bbox;
 };
 derive_struct(GlyphBitmapSet);
 
