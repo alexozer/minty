@@ -43,7 +43,7 @@ fn UI_Box *build_timer_ui(Arena *arena, Session *session, SizePX size) {
     ui_parent(s, base);
     ui_width_flex(s);
     ui_height_px(s, 40);
-    ui_text(s, S("人類社会のすべての構成員の固有の尊厳と平等で譲ることので"),
+    ui_text(s, S("人類社会のすべての構成員の固有の尊厳と平等で"),
             &session->layout.kosugi_maru_regular, 25);
     ui_box(arena, s);
 
