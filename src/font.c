@@ -87,6 +87,18 @@ fn FontInst *add_font_inst(ErrorContext *err,
     kbts_ShapePushFontFromMemory(inst->kbts_ctx, inst->font_file->contents.ptr,
                                  (int)inst->font_file->contents.count, 0);
 
+    // https://tonsky.me/blog/centering/
+    // This blog post argues that text should be centered by "cap height". Apparently, well-behaved
+    // fonts will specify `ascender` and `descender` such that cap height can be computed by
+    // subtracting them.
+    f32 y_min_px =
+        (f32)(inst->ft_face->bbox.yMin * face_size_px) / (f32)inst->ft_face->units_per_EM;
+    f32 y_max_px =
+        (f32)(inst->ft_face->bbox.yMax * face_size_px) / (f32)inst->ft_face->units_per_EM;
+    // f32 cap_height_hopefully = y_max_px - y_min_px;
+    // inst->center_y_px = cap_height_hopefully / 2.f;
+    inst->center_y_px = (y_max_px + y_min_px) / 2.f;
+
     scope_close(scope, "Load font: family = '%.*s', style = '%.*s'", SF(inst->family_name),
                 SF(inst->style_name));
     return inst;
@@ -254,8 +266,12 @@ fn void font_prepare_to_render(FontSystem *ctx,
 
                 // Position of glyph bitmap
                 f32 window_px_x = shaped_glyph.pos_px.x + (f32)bitmap->offset_x;
-                f32 window_px_y =
-                    font_req->bbox.y - (shaped_glyph.pos_px.y + (f32)bitmap->offset_y);
+                // f32 window_px_y =
+                //     font_req->bbox.y - (shaped_glyph.pos_px.y + (f32)bitmap->offset_y);
+
+                f32 center_y_rt_window = font_req->bbox.y + (font_req->bbox.h / 2);
+                f32 baseline_y_rt_line = (shaped_glyph.pos_px.y + (f32)bitmap->offset_y);
+                f32 window_px_y = center_y_rt_window - baseline_y_rt_line + inst->center_y_px;
 
                 // Snap position nearest pixel to render glyph pixel-perfect
                 // (maybe we shouldn't snap during animations?)

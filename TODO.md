@@ -1,13 +1,5 @@
 # TODO
 
-## Next
-
-Text: centering
-<!-- Text: subpixel positioning? -->
-<!-- Text: Remove subpixel positioning demo code -->
-<!-- Text: Multifont -->
-<!-- Avoid zeroing large empty vertex buffers -->
-
 ## Prototyping
 
 <!-- Render Roboto font -->
@@ -82,6 +74,7 @@ Include file/line info in asserts / error messages, but only in non-release buil
 <!-- Only increase max quad count for debug UI -->
 <!--     Don't want to see zeroing frame arena show up in profiler -->
 Transform mesh on GPU
+Split up types.h
 
 ## Error handling
 
@@ -308,3 +301,10 @@ Maybe future do:
 <!--     Rewatch file pilot episode to try to get a feel for this -->
 <!-- Improve UI API (style stacks, except it's just a template system) -->
 <!-- Start working on text -->
+
+# Text centering
+    <!-- Horizontal centering -->
+    Vertical
+
+How do we center vertical?
+    Compute "glyph-relatiave vertical center": ascender - descender
