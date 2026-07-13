@@ -2,14 +2,7 @@
 #include "base.h"
 #include "freetype/ftglyph.h"
 
-// TODO thread through program properly
-
-// TODO thread through program properly
-// Str FONT_PATH = S("data/Roboto-Medium.ttf");
-// Str FONT_PATH = S("data/NotoSans-Regular.ttf");
-// Str FONT_PATH = S("data/NotoSans-Bold.ttf");
-Str FONT_PATH = S("data/NunitoSans-Bold.ttf");
-// Str FONT_PATH = S("data/KosugiMaru-Regular.otf");
+constexpr u32 LOAD_GLYPH_FLAGS = FT_LOAD_NO_HINTING;
 
 bool fn font_handle_eq(FontHandle h1, FontHandle h2) {
     return h1.idx == h2.idx && h1.generation == h2.generation;
@@ -25,7 +18,7 @@ fn FontInst *get_or_create_font_inst(FontSystem *ctx, FontRequest *req) {
     for (u64 i = 0; i < ctx->fonts.count; i++) {
         FontInst *curr_inst = &A(ctx->fonts, i);
         bool handles_eq = font_handle_eq(curr_inst->font_file->handle, req->font_file->handle);
-        bool size_eq = curr_inst->face_size_px == req->font_size_px;
+        bool size_eq = curr_inst->px_per_em == req->font_size_px;
         if (handles_eq && size_eq) {
             inst = curr_inst;
         }
@@ -78,7 +71,7 @@ fn FontInst *add_font_inst(ErrorContext *err,
 
     font_file->handle = next_font_handle(ctx);
     inst->font_file = font_file;
-    inst->face_size_px = face_size_px;
+    inst->px_per_em = face_size_px;
     inst->family_name = str_clone(inst->arena, str_from_c(inst->ft_face->family_name));
     inst->style_name = str_clone(inst->arena, str_from_c(inst->ft_face->style_name));
     inst->bitmap_sets = arena_push_arr(inst->arena, GlyphBitmapSet, (u64)inst->ft_face->num_glyphs);
@@ -87,21 +80,57 @@ fn FontInst *add_font_inst(ErrorContext *err,
     kbts_ShapePushFontFromMemory(inst->kbts_ctx, inst->font_file->contents.ptr,
                                  (int)inst->font_file->contents.count, 0);
 
-    // https://tonsky.me/blog/centering/
-    // This blog post argues that text should be centered by "cap height". Apparently, well-behaved
-    // fonts will specify `ascender` and `descender` such that cap height can be computed by
-    // subtracting them.
-    f32 y_min_px =
-        (f32)(inst->ft_face->bbox.yMin * face_size_px) / (f32)inst->ft_face->units_per_EM;
-    f32 y_max_px =
-        (f32)(inst->ft_face->bbox.yMax * face_size_px) / (f32)inst->ft_face->units_per_EM;
-    // f32 cap_height_hopefully = y_max_px - y_min_px;
-    // inst->center_y_px = cap_height_hopefully / 2.f;
-    inst->center_y_px = (y_max_px + y_min_px) / 2.f;
+    inst->center_y_px = compute_face_center_y(inst);
 
     scope_close(scope, "Load font: family = '%.*s', style = '%.*s'", SF(inst->family_name),
                 SF(inst->style_name));
     return inst;
+}
+
+fn f32 compute_face_center_y(FontInst *inst) {
+    // https://tonsky.me/blog/centering/
+    //
+    // This blog post argues that text should be centered by "cap height". Apparently,
+    // well-behaved fonts should allow you to compute this with `ascender - descender`, but it
+    // didn't work with the test fonts I'm currently using so...
+    //
+    // Figma has a "cap height to baseline" setting for this, which I think might actually use the
+    // height of a capital letter in the font. So let's try this:
+    //
+    // 1) If the font has the glyph for character "A", use its height as cap height and halve it to
+    // get the vertical face center.
+    // 2) Otherwise, center about the face bounding box.
+
+    Arena *scratch = arena_acquire();
+    f32 center_y_px = 0.f;
+
+    Arr_ShapedGlyph shaped_glyphs = shape_text(scratch, inst, S("A"));
+    u32 glyph_id = A(shaped_glyphs, 0).glyph_id;
+    if (glyph_id != 0) {
+        // 'A' glyph is in font
+        FT_Load_Glyph(inst->ft_face, glyph_id, LOAD_GLYPH_FLAGS);
+        FT_BBox ft_bbox = {};
+        {
+            FT_Glyph ft_glyph = {};
+            FT_Get_Glyph(inst->ft_face->glyph, &ft_glyph);
+            // TODO wtf is grid fitting?
+            FT_Glyph_Get_CBox(ft_glyph, FT_GLYPH_BBOX_SUBPIXELS, &ft_bbox);
+            FT_Done_Glyph(ft_glyph);
+        }
+        f32 y_max_px = (f32)(ft_bbox.yMax) / 64.f;
+        center_y_px = y_max_px / 2.f;
+
+    } else {
+        // Fallback to total glyph bounding box
+        f32 y_min_px =
+            (f32)(inst->ft_face->bbox.yMin * inst->px_per_em) / (f32)inst->ft_face->units_per_EM;
+        f32 y_max_px =
+            (f32)(inst->ft_face->bbox.yMax * inst->px_per_em) / (f32)inst->ft_face->units_per_EM;
+        center_y_px = (y_max_px + y_min_px) / 2.f;
+    }
+
+    arena_release(scratch);
+    return center_y_px;
 }
 
 fn void destroy_font_inst(FontInst *inst) {
@@ -133,7 +162,7 @@ fn void rasterize_glyph(FontInst *inst, u32 glyph_id) {
 
         // TODO re-enable hinting once we can account for spacing discrepancies
         // Also maybe disable on macos for more native look?
-        FT_Load_Glyph(inst->ft_face, glyph_id, FT_LOAD_NO_HINTING);
+        FT_Load_Glyph(inst->ft_face, glyph_id, LOAD_GLYPH_FLAGS);
 
         FT_BBox ft_bbox = {};
         {
@@ -166,8 +195,7 @@ fn void rasterize_glyph(FontInst *inst, u32 glyph_id) {
 // TODO check font for errors on load, but afterwards assume it's good
 // TODO arena allocate kbts stuff
 // TODO handling style/direction/face runs etc.
-fn Arr_ShapedGlyph
-shape_text(Arena *arena, FontInst *inst, Str text, f32 px_per_em, f32 font_units_per_em) {
+fn Arr_ShapedGlyph shape_text(Arena *arena, FontInst *inst, Str text) {
     if (text.count == 0) return (Arr_ShapedGlyph){};
 
     Vec_ShapedGlyph output = {};
@@ -190,8 +218,8 @@ shape_text(Arena *arena, FontInst *inst, Str text, f32 px_per_em, f32 font_units
 
             ShapedGlyph *g = vec_push_zero(arena, &output);
             g->glyph_id = glyph->Id;
-            g->pos_px.x = (f32)glyph_x * px_per_em / font_units_per_em;
-            g->pos_px.y = (f32)glyph_y * px_per_em / font_units_per_em;
+            g->pos_px.x = (f32)glyph_x * (f32)inst->px_per_em / (f32)inst->ft_face->units_per_EM;
+            g->pos_px.y = (f32)glyph_y * (f32)inst->px_per_em / (f32)inst->ft_face->units_per_EM;
 
             cursor_x += glyph->AdvanceX;
             cursor_y += glyph->AdvanceY;
@@ -222,8 +250,7 @@ fn void font_prepare_to_render(FontSystem *ctx,
 
     FontInst *inst = get_or_create_font_inst(ctx, font_req);
 
-    Arr_ShapedGlyph shaped_glyphs = shape_text(
-        scratch, inst, font_req->text, (f32)inst->face_size_px, (f32)inst->ft_face->units_per_EM);
+    Arr_ShapedGlyph shaped_glyphs = shape_text(scratch, inst, font_req->text);
     if (shaped_glyphs.count > 0) {
         // Rasterize glyphs
         for (u64 i = 0; i < shaped_glyphs.count; i++) {

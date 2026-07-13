@@ -52,7 +52,7 @@ void process_file(ErrorContext *err, Arena *arena, Str in_path, Str out_path) {
             u64 i = 0;
             while (str_lines_next(&decl_iter, &decl_line)) {
                 if (i > 0) fprintf(out, "\n");
-                fprintf(out, "%.*s", SF(str_slice(decl_line, prefix.count, decl_line.count)));
+                fprintf(out, "%.*s", SF(decl_line));
                 i++;
             }
             fprintf(out, ";\n");

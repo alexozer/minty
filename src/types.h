@@ -285,7 +285,7 @@ struct FontInst {
     FontFile *font_file;
     Str family_name;
     Str style_name;
-    u32 face_size_px;  // AKA size of EM square in pixels
+    u32 px_per_em;  // AKA font size in pixels
     f32 center_y_px;
 
     FT_Library ft_ctx;
