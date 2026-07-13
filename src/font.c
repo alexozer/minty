@@ -212,17 +212,15 @@ fn void font_prepare_to_render(FontSystem *ctx,
 
     Arr_ShapedGlyph shaped_glyphs = shape_text(
         scratch, inst, font_req->text, (f32)inst->face_size_px, (f32)inst->ft_face->units_per_EM);
-
-    // Rasterize glyphs
-    for (u64 i = 0; i < shaped_glyphs.count; i++) {
-        u32 glyph_id = A(shaped_glyphs, i).glyph_id;
-        GlyphBitmapSet *bitmap_set = &A(inst->bitmap_sets, glyph_id);
-        if (!bitmap_set->rendered) {
-            rasterize_glyph(inst, glyph_id);
-        }
-    }
-
     if (shaped_glyphs.count > 0) {
+        // Rasterize glyphs
+        for (u64 i = 0; i < shaped_glyphs.count; i++) {
+            u32 glyph_id = A(shaped_glyphs, i).glyph_id;
+            GlyphBitmapSet *bitmap_set = &A(inst->bitmap_sets, glyph_id);
+            if (!bitmap_set->rendered) {
+                rasterize_glyph(inst, glyph_id);
+            }
+        }
         // Calculate left and right bound
         GlyphBitmap *left_bitmap = get_glyph_bitmap(inst, A(shaped_glyphs, 0));
         GlyphBitmap *right_bitmap =
@@ -239,6 +237,7 @@ fn void font_prepare_to_render(FontSystem *ctx,
             g->pos_px.x = g->pos_px.x + center_rt_req - center_rt_line;
         }
 
+        // Produce glyph quads
         for (u64 i = 0; i < shaped_glyphs.count; i++) {
             ShapedGlyph shaped_glyph = A(shaped_glyphs, i);
             GlyphBitmap *bitmap = get_glyph_bitmap(inst, A(shaped_glyphs, i));
