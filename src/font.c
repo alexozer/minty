@@ -266,7 +266,7 @@ fn Arr_ShapedGlyph shape_and_align_text(Arena *arena, FontInst *inst, UI_Box *bo
             x_ref_rt_window = box->output_size.x;
         } else if (box->flags & UI_Flag_TextAlignRight) {
             // TODO debug why right align can overflow right boundary by 1-2px
-            x_ref_rt_line = x_right_rt_line - x_left_rt_line;
+            x_ref_rt_line = x_right_rt_line;
             x_ref_rt_window = box->output_size.x + box->output_size.w;
         } else {
             x_ref_rt_line = (x_left_rt_line + x_right_rt_line) / 2.f;
