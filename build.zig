@@ -254,14 +254,14 @@ pub fn build(b: *std.Build) !void {
 
     const sdl = b.dependency("sdl", .{ .optimize = optimize, .target = target });
     const sdl_native = b.dependency("sdl", .{ .target = native_target, .optimize = native_optimize });
-    try cdb_targets.append(b.allocator, sdl.artifact("SDL3"));
+    // try cdb_targets.append(b.allocator, sdl.artifact("SDL3"));
 
     const freetype = b.dependency("freetype", .{ .optimize = optimize, .target = target });
-    try cdb_targets.append(b.allocator, freetype.artifact("freetype"));
+    // try cdb_targets.append(b.allocator, freetype.artifact("freetype"));
 
     const simdutf = get_simdutf_library(b, target, optimize);
     const simdutf_native = get_simdutf_library(b, native_target, native_optimize);
-    try cdb_targets.append(b.allocator, simdutf);
+    // try cdb_targets.append(b.allocator, simdutf);
 
     //
     // codegen
