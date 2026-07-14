@@ -45,6 +45,7 @@ fn UI_Box *build_timer_ui(Arena *arena, Session *session, SizePX size) {
     ui_height_px(s, 40);
     ui_text(s, S("人類社会のすべての構成員の固有の尊厳と平等で"),
             &session->layout.kosugi_maru_regular, 25);
+    ui_flags(s, UI_Flag_TextAlignRight);
     ui_box(arena, s);
 
     // Debug row 3
@@ -52,6 +53,7 @@ fn UI_Box *build_timer_ui(Arena *arena, Session *session, SizePX size) {
     ui_width_flex(s);
     ui_height_px(s, 40);
     ui_text(s, S("Flight 0x9428 is departing (NOW)."), &session->layout.departure_mono_regular, 22);
+    ui_flags(s, UI_Flag_TextAlignLeft);
     ui_box(arena, s);
 
     // Segments container

@@ -13,12 +13,12 @@ FontHandle next_font_handle(FontSystem *ctx) {
     return ctx->last_handle;
 }
 
-fn FontInst *get_or_create_font_inst(FontSystem *ctx, FontRequest *req) {
+fn FontInst *get_or_create_font_inst(FontSystem *ctx, UI_Box *box) {
     FontInst *inst = nullptr;
     for (u64 i = 0; i < ctx->fonts.count; i++) {
         FontInst *curr_inst = &A(ctx->fonts, i);
-        bool handles_eq = font_handle_eq(curr_inst->font_file->handle, req->font_file->handle);
-        bool size_eq = curr_inst->px_per_em == req->font_size_px;
+        bool handles_eq = font_handle_eq(curr_inst->font_file->handle, box->font_file->handle);
+        bool size_eq = curr_inst->px_per_em == box->font_size_px;
         if (handles_eq && size_eq) {
             inst = curr_inst;
         }
@@ -30,7 +30,7 @@ fn FontInst *get_or_create_font_inst(FontSystem *ctx, FontRequest *req) {
         ErrorContext err_base = {.arena = err_arena};
         ErrorContext *err = &err_base;
 
-        inst = add_font_inst(err, ctx, req->font_file, req->font_size_px);
+        inst = add_font_inst(err, ctx, box->font_file, box->font_size_px);
 
         if (err_occurred(err)) {
             err_log(err);
@@ -243,14 +243,12 @@ fn GlyphBitmap *get_glyph_bitmap(FontInst *inst, ShapedGlyph shaped_glyph) {
     return &A(bitmap_set->steps, step_idx);
 }
 
-fn void font_prepare_to_render(FontSystem *ctx,
-                               FontRequest *font_req,
-                               FVec_QuadRequest *quad_reqs) {
+fn void font_prepare_to_render(FontSystem *ctx, UI_Box *box, FVec_QuadRequest *quad_reqs) {
     Arena *scratch = arena_acquire();
 
-    FontInst *inst = get_or_create_font_inst(ctx, font_req);
+    FontInst *inst = get_or_create_font_inst(ctx, box);
 
-    Arr_ShapedGlyph shaped_glyphs = shape_text(scratch, inst, font_req->text);
+    Arr_ShapedGlyph shaped_glyphs = shape_text(scratch, inst, box->text_content);
     if (shaped_glyphs.count > 0) {
         // Rasterize glyphs
         for (u64 i = 0; i < shaped_glyphs.count; i++) {
@@ -264,16 +262,27 @@ fn void font_prepare_to_render(FontSystem *ctx,
         GlyphBitmap *left_bitmap = get_glyph_bitmap(inst, A(shaped_glyphs, 0));
         GlyphBitmap *right_bitmap =
             get_glyph_bitmap(inst, A(shaped_glyphs, shaped_glyphs.count - 1));
-        f32 left_rt_line = A(shaped_glyphs, 0).pos_px.x + left_bitmap->bbox.x;
-        f32 right_rt_line = A(shaped_glyphs, shaped_glyphs.count - 1).pos_px.x +
-                            right_bitmap->bbox.x + right_bitmap->bbox.w;
-        f32 center_rt_line = (left_rt_line + right_rt_line) / 2.f;
-        f32 center_rt_req = font_req->bbox.x + font_req->bbox.w / 2;
+        f32 x_left_rt_line = A(shaped_glyphs, 0).pos_px.x + left_bitmap->bbox.x;
+        f32 x_right_rt_line = A(shaped_glyphs, shaped_glyphs.count - 1).pos_px.x +
+                              right_bitmap->bbox.x + right_bitmap->bbox.w;
+
+        f32 x_ref_rt_line = 0;    // Alignment point (left/center/right) relative to start of line
+        f32 x_ref_rt_window = 0;  // Alignment point in window coordinates
+        if (box->flags & UI_Flag_TextAlignLeft) {
+            x_ref_rt_line = x_left_rt_line;
+            x_ref_rt_window = box->output_size.x;
+        } else if (box->flags & UI_Flag_TextAlignRight) {
+            x_ref_rt_line = x_right_rt_line - x_left_rt_line;
+            x_ref_rt_window = box->output_size.x + box->output_size.w;
+        } else {
+            x_ref_rt_line = (x_left_rt_line + x_right_rt_line) / 2.f;
+            x_ref_rt_window = box->output_size.x + (box->output_size.w / 2.f);
+        }
 
         // Reposition shape result so that subpixel bitmap selection respects center transform
         for (u64 i = 0; i < shaped_glyphs.count; i++) {
             ShapedGlyph *g = &A(shaped_glyphs, i);
-            g->pos_px.x = g->pos_px.x + center_rt_req - center_rt_line;
+            g->pos_px.x = g->pos_px.x + x_ref_rt_window - x_ref_rt_line;
         }
 
         // Produce glyph quads
@@ -293,10 +302,7 @@ fn void font_prepare_to_render(FontSystem *ctx,
 
                 // Position of glyph bitmap
                 f32 window_px_x = shaped_glyph.pos_px.x + (f32)bitmap->offset_x;
-                // f32 window_px_y =
-                //     font_req->bbox.y - (shaped_glyph.pos_px.y + (f32)bitmap->offset_y);
-
-                f32 center_y_rt_window = font_req->bbox.y + (font_req->bbox.h / 2);
+                f32 center_y_rt_window = box->output_size.y + (box->output_size.h / 2);
                 f32 baseline_y_rt_line = (shaped_glyph.pos_px.y + (f32)bitmap->offset_y);
                 f32 window_px_y = center_y_rt_window - baseline_y_rt_line + inst->center_y_px;
 

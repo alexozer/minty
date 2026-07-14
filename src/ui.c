@@ -223,14 +223,7 @@ fn void render_ui_impl(Arena *frame_arena,
     }
 
     if (box->flags & UI_Flag_DrawText) {
-        FontRequest font_req = {
-            .text = box->text_content,
-            .bbox = box->output_size,
-            .font_file = box->font_file,
-            .font_size_px = box->font_size_px,
-            .color = COLOR_WHITE,
-        };
-        font_prepare_to_render(font_system, &font_req, quad_reqs);
+        font_prepare_to_render(font_system, box, quad_reqs);
     }
 
     for (u64 i = 0; i < box->childs.count; i++) {

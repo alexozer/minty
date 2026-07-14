@@ -269,15 +269,6 @@ struct Session {
 };
 derive_struct(Session);
 
-struct FontRequest {
-    Str text;
-    RectF bbox;
-    Color color;
-    FontFile *font_file;
-    u32 font_size_px;
-};
-derive_struct(FontRequest);
-
 struct FontInst {
     Arena *arena;
 

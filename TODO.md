@@ -306,5 +306,10 @@ Maybe future do:
     <!-- Horizontal centering -->
     Vertical
 
-How do we center vertical?
-    Compute "glyph-relatiave vertical center": ascender - descender
+<!-- How do we center vertical? -->
+<!--     Compute "glyph-relatiave vertical center": ascender - descender -->
+<!--     Actually, use actual cap height if font has "A", else use bbox height -->
+
+Pass UI_Box directly to font system
+Left align
+Right align
