@@ -186,13 +186,9 @@ fn void layout_ui_impl(UI_Box *box) {
     log_assert(box->input_size.dims[Axis_X].value > 0);
     log_assert(box->input_size.dims[Axis_Y].value > 0);
 
-    Axis main_axis = Axis_X;
+    Axis main_axis = Axis_Y;
     if (box->flags & UI_Flag_ChildLayoutX) {
         main_axis = Axis_X;
-    } else if (box->flags & UI_Flag_ChildLayoutY) {
-        main_axis = Axis_Y;
-    } else {
-        log_assert(is_empty(box->childs));
     }
     layout_ui_main_axis(box, main_axis);
     layout_ui_cross_axis(box, main_axis == Axis_X ? Axis_Y : Axis_X);

@@ -1,8 +1,6 @@
 # TODO
 
-Next:
-
-- 
+Full timer layout
 
 ## Prototyping
 
@@ -328,3 +326,11 @@ Ellipsis (maybe only for left-aligned text for now?)
     clipping, remove another char? repeat?
     I guess you need to reshape each time you remove a character... does this mean we need to
     operate at the level of extended grapheme clusters?
+
+# Basic timer layout next
+
+ChildSum layout rule (?)
+    Is there a good CSS analogy?
+    Implement by doing recursive layout first, assuming it's fixed-size, then laying out current?
+    May need to layout axes independently in that case
+Big timer + related stuff

@@ -2,6 +2,13 @@
 #include "timer_update.h"
 #include "ui.h"
 
+// TODO not a lot of principles behind these constants atm
+constexpr f32 INFO_HEIGHT_PX = 80.f;
+constexpr f32 SEGMENT_HEIGHT_PX = 100.f;
+constexpr f32 ICON_PADDING_PX = 8.f;
+constexpr f32 SMALL_TIME_WIDTH_PX = 150.f;
+constexpr u32 BIG_TIME_FONT_SIZE_PX = 110;
+
 fn UI_Box *build_timer_ui(Arena *arena, Session *session, SizePX size) {
     constexpr f32 OUTER_PADDING = 12.f;
 
@@ -41,6 +48,8 @@ fn void build_timer_ui_impl(Arena *arena, UI_Box *base, Session *session, SizePX
     for (u64 i = 0; i < session->file.segments.count; i++) {
         build_segment_ui(arena, segments_container, session, i);
     }
+
+    build_bottom_timer_ui(arena, session, base);
 }
 
 fn void build_game_info_ui(Arena *arena, UI_Box *base, Session *session, SizePX size) {
@@ -68,11 +77,6 @@ fn void build_game_info_ui(Arena *arena, UI_Box *base, Session *session, SizePX 
 }
 
 fn void build_segment_ui(Arena *arena, UI_Box *parent, Session *session, u64 segment_idx) {
-    constexpr f32 INFO_HEIGHT_PX = 80.f;
-    constexpr f32 SEGMENT_HEIGHT_PX = 100.f;
-    constexpr f32 ICON_PADDING_PX = 8.f;
-    constexpr f32 SMALL_TIME_WIDTH_PX = 150.f;
-
     UI_Style style = {};
     UI_Style *s = &style;
 
@@ -141,6 +145,66 @@ fn void build_segment_ui(Arena *arena, UI_Box *parent, Session *session, u64 seg
         ui_height_flex(s);
         ui_box(arena, s);
     }
+}
+
+fn void build_bottom_timer_ui(Arena *arena, Session *session, UI_Box *parent) {
+    UI_Style style = {};
+    UI_Style *s = &style;
+
+    // Big timer
+    ui_parent(s, parent);
+    ui_width_flex(s);
+    ui_height_px(s, (f32)BIG_TIME_FONT_SIZE_PX * 1.05f);
+    ui_flags(s, UI_Flag_TextAlignRight);
+    ui_font(s, &session->layout.nunito_sans_bold, BIG_TIME_FONT_SIZE_PX);
+    ui_text(s, format_duration(arena, 7758289389452, 2, false));
+    ui_box(arena, s);
+
+    build_bottom_stat(arena, parent, session, S("Previous Segment"),
+                      format_duration(arena, -7238523, 2, false));
+    build_bottom_stat(arena, parent, session, S("Best Possible Time"),
+                      format_duration(arena, 7234234238523, 2, false));
+}
+
+fn void build_bottom_stat(Arena *arena, UI_Box *parent, Session *session, Str label, Str value) {
+    UI_Style style = {};
+    UI_Style *s = &style;
+
+    // Row
+    ui_parent(s, parent);
+    ui_width_flex(s);
+    ui_height_px(s, 40);
+    ui_flags(s, UI_Flag_ChildLayoutX);
+    UI_Box *row = ui_box(arena, s);
+
+    // Left Pad
+    ui_parent(s, row);
+    ui_width_px(s, 10);
+    ui_height_flex(s);
+    ui_box(arena, s);
+
+    // Label
+    ui_parent(s, row);
+    ui_width_flex(s);
+    ui_height_flex(s);
+    ui_font(s, &session->layout.nunito_sans_bold, 27);
+    ui_text(s, label);
+    ui_box(arena, s);
+
+    // Value
+    ui_parent(s, row);
+    ui_width_px(s, SMALL_TIME_WIDTH_PX);
+    ui_height_flex(s);
+    ui_font(s, &session->layout.nunito_sans_bold, 27);
+    ui_flags(s, UI_Flag_TextAlignRight);
+    ui_text(s, value);
+    ui_box(arena, s);
+
+    // Right Pad
+    ui_parent(s, row);
+    ui_width_px(s, 10);
+    ui_height_flex(s);
+    ui_box(arena, s);
 }
 
 fn void build_padding(Arena *arena, UI_Style *s, UI_Box *parent, f32 pad_px) {
