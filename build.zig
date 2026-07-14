@@ -335,5 +335,7 @@ pub fn build(b: *std.Build) !void {
     const run_step = b.step("run", "Run the application");
     run_step.dependOn(&run_blitter.step);
 
-    _ = zcc.createStep(b, "cdb", try cdb_targets.toOwnedSlice(b.allocator));
+    const cdb_step = zcc.createStep(b, "cdb", try cdb_targets.toOwnedSlice(b.allocator));
+    // Ideally this should depend on every target it's generating the cdb for I suppose
+    cdb_step.dependOn(&blitter.step);
 }
