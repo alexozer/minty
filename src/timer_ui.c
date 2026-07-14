@@ -42,7 +42,7 @@ fn void build_timer_ui_impl(Arena *arena, UI_Box *base, Session *session, SizePX
     ui_parent(s, base);
     ui_width_flex(s);
     ui_height_flex(s);
-    ui_flags(s, UI_Flag_ChildLayoutY);
+    ui_flags(s, UI_Flag_ChildLayoutY | UI_Flag_ClipChilds);
     UI_Box *segments_container = ui_box(arena, s);
 
     for (u64 i = 0; i < session->file.segments.count; i++) {

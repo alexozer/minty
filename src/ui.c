@@ -211,6 +211,11 @@ fn void render_ui_impl(Arena *frame_arena,
                        UI_Box *box,
                        FontSystem *font_system,
                        FVec_QuadRequest *quad_reqs) {
+    Opt_P_RectF clip_rect = {};
+    if (box->flags & UI_Flag_ClipChilds) {
+        clip_rect = some(&box->output_size, P_RectF);
+    }
+
     if (box->flags & UI_Flag_DrawTexture) {
         log_assert(box->texture != nullptr);
 
@@ -230,8 +235,19 @@ fn void render_ui_impl(Arena *frame_arena,
     }
 
     for (u64 i = 0; i < box->childs.count; i++) {
-        render_ui_impl(frame_arena, A(box->childs, i), font_system, quad_reqs);
+        UI_Box *child = A(box->childs, i);
+        if (!clip_rect.present || rectf_contains(clip_rect.opt, &child->output_size)) {
+            render_ui_impl(frame_arena, child, font_system, quad_reqs);
+        }
     }
+}
+
+fn bool rectf_contains(RectF *outer, RectF *inner) {
+    bool left = inner->x + TOLERANCE_BIG >= outer->x;
+    bool right = (inner->x + inner->w) <= (outer->x + outer->w) + TOLERANCE_BIG;
+    bool top = inner->y + TOLERANCE_BIG >= outer->y;
+    bool bottom = (inner->y + inner->h) <= (outer->y + outer->h) + TOLERANCE_BIG;
+    return left && right && top && bottom;
 }
 
 fn RectF scale_rect_proportionally_to_fit(RectF outer, f32 inner_aspect_ratio) {

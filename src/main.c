@@ -8,7 +8,6 @@
 #include <SDL3/SDL_clipboard.h>
 
 #include "main.h"
-#include "platform.h"
 #include "render.h"
 #include "timer_load.h"
 #include "timer_update.h"

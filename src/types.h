@@ -191,6 +191,7 @@ union RectF {
     };
 };
 derive_union(RectF);
+derive_type(P_RectF);
 
 derive_struct(stbrp_node);
 derive_struct(stbrp_rect);
@@ -392,6 +393,7 @@ enum UI_Flag : u16 {
     UI_Flag_TextAlignRight = bit(5),
     UI_Flag_TextAlignCenter = bit(6),
     UI_Flag_InsertChildAtIndex = bit(7),
+    UI_Flag_ClipChilds = bit(8),
 };
 derive_enum(UI_Flag);
 

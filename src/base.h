@@ -76,8 +76,9 @@ typedef double f64;
     typedef enum name name; \
     derive_containers(name)
 
-#define derive_union(name)   \
-    typedef union name name; \
+#define derive_union(name)          \
+    typedef union name name;        \
+    typedef name *CONCAT(P_, name); \
     derive_containers(name)
 
 //
@@ -100,6 +101,8 @@ derive_type(f64);
 
 #define align_to(n, a) ((n) + (a - 1)) & ~(a - 1);
 u64 next_pow2(u64 x);
+
+constexpr f32 TOLERANCE_BIG = 0.001f;
 
 #define min(a, b)                              \
     ({                                         \
