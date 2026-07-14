@@ -18,6 +18,7 @@ fn void ui_parent(UI_Style *s, UI_Box *parent);
 fn void ui_child_idx(UI_Style *s, u16 idx);
 fn void ui_text(UI_Style *s, Str text, FontFile *font_file, u32 font_size_px);
 fn void ui_texture(UI_Style *s, Texture *texture);
+fn void ui_style(UI_Style *s, UI_Style *ref);
 fn void layout_ui(UI_Box *root);
 fn void layout_ui_main_axis(UI_Box *parent, Axis axis);
 fn void layout_ui_cross_axis(UI_Box *parent, Axis axis);

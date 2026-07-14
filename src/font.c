@@ -261,16 +261,17 @@ fn Arr_ShapedGlyph shape_and_align_text(Arena *arena, FontInst *inst, UI_Box *bo
 
         f32 x_ref_rt_line = 0;    // Alignment point (left/center/right) relative to start of line
         f32 x_ref_rt_window = 0;  // Alignment point in window coordinates
-        if (box->flags & UI_Flag_TextAlignLeft) {
-            x_ref_rt_line = x_left_rt_line;
-            x_ref_rt_window = box->output_size.x;
-        } else if (box->flags & UI_Flag_TextAlignRight) {
+        if (box->flags & UI_Flag_TextAlignRight) {
             // TODO debug why right align can overflow right boundary by 1-2px
             x_ref_rt_line = x_right_rt_line;
             x_ref_rt_window = box->output_size.x + box->output_size.w;
-        } else {
+        } else if (box->flags & UI_Flag_TextAlignCenter) {
             x_ref_rt_line = (x_left_rt_line + x_right_rt_line) / 2.f;
             x_ref_rt_window = box->output_size.x + (box->output_size.w / 2.f);
+        } else {
+            // Default to left align
+            x_ref_rt_line = x_left_rt_line;
+            x_ref_rt_window = box->output_size.x;
         }
 
         // Reposition shape result so that subpixel bitmap selection respects center transform

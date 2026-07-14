@@ -390,7 +390,8 @@ enum UI_Flag : u16 {
     UI_Flag_DrawTexture = bit(3),
     UI_Flag_TextAlignLeft = bit(4),
     UI_Flag_TextAlignRight = bit(5),
-    UI_Flag_InsertChildAtIndex = bit(6),
+    UI_Flag_TextAlignCenter = bit(6),
+    UI_Flag_InsertChildAtIndex = bit(7),
 };
 derive_enum(UI_Flag);
 

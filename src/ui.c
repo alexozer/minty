@@ -88,6 +88,10 @@ fn void ui_texture(UI_Style *s, Texture *texture) {
     s->texture = texture;
 }
 
+fn void ui_style(UI_Style *s, UI_Style *ref) {
+    SDL_memcpy(s, ref, sizeof(*s));
+}
+
 fn void layout_ui(UI_Box *root) {
     log_assert(root->input_size.w.type == UI_DimType_FixedPX);
     log_assert(root->input_size.h.type == UI_DimType_FixedPX);

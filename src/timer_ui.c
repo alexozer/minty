@@ -2,10 +2,10 @@
 #include "ui.h"
 
 fn UI_Box *build_timer_ui(Arena *arena, Session *session, SizePX size) {
+    constexpr f32 OUTER_PADDING = 12.f;
+
     UI_Style style = {};
     UI_Style *s = &style;
-
-    constexpr f32 OUTER_PADDING = 12.f;
 
     // Outer root
     ui_width_px(s, size.w);
@@ -16,6 +16,35 @@ fn UI_Box *build_timer_ui(Arena *arena, Session *session, SizePX size) {
     build_padding(arena, s, root, OUTER_PADDING);
     ui_flags(s, UI_Flag_ChildLayoutY);
     UI_Box *base = ui_box(arena, s);
+
+    // build_timer_ui_impl(arena, base, session, size);
+    build_text_test_ui(arena, base, session, size);
+
+    layout_ui(root);
+    return root;
+}
+
+fn void build_timer_ui_impl(Arena *arena, UI_Box *base, Session *session, SizePX size) {
+    UI_Style style = {};
+    UI_Style *s = &style;
+
+    build_game_info_ui(arena, base, session, size);
+
+    // Segments container
+    ui_parent(s, base);
+    ui_width_flex(s);
+    ui_height_flex(s);
+    ui_flags(s, UI_Flag_ChildLayoutY);
+    UI_Box *segments_container = ui_box(arena, s);
+
+    for (u64 i = 0; i < session->file.segments.count; i++) {
+        build_segment_ui(arena, segments_container, session, i);
+    }
+}
+
+fn void build_game_info_ui(Arena *arena, UI_Box *base, Session *session, SizePX size) {
+    UI_Style style = {};
+    UI_Style *s = &style;
 
     // Game name
     ui_parent(s, base);
@@ -30,46 +59,63 @@ fn UI_Box *build_timer_ui(Arena *arena, Session *session, SizePX size) {
     ui_height_px(s, 40);
     ui_text(s, session->file.category_name, &session->layout.nunito_sans_bold, 30);
     ui_box(arena, s);
+}
 
-    // Debug row 1
-    ui_parent(s, base);
-    ui_width_flex(s);
-    ui_height_px(s, 40);
+fn void build_text_test_ui(Arena *arena, UI_Box *base, Session *session, SizePX size) {
+    UI_Style b1 = {};
+    UI_Style *s = &b1;
+
+    UI_Style b2 = {};
+    UI_Style *s_row = &b2;
+
+    ui_parent(s_row, base);
+    ui_width_flex(s_row);
+    ui_height_px(s_row, 40);
+    ui_flags(s_row, UI_Flag_TextAlignLeft);
+
+    ui_style(s, s_row);
+    ui_text(s, S("The Legend of Zelda: Tears of the Kingdom"), &session->layout.nunito_sans_bold,
+            30);
+    ui_flags(s, UI_Flag_TextAlignCenter);
+    ui_box(arena, s);
+
+    ui_style(s, s_row);
+    ui_text(s, S("All Main Quests 1.0.0"), &session->layout.nunito_sans_bold, 30);
+    ui_flags(s, UI_Flag_TextAlignCenter);
+    ui_box(arena, s);
+
+    ui_style(s, s_row);
     ui_text(s, S("iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii"),
             &session->layout.nunito_sans_bold, 20);
+    ui_flags(s, UI_Flag_TextAlignCenter);
     ui_box(arena, s);
 
-    // Debug row 2
-    ui_parent(s, base);
-    ui_width_flex(s);
-    ui_height_px(s, 40);
+    ui_style(s, s_row);
     ui_text(s, S("人類社会のすべての構成員の固有の尊厳と平等で"),
             &session->layout.kosugi_maru_regular, 25);
-    ui_flags(s, UI_Flag_TextAlignLeft);
     ui_box(arena, s);
 
-    // Debug row 3
-    ui_parent(s, base);
-    ui_width_flex(s);
-    ui_height_px(s, 40);
+    ui_style(s, s_row);
     ui_text(s, S("Flight 0x9428 is departing (NOW)."), &session->layout.departure_mono_regular, 22);
     ui_flags(s, UI_Flag_TextAlignRight);
     ui_box(arena, s);
 
-    // Segments container
-    ui_parent(s, base);
-    ui_width_flex(s);
-    ui_height_flex(s);
-    ui_flags(s, UI_Flag_ChildLayoutY);
-    UI_Box *segments_container = ui_box(arena, s);
+    ui_style(s, s_row);
+    ui_text(s, S("Ellipsis test…"), &session->layout.departure_mono_regular, 22);
+    ui_box(arena, s);
 
-    for (u64 i = 0; i < session->file.segments.count; i++) {
-        build_segment_ui(arena, segments_container, session, i);
-    }
+    ui_style(s, s_row);
+    ui_text(s, S("Ellipsis test…"), &session->layout.nunito_sans_bold, 22);
+    ui_box(arena, s);
 
-    layout_ui(root);
+    ui_style(s, s_row);
+    ui_text(s, S("人類社会のすべての構成員の固有の尊厳と平等で…"),
+            &session->layout.kosugi_maru_regular, 25);
+    ui_box(arena, s);
 
-    return root;
+    ui_style(s, s_row);
+    ui_text(s, S("Emoji test… 🍓"), &session->layout.nunito_sans_bold, 22);
+    ui_box(arena, s);
 }
 
 fn void build_segment_ui(Arena *arena, UI_Box *parent, Session *session, u64 segment_idx) {

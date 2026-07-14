@@ -1,5 +1,9 @@
 # TODO
 
+Next:
+
+- 
+
 ## Prototyping
 
 <!-- Render Roboto font -->
@@ -310,6 +314,17 @@ Maybe future do:
 <!--     Compute "glyph-relatiave vertical center": ascender - descender -->
 <!--     Actually, use actual cap height if font has "A", else use bbox height -->
 
-Pass UI_Box directly to font system
-Left align
-Right align
+<!-- Pass UI_Box directly to font system -->
+<!-- Left align -->
+<!-- Right align -->
+
+<!-- Alignment is working great! -->
+
+# Text: next
+
+Clipping
+Ellipsis (maybe only for left-aligned text for now?)
+    I think you just... iteratively remove clipping character, replace with ellipsis, check if still
+    clipping, remove another char? repeat?
+    I guess you need to reshape each time you remove a character... does this mean we need to
+    operate at the level of extended grapheme clusters?
