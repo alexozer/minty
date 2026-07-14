@@ -272,6 +272,7 @@ fn void font_prepare_to_render(FontSystem *ctx, UI_Box *box, FVec_QuadRequest *q
             x_ref_rt_line = x_left_rt_line;
             x_ref_rt_window = box->output_size.x;
         } else if (box->flags & UI_Flag_TextAlignRight) {
+            // TODO debug why right align can overflow right boundary by 1-2px
             x_ref_rt_line = x_right_rt_line - x_left_rt_line;
             x_ref_rt_window = box->output_size.x + box->output_size.w;
         } else {
