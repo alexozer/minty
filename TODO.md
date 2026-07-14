@@ -340,7 +340,9 @@ Ellipsis (maybe only for left-aligned text for now?)
 
 # Basic layout loading
 
-XML parsing
+<!-- XML parsing -->
+Update SDL to get JPEG parsing (hopefully)
+Update FreeType while we're at it
 Apply background image
 Apply fonts
 Apply colors
