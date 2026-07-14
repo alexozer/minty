@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        zig-version: [0.16.0]
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: ${{ matrix.zig-version }}
+
+      - name: Check Formatting
+        if: runner.os != 'Windows' # zig fmt failing on Windows CI, unclear why
+        run: zig fmt --ast-check --check .
+
+      - name: Build for Windows
+        run: zig build example -Dtarget=x86_64-windows-gnu --summary all
+
+      - name: Build for Linux
+        run: zig build example -Dtarget=x86_64-linux-gnu --summary all
+
+      - name: Build for macOS
+        if: runner.os == 'macOS'
+        # We don't support cross compiling for macOS, so don't set a target just build
+        # the native target
+        run: zig build example --summary all
