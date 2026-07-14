@@ -257,6 +257,25 @@ struct FontFile {
 derive_struct(FontFile);
 
 struct Layout {
+    Color text_color;
+    Color background_color;
+    Color personal_best_color;
+    Color ahead_gaining_time_color;
+    Color ahead_losing_time_color;
+    Color behind_gaining_time_color;
+    Color behind_losing_time_color;
+    Color best_segment_color;
+    Color not_running_color;
+    Color paused_color;
+    Color text_outline_color;
+    Color shadows_color;
+
+    FontFile times_font;
+    FontFile timer_font;
+    FontFile text_font;
+
+    Texture background_image;
+
     FontFile nunito_sans_bold;
     FontFile kosugi_maru_regular;
     FontFile departure_mono_regular;

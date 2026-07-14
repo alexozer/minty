@@ -1,6 +1,6 @@
 # TODO
 
-Full timer layout
+<!-- Full timer layout -->
 
 ## Prototyping
 
@@ -332,8 +332,15 @@ Ellipsis (maybe only for left-aligned text for now?)
 
 # Basic timer layout next
 
-ChildSum layout rule (?)
-    Is there a good CSS analogy?
-    Implement by doing recursive layout first, assuming it's fixed-size, then laying out current?
-    May need to layout axes independently in that case
-Big timer + related stuff
+<!-- ChildSum layout rule (?) -->
+<!--     Is there a good CSS analogy? -->
+<!--     Implement by doing recursive layout first, assuming it's fixed-size, then laying out current? -->
+<!--     May need to layout axes independently in that case -->
+<!-- Big timer + related stuff -->
+
+# Basic layout loading
+
+XML parsing
+Apply background image
+Apply fonts
+Apply colors
