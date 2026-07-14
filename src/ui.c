@@ -76,9 +76,12 @@ fn void ui_child_idx(UI_Style *s, u16 idx) {
     s->child_idx = idx;
 }
 
-fn void ui_text(UI_Style *s, Str text, FontFile *font_file, u32 font_size_px) {
+fn void ui_text(UI_Style *s, Str text) {
     s->flags |= UI_Flag_DrawText;
     s->text_content = text;
+}
+
+fn void ui_font(UI_Style *s, FontFile *font_file, u32 font_size_px) {
     s->font_file = font_file;
     s->font_size_px = font_size_px;
 }

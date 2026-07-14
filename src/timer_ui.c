@@ -1,4 +1,5 @@
 #include "timer_ui.h"
+#include "timer_update.h"
 #include "ui.h"
 
 fn UI_Box *build_timer_ui(Arena *arena, Session *session, SizePX size) {
@@ -17,8 +18,8 @@ fn UI_Box *build_timer_ui(Arena *arena, Session *session, SizePX size) {
     ui_flags(s, UI_Flag_ChildLayoutY);
     UI_Box *base = ui_box(arena, s);
 
-    // build_timer_ui_impl(arena, base, session, size);
-    build_text_test_ui(arena, base, session, size);
+    build_timer_ui_impl(arena, base, session, size);
+    // build_text_test_ui(arena, base, session, size);
 
     layout_ui(root);
     return root;
@@ -43,88 +44,37 @@ fn void build_timer_ui_impl(Arena *arena, UI_Box *base, Session *session, SizePX
 }
 
 fn void build_game_info_ui(Arena *arena, UI_Box *base, Session *session, SizePX size) {
-    UI_Style style = {};
-    UI_Style *s = &style;
-
-    // Game name
-    ui_parent(s, base);
-    ui_width_flex(s);
-    ui_height_px(s, 40);
-    ui_text(s, session->file.game_name, &session->layout.nunito_sans_bold, 30);
-    ui_box(arena, s);
-
-    // Category name
-    ui_parent(s, base);
-    ui_width_flex(s);
-    ui_height_px(s, 40);
-    ui_text(s, session->file.category_name, &session->layout.nunito_sans_bold, 30);
-    ui_box(arena, s);
-}
-
-fn void build_text_test_ui(Arena *arena, UI_Box *base, Session *session, SizePX size) {
     UI_Style b1 = {};
     UI_Style *s = &b1;
 
     UI_Style b2 = {};
-    UI_Style *s_row = &b2;
+    UI_Style *s_header = &b2;
 
-    ui_parent(s_row, base);
-    ui_width_flex(s_row);
-    ui_height_px(s_row, 40);
-    ui_flags(s_row, UI_Flag_TextAlignLeft);
+    ui_parent(s_header, base);
+    ui_width_flex(s_header);
+    ui_height_px(s_header, 40);
+    ui_font(s_header, &session->layout.nunito_sans_bold, 32);
+    ui_flags(s_header, UI_Flag_TextAlignCenter);
 
-    ui_style(s, s_row);
-    ui_text(s, S("The Legend of Zelda: Tears of the Kingdom"), &session->layout.nunito_sans_bold,
-            30);
-    ui_flags(s, UI_Flag_TextAlignCenter);
+    // Game name
+    ui_style(s, s_header);
+    ui_text(s, session->file.game_name);
     ui_box(arena, s);
 
-    ui_style(s, s_row);
-    ui_text(s, S("All Main Quests 1.0.0"), &session->layout.nunito_sans_bold, 30);
-    ui_flags(s, UI_Flag_TextAlignCenter);
-    ui_box(arena, s);
-
-    ui_style(s, s_row);
-    ui_text(s, S("iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii"),
-            &session->layout.nunito_sans_bold, 20);
-    ui_flags(s, UI_Flag_TextAlignCenter);
-    ui_box(arena, s);
-
-    ui_style(s, s_row);
-    ui_text(s, S("人類社会のすべての構成員の固有の尊厳と平等で"),
-            &session->layout.kosugi_maru_regular, 25);
-    ui_box(arena, s);
-
-    ui_style(s, s_row);
-    ui_text(s, S("Flight 0x9428 is departing (NOW)."), &session->layout.departure_mono_regular, 22);
-    ui_flags(s, UI_Flag_TextAlignRight);
-    ui_box(arena, s);
-
-    ui_style(s, s_row);
-    ui_text(s, S("Ellipsis test…"), &session->layout.departure_mono_regular, 22);
-    ui_box(arena, s);
-
-    ui_style(s, s_row);
-    ui_text(s, S("Ellipsis test…"), &session->layout.nunito_sans_bold, 22);
-    ui_box(arena, s);
-
-    ui_style(s, s_row);
-    ui_text(s, S("人類社会のすべての構成員の固有の尊厳と平等で…"),
-            &session->layout.kosugi_maru_regular, 25);
-    ui_box(arena, s);
-
-    ui_style(s, s_row);
-    ui_text(s, S("Emoji test… 🍓"), &session->layout.nunito_sans_bold, 22);
+    // Category name
+    ui_style(s, s_header);
+    ui_text(s, session->file.category_name);
     ui_box(arena, s);
 }
 
 fn void build_segment_ui(Arena *arena, UI_Box *parent, Session *session, u64 segment_idx) {
-    UI_Style style = {};
-    UI_Style *s = &style;
-
     constexpr f32 INFO_HEIGHT_PX = 80.f;
     constexpr f32 SEGMENT_HEIGHT_PX = 100.f;
     constexpr f32 ICON_PADDING_PX = 8.f;
+    constexpr f32 SMALL_TIME_WIDTH_PX = 150.f;
+
+    UI_Style style = {};
+    UI_Style *s = &style;
 
     SegmentDef *segment = &A(session->file.segments, segment_idx);
 
@@ -148,9 +98,46 @@ fn void build_segment_ui(Arena *arena, UI_Box *parent, Session *session, u64 seg
     }
     ui_box(arena, s);
 
-    for (u64 i = 0; i < 3; i++) {
+    // Split name
+    ui_parent(s, row);
+    ui_width_flex(s);
+    ui_height_flex(s);
+    ui_flags(s, UI_Flag_TextAlignLeft);
+    ui_font(s, &session->layout.nunito_sans_bold, 27);
+    ui_text(s, segment->name);
+    ui_box(arena, s);
+
+    // A couple fake times
+
+    {
+        UI_Style b3 = {};
+        UI_Style *s_time = &b3;
+
+        ui_parent(s_time, row);
+        ui_width_px(s_time, SMALL_TIME_WIDTH_PX);
+        ui_height_flex(s_time);
+        ui_flags(s_time, UI_Flag_TextAlignRight);
+        ui_font(s_time, &session->layout.nunito_sans_bold, 27);
+
+        Str duration_str = format_duration(arena, (Duration)(segment_idx * 78273472834), 2, false);
+
+        ui_style(s, s_time);
+        ui_text(s, duration_str);
+        ui_box(arena, s);
+
+        // Pad
         ui_parent(s, row);
-        ui_width_flex(s);
+        ui_width_px(s, 10);
+        ui_height_flex(s);
+        ui_box(arena, s);
+
+        ui_style(s, s_time);
+        ui_text(s, duration_str);
+        ui_box(arena, s);
+
+        // Pad
+        ui_parent(s, row);
+        ui_width_px(s, 10);
         ui_height_flex(s);
         ui_box(arena, s);
     }
@@ -197,4 +184,66 @@ fn void build_padding(Arena *arena, UI_Style *s, UI_Box *parent, f32 pad_px) {
     ui_width_flex(s);
     ui_height_flex(s);
     // ... applied to style, so next box will be inserted in the correct position
+}
+
+fn void build_text_test_ui(Arena *arena, UI_Box *base, Session *session, SizePX size) {
+    UI_Style b1 = {};
+    UI_Style *s = &b1;
+
+    UI_Style b2 = {};
+    UI_Style *s_row = &b2;
+
+    ui_parent(s_row, base);
+    ui_width_flex(s_row);
+    ui_height_px(s_row, 40);
+    ui_flags(s_row, UI_Flag_TextAlignLeft);
+
+    ui_style(s, s_row);
+    ui_font(s, &session->layout.nunito_sans_bold, 30);
+    ui_text(s, S("The Legend of Zelda: Tears of the Kingdom"));
+    ui_flags(s, UI_Flag_TextAlignCenter);
+    ui_box(arena, s);
+
+    ui_style(s, s_row);
+    ui_font(s, &session->layout.nunito_sans_bold, 30);
+    ui_text(s, S("All Main Quests 1.0.0"));
+    ui_flags(s, UI_Flag_TextAlignCenter);
+    ui_box(arena, s);
+
+    ui_style(s, s_row);
+    ui_font(s, &session->layout.nunito_sans_bold, 20);
+    ui_text(s, S("iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii"));
+    ui_flags(s, UI_Flag_TextAlignCenter);
+    ui_box(arena, s);
+
+    ui_style(s, s_row);
+    ui_font(s, &session->layout.kosugi_maru_regular, 25);
+    ui_text(s, S("人類社会のすべての構成員の固有の尊厳と平等で"));
+    ui_box(arena, s);
+
+    ui_style(s, s_row);
+    ui_font(s, &session->layout.departure_mono_regular, 22);
+    ui_text(s, S("Flight 0x9428 is departing (NOW)."));
+    ui_flags(s, UI_Flag_TextAlignRight);
+    ui_box(arena, s);
+
+    ui_style(s, s_row);
+    ui_font(s, &session->layout.departure_mono_regular, 22);
+    ui_text(s, S("Ellipsis test…"));
+    ui_box(arena, s);
+
+    ui_style(s, s_row);
+    ui_font(s, &session->layout.nunito_sans_bold, 22);
+    ui_text(s, S("Ellipsis test…"));
+    ui_box(arena, s);
+
+    ui_style(s, s_row);
+    ui_font(s, &session->layout.kosugi_maru_regular, 25);
+    ui_text(s, S("人類社会のすべての構成員の固有の尊厳と平等で…"));
+    ui_box(arena, s);
+
+    ui_style(s, s_row);
+    ui_font(s, &session->layout.nunito_sans_bold, 22);
+    ui_text(s, S("Emoji test… 🍓"));
+    ui_box(arena, s);
 }
