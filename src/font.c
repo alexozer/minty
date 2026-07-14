@@ -230,25 +230,18 @@ fn Arr_ShapedGlyph shape_text(Arena *arena, FontInst *inst, Str text) {
     return vec_arr(&output);
 }
 
-fn GlyphBitmap *get_glyph_bitmap(FontInst *inst, ShapedGlyph shaped_glyph) {
-    GlyphBitmapSet *bitmap_set = &A(inst->bitmap_sets, shaped_glyph.glyph_id);
-    // Calculate X subpixel position without bitmap X offset because
-    // 1) We can't know bitmap X offset until we compute subpixel position -> bitmap step
-    // 2) Bitmap X offset is in integer pixels
-    // Why floor() and not round()? Technically round() picks the more correct subpixel
-    // offset glyph, BUT rounding e.g. offset 0.8 up to 1.0 would require adding 1 to the x
-    // offset (as opposed to rounding an offset of 0.2 down to 0). floor() avoids this, at
-    // the cost of incorrectly shifting glyphs -0.125px. This is fine for now.
-    u64 step_idx = pos_mod((i64)SDL_floorf((shaped_glyph.pos_px.x) * 4.f), 4);
-    return &A(bitmap_set->steps, step_idx);
-}
-
 fn void font_prepare_to_render(FontSystem *ctx, UI_Box *box, FVec_QuadRequest *quad_reqs) {
     Arena *scratch = arena_acquire();
 
     FontInst *inst = get_or_create_font_inst(ctx, box);
+    Arr_ShapedGlyph shaped_glyphs = shape_and_align_text(scratch, inst, box);
+    emit_glyph_quads(inst, box, shaped_glyphs, quad_reqs);
 
-    Arr_ShapedGlyph shaped_glyphs = shape_text(scratch, inst, box->text_content);
+    arena_release(scratch);
+}
+
+fn Arr_ShapedGlyph shape_and_align_text(Arena *arena, FontInst *inst, UI_Box *box) {
+    Arr_ShapedGlyph shaped_glyphs = shape_text(arena, inst, box->text_content);
     if (shaped_glyphs.count > 0) {
         // Rasterize glyphs
         for (u64 i = 0; i < shaped_glyphs.count; i++) {
@@ -285,41 +278,57 @@ fn void font_prepare_to_render(FontSystem *ctx, UI_Box *box, FVec_QuadRequest *q
             ShapedGlyph *g = &A(shaped_glyphs, i);
             g->pos_px.x = g->pos_px.x + x_ref_rt_window - x_ref_rt_line;
         }
+    }
+    return shaped_glyphs;
+}
 
-        // Produce glyph quads
-        for (u64 i = 0; i < shaped_glyphs.count; i++) {
-            ShapedGlyph shaped_glyph = A(shaped_glyphs, i);
-            GlyphBitmap *bitmap = get_glyph_bitmap(inst, A(shaped_glyphs, i));
+fn void emit_glyph_quads(FontInst *inst,
+                         UI_Box *box,
+                         Arr_ShapedGlyph shaped_glyphs,
+                         FVec_QuadRequest *quad_reqs) {
+    for (u64 i = 0; i < shaped_glyphs.count; i++) {
+        ShapedGlyph shaped_glyph = A(shaped_glyphs, i);
+        GlyphBitmap *bitmap = get_glyph_bitmap(inst, A(shaped_glyphs, i));
 
-            Color color = COLOR_WHITE;
+        Color color = COLOR_WHITE;
 
-            if (bitmap->texture.dims.w > 0 && bitmap->texture.dims.h > 0) {
-                QuadRequest *quad_req = fvec_push_zero(quad_reqs);
-                quad_req->texture = some(&bitmap->texture, P_Texture);
-                quad_req->top_left_color = color;
-                quad_req->top_right_color = color;
-                quad_req->bottom_left_color = color;
-                quad_req->bottom_right_color = color;
+        if (bitmap->texture.dims.w > 0 && bitmap->texture.dims.h > 0) {
+            QuadRequest *quad_req = fvec_push_zero(quad_reqs);
+            quad_req->texture = some(&bitmap->texture, P_Texture);
+            quad_req->top_left_color = color;
+            quad_req->top_right_color = color;
+            quad_req->bottom_left_color = color;
+            quad_req->bottom_right_color = color;
 
-                // Position of glyph bitmap
-                f32 window_px_x = shaped_glyph.pos_px.x + (f32)bitmap->offset_x;
-                f32 center_y_rt_window = box->output_size.y + (box->output_size.h / 2);
-                f32 baseline_y_rt_line = (shaped_glyph.pos_px.y + (f32)bitmap->offset_y);
-                f32 window_px_y = center_y_rt_window - baseline_y_rt_line + inst->center_y_px;
+            // Position of glyph bitmap
+            f32 window_px_x = shaped_glyph.pos_px.x + (f32)bitmap->offset_x;
+            f32 center_y_rt_window = box->output_size.y + (box->output_size.h / 2);
+            f32 baseline_y_rt_line = (shaped_glyph.pos_px.y + (f32)bitmap->offset_y);
+            f32 window_px_y = center_y_rt_window - baseline_y_rt_line + inst->center_y_px;
 
-                // Snap position nearest pixel to render glyph pixel-perfect
-                // (maybe we shouldn't snap during animations?)
-                quad_req->transform = (RectF){
-                    // Floor because we round to nearest subpixel in bitmap selection
-                    .x = SDL_floorf(window_px_x),
-                    // Snap to nearest pixel
-                    .y = SDL_roundf(window_px_y),
-                    .w = (f32)bitmap->texture.dims.w,
-                    .h = (f32)bitmap->texture.dims.h,
-                };
-            }
+            // Snap position nearest pixel to render glyph pixel-perfect
+            // (maybe we shouldn't snap during animations?)
+            quad_req->transform = (RectF){
+                // Floor because we round to nearest subpixel in bitmap selection
+                .x = SDL_floorf(window_px_x),
+                // Snap to nearest pixel
+                .y = SDL_roundf(window_px_y),
+                .w = (f32)bitmap->texture.dims.w,
+                .h = (f32)bitmap->texture.dims.h,
+            };
         }
     }
+}
 
-    arena_release(scratch);
+fn GlyphBitmap *get_glyph_bitmap(FontInst *inst, ShapedGlyph shaped_glyph) {
+    GlyphBitmapSet *bitmap_set = &A(inst->bitmap_sets, shaped_glyph.glyph_id);
+    // Calculate X subpixel position without bitmap X offset because
+    // 1) We can't know bitmap X offset until we compute subpixel position -> bitmap step
+    // 2) Bitmap X offset is in integer pixels
+    // Why floor() and not round()? Technically round() picks the more correct subpixel
+    // offset glyph, BUT rounding e.g. offset 0.8 up to 1.0 would require adding 1 to the x
+    // offset (as opposed to rounding an offset of 0.2 down to 0). floor() avoids this, at
+    // the cost of incorrectly shifting glyphs -0.125px. This is fine for now.
+    u64 step_idx = pos_mod((i64)SDL_floorf((shaped_glyph.pos_px.x) * 4.f), 4);
+    return &A(bitmap_set->steps, step_idx);
 }
