@@ -123,9 +123,9 @@ fn f32 compute_face_center_y(FontInst *inst) {
     } else {
         // Fallback to total glyph bounding box
         f32 y_min_px =
-            (f32)(inst->ft_face->bbox.yMin * inst->px_per_em) / (f32)inst->ft_face->units_per_EM;
+            (f32)inst->ft_face->bbox.yMin * (f32)inst->px_per_em / (f32)inst->ft_face->units_per_EM;
         f32 y_max_px =
-            (f32)(inst->ft_face->bbox.yMax * inst->px_per_em) / (f32)inst->ft_face->units_per_EM;
+            (f32)inst->ft_face->bbox.yMax * (f32)inst->px_per_em / (f32)inst->ft_face->units_per_EM;
         center_y_px = (y_max_px + y_min_px) / 2.f;
     }
 

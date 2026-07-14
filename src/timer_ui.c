@@ -7,7 +7,7 @@ constexpr f32 INFO_HEIGHT_PX = 80.f;
 constexpr f32 SEGMENT_HEIGHT_PX = 100.f;
 constexpr f32 ICON_PADDING_PX = 8.f;
 constexpr f32 SMALL_TIME_WIDTH_PX = 150.f;
-constexpr u32 BIG_TIME_FONT_SIZE_PX = 110;
+constexpr u32 BIG_TIME_FONT_SIZE_PX = 90;
 
 fn UI_Box *build_timer_ui(Arena *arena, Session *session, SizePX size) {
     constexpr f32 OUTER_PADDING = 12.f;
@@ -161,7 +161,7 @@ fn void build_bottom_timer_ui(Arena *arena, Session *session, UI_Box *parent) {
     ui_box(arena, s);
 
     build_bottom_stat(arena, parent, session, S("Previous Segment"),
-                      format_duration(arena, -7238523, 2, false));
+                      format_duration(arena, -7238523332, 2, false));
     build_bottom_stat(arena, parent, session, S("Best Possible Time"),
                       format_duration(arena, 7234234238523, 2, false));
 }

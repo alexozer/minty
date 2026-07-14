@@ -77,6 +77,9 @@ Include file/line info in asserts / error messages, but only in non-release buil
 <!--     Don't want to see zeroing frame arena show up in profiler -->
 Transform mesh on GPU
 Split up types.h
+    Use `pub` to codegen structs/includes/derives in header
+    Generate a public/private header
+    Move generated files out of repo
 
 ## Error handling
 
