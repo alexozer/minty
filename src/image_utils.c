@@ -26,13 +26,11 @@ fn Texture load_texture_from_image(ErrorContext *err, Arena *arena, Arr_u8 image
         case 3: {
             format = SDL_PIXELFORMAT_RGB24;
             pitch = width * 3;
-            log_info("Loading image: width = %d, height = %d, format = RGB24", width, height);
             break;
         }
         case 4: {
             format = SDL_PIXELFORMAT_RGBA32;
             pitch = width * 4;
-            log_info("Loading image: width = %d, height = %d, format = RGBA8888", width, height);
             break;
         }
         default: {
