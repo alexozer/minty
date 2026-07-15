@@ -6,7 +6,7 @@ fn Session *make_session(ErrorContext *err, Arena *arena, App *app, Str lss_path
     Session *session = arena_push(arena, Session);
 
     load_livesplit_lss(err, arena, lss_path, &session->file);
-    Str lsl_path = S("data/smb2smal.lsl");
+    Str lsl_path = S("data/layout-botw.lsl");
     load_livesplit_layout(err, arena, lsl_path, &session->layout);
 
     return session;
@@ -92,7 +92,7 @@ fn Arr_SegmentDef parse_livesplit_segments(ErrorContext *err,
                 seg->name = str_clone(arena, xml_inner(r, attr_tag));
 
             } else if (eq(attr_tag, "Icon")) {
-                seg->icon_texture = parse_texture(err, arena, r, attr_tag);
+                seg->icon_texture = parse_image(err, arena, r, attr_tag);
             }
         }
     }
@@ -116,7 +116,7 @@ fn Str xml_inner(xao_Reader *r, xao_Value outer) {
     return xml_str(inner);
 }
 
-fn Opt_Texture parse_texture(ErrorContext *err, Arena *arena, xao_Reader *r, xao_Value elem) {
+fn Opt_Texture parse_image(ErrorContext *err, Arena *arena, xao_Reader *r, xao_Value elem) {
     Arena *scratch = arena_acquire();
     Scope scope = scope_open(err);
 
@@ -137,7 +137,7 @@ fn Opt_Texture parse_texture(ErrorContext *err, Arena *arena, xao_Reader *r, xao
         }
     }
 
-    scope_close(scope, "Parse LiveSplit image");
+    scope_close(scope, "Parse image: %.*s", SF(xml_str(elem)));
     arena_release(scratch);
     return texture;
 }
@@ -240,7 +240,7 @@ fn void parse_lsl_settings(ErrorContext *err,
 
             // Background
         } else if (eq(settings_child, "BackgroundImage")) {
-            layout->background_image = parse_texture(err, arena, r, settings_child);
+            layout->background_image = parse_image(err, arena, r, settings_child);
         }
     }
 }
@@ -266,15 +266,18 @@ fn Color parse_livesplit_color(ErrorContext *err, xao_Reader *r, xao_Value elem)
         color.a = (v >> 24) & 0xff;
     }
 
-    scope_close(scope, "Parse color of setting '%.*s'", SF(xml_str(elem)));
+    scope_close(scope, "Parse color: '%.*s'", SF(xml_str(elem)));
     return color;
 }
 
 fn FontFile parse_livesplit_font(ErrorContext *err, Arena *arena, xao_Reader *r, xao_Value elem) {
+    Scope scope = scope_open(err);
+
     FontFile font_file = {};
 
     Str base64 = xml_inner(r, elem);
     font_file.contents = decode_base64(err, arena, base64);
 
+    scope_close(scope, "Parse font for %.*s", SF(xml_str(elem)));
     return font_file;
 }
