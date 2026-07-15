@@ -133,7 +133,12 @@ fn Opt_Texture parse_image(ErrorContext *err, Arena *arena, xao_Reader *r, xao_V
             err_report(err, "Image buffer too short");
         } else {
             Arr_u8 png_buf = arr_slice(full_buf, IMAGE_OFFSET, full_buf.count);
-            texture = some(load_texture_from_image(err, arena, png_buf), Texture);
+            Arr_u8 start_buf = arr_slice(full_buf, 0, full_buf.count - IMAGE_OFFSET);
+            arr_move(start_buf, png_buf);
+
+            SDL_SaveFile("test.png", start_buf.ptr, start_buf.count);
+
+            texture = some(load_texture_from_image(err, arena, start_buf), Texture);
         }
     }
 

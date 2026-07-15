@@ -26,11 +26,13 @@ fn Texture load_texture_from_image(ErrorContext *err, Arena *arena, Arr_u8 image
         case 3: {
             format = SDL_PIXELFORMAT_RGB24;
             pitch = width * 3;
+            log_info("Loading image: width = %d, height = %d, format = RGB24", width, height);
             break;
         }
         case 4: {
-            format = SDL_PIXELFORMAT_RGBA8888;
+            format = SDL_PIXELFORMAT_RGBA32;
             pitch = width * 4;
+            log_info("Loading image: width = %d, height = %d, format = RGBA8888", width, height);
             break;
         }
         default: {
@@ -44,12 +46,25 @@ fn Texture load_texture_from_image(ErrorContext *err, Arena *arena, Arr_u8 image
             .ptr = (u8 *)arena_push_bytes(arena, dest_size, 8),
             .count = dest_size,
         };
+        // if (channel_count == 3) {
+        //     // Try manually converting pixels
+        //     for (u64 i = 0; i < width * height; i++) {
+        //         u64 input_offset = i * 3;
+        //         u64 output_offset = i * 4;
+        //         buffer.ptr[output_offset + 0] = pixels[input_offset + 0];
+        //         buffer.ptr[output_offset + 1] = pixels[input_offset + 1];
+        //         buffer.ptr[output_offset + 2] = pixels[input_offset + 2];
+        //         buffer.ptr[output_offset + 3] = 0xff;
+        //     }
+        // } else {
+        //     SDL_memcpy(buffer.ptr, pixels, buffer.count);
+        // }
         texture = (Texture){
             .format = ICON_TEXTURE_FORMAT,
             .buffer = buffer,
             .dims = {.w = (u16)width, .h = (u16)height},
         };
-        if (!SDL_ConvertPixels(width, height, format, pixels, pitch, SDL_PIXELFORMAT_RGBA8888,
+        if (!SDL_ConvertPixels(width, height, format, pixels, pitch, SDL_PIXELFORMAT_RGBA32,
                                texture.buffer.ptr, width * 4)) {
             err_report(err, "%s", SDL_GetError());
         }
