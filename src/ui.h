@@ -33,6 +33,6 @@ fn void render_ui_impl(Arena *frame_arena,
                        FontSystem *font_system,
                        FVec_QuadRequest *quad_reqs);
 fn bool rectf_contains(RectF *outer, RectF *inner);
-fn RectF scale_rect_proportionally_to_fit(RectF outer, f32 inner_aspect_ratio);
+fn RectF scale_rect_proportionally(RectF outer, f32 inner_aspect_ratio, bool zoom);
 fn void debug_render_ui(Arena *frame_arena, UI_Box *root, FVec_QuadRequest *requests);
 fn void debug_render_ui_impl(UI_Box *box, u64 depth, FVec_QuadRequest *reqs);

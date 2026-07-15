@@ -13,7 +13,8 @@ fn TextureSystem *tex_init(ErrorContext *err,
     Scope scope = scope_open(err);
 
     TextureSystem *ctx = arena_push(arena, TextureSystem);
-    ctx->icon_atlas = tex_init_atlas(err, arena, device, S("Icon Atlas"), (SizePX){2048, 2048},
+    // TODO REDUCE SIZE
+    ctx->icon_atlas = tex_init_atlas(err, arena, device, S("Icon Atlas"), (SizePX){4096, 4096},
                                      ICON_TEXTURE_FORMAT, FilterType_Linear);
     ctx->glyph_atlas = tex_init_atlas(err, arena, device, S("Glyph Atlas"), (SizePX){1024, 1024},
                                       GLYPH_TEXTURE_FORMAT, FilterType_Nearest);

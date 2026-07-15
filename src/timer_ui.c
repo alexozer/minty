@@ -18,6 +18,10 @@ fn UI_Box *build_timer_ui(Arena *arena, Session *session, SizePX size) {
     // Outer root
     ui_width_px(s, size.w);
     ui_height_px(s, size.h);
+    if (session->layout.background_image.present) {
+        ui_texture(s, &session->layout.background_image.opt);
+    }
+    ui_flags(s, UI_Flag_TextureZoom);
     UI_Box *root = ui_box(arena, s);
 
     // Inner root
@@ -96,9 +100,10 @@ fn void build_segment_ui(Arena *arena, UI_Box *parent, Session *session, u64 seg
     UI_Box *icon_outer = ui_box(arena, s);
 
     // Icon inner
-    if (segment->icon_texture.dims.w > 0 && segment->icon_texture.dims.h > 0) {
+    if (segment->icon_texture.present) {
         build_padding(arena, s, icon_outer, ICON_PADDING_PX);
-        ui_texture(s, &segment->icon_texture);
+        ui_texture(s, &segment->icon_texture.opt);
+        ui_flags(s, UI_Flag_TextureContain);
     }
     ui_box(arena, s);
 

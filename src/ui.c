@@ -186,12 +186,21 @@ fn void layout_ui_impl(UI_Box *box) {
     log_assert(box->input_size.dims[Axis_X].value > 0);
     log_assert(box->input_size.dims[Axis_Y].value > 0);
 
-    Axis main_axis = Axis_Y;
     if (box->flags & UI_Flag_ChildLayoutX) {
-        main_axis = Axis_X;
+        layout_ui_main_axis(box, Axis_X);
+        layout_ui_cross_axis(box, Axis_Y);
+    } else if (box->flags & UI_Flag_ChildLayoutY) {
+        layout_ui_main_axis(box, Axis_Y);
+        layout_ui_cross_axis(box, Axis_X);
+    } else if (box->flags & UI_Flag_ChildLayoutZ) {
+        // Simple stack
+        for (u64 i = 0; i < box->childs.count; i++) {
+            UI_Box *child = A(box->childs, i);
+            child->output_size = box->output_size;
+        }
+    } else if (box->childs.count > 0) {
+        log_fatal("No child layout direciton provided");
     }
-    layout_ui_main_axis(box, main_axis);
-    layout_ui_cross_axis(box, main_axis == Axis_X ? Axis_Y : Axis_X);
 
     // Recursively compute child layouts
     for (u64 i = 0; i < box->childs.count; i++) {
@@ -219,8 +228,17 @@ fn void render_ui_impl(Arena *frame_arena,
     if (box->flags & UI_Flag_DrawTexture) {
         log_assert(box->texture != nullptr);
 
+        bool zoom = false;
+        if (box->flags & UI_Flag_TextureZoom) {
+            zoom = true;
+        } else if (box->flags & UI_Flag_TextureContain) {
+            zoom = false;
+        } else {
+            log_fatal("Texture scale mode required");
+        }
+
         f32 texture_aspect_ratio = (f32)box->texture->dims.w / box->texture->dims.h;
-        RectF transform = scale_rect_proportionally_to_fit(box->output_size, texture_aspect_ratio);
+        RectF transform = scale_rect_proportionally(box->output_size, texture_aspect_ratio, zoom);
         QuadRequest *quad_req = fvec_push_zero(quad_reqs);
         quad_req->texture = some(box->texture, P_Texture);
         quad_req->transform = transform;
@@ -250,10 +268,11 @@ fn bool rectf_contains(RectF *outer, RectF *inner) {
     return left && right && top && bottom;
 }
 
-fn RectF scale_rect_proportionally_to_fit(RectF outer, f32 inner_aspect_ratio) {
+// Scale and center a rectangle inside of another, preserving aspect ratio.
+fn RectF scale_rect_proportionally(RectF outer, f32 inner_aspect_ratio, bool zoom) {
     f32 outer_aspect_ratio = outer.w / outer.h;
     RectF inner = {};
-    if (inner_aspect_ratio > outer_aspect_ratio) {
+    if ((inner_aspect_ratio > outer_aspect_ratio) ^ zoom) {
         inner.w = outer.w;
         inner.h = outer.w / inner_aspect_ratio;
         inner.x = outer.x;

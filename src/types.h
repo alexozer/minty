@@ -61,7 +61,7 @@ derive_struct(SplitRecord);
 struct SegmentDef {
     Str name;
     Arr_u8 icon_png;  // Icon in PNG format
-    Texture icon_texture;
+    Opt_Texture icon_texture;
 };
 derive_struct(SegmentDef);
 
@@ -274,7 +274,7 @@ struct Layout {
     FontFile timer_font;
     FontFile text_font;
 
-    Texture background_image;
+    Opt_Texture background_image;
 
     FontFile nunito_sans_bold;
     FontFile kosugi_maru_regular;
@@ -406,13 +406,16 @@ derive_union(UI_Size);
 enum UI_Flag : u16 {
     UI_Flag_ChildLayoutX = bit(0),
     UI_Flag_ChildLayoutY = bit(1),
-    UI_Flag_DrawText = bit(2),
-    UI_Flag_DrawTexture = bit(3),
-    UI_Flag_TextAlignLeft = bit(4),
-    UI_Flag_TextAlignRight = bit(5),
-    UI_Flag_TextAlignCenter = bit(6),
-    UI_Flag_InsertChildAtIndex = bit(7),
-    UI_Flag_ClipChilds = bit(8),
+    UI_Flag_ChildLayoutZ = bit(2),
+    UI_Flag_DrawText = bit(3),
+    UI_Flag_DrawTexture = bit(4),
+    UI_Flag_TextAlignLeft = bit(5),
+    UI_Flag_TextAlignRight = bit(6),
+    UI_Flag_TextAlignCenter = bit(7),
+    UI_Flag_InsertChildAtIndex = bit(8),
+    UI_Flag_ClipChilds = bit(9),
+    UI_Flag_TextureContain = bit(10),
+    UI_Flag_TextureZoom = bit(11),
 };
 derive_enum(UI_Flag);
 

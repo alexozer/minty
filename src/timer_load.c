@@ -6,7 +6,7 @@ fn Session *make_session(ErrorContext *err, Arena *arena, App *app, Str lss_path
     Session *session = arena_push(arena, Session);
 
     load_livesplit_lss(err, arena, lss_path, &session->file);
-    Str lsl_path = S("data/layout.lsl");
+    Str lsl_path = S("data/smb2smal.lsl");
     load_livesplit_layout(err, arena, lsl_path, &session->layout);
 
     return session;
@@ -116,11 +116,11 @@ fn Str xml_inner(xao_Reader *r, xao_Value outer) {
     return xml_str(inner);
 }
 
-fn Texture parse_texture(ErrorContext *err, Arena *arena, xao_Reader *r, xao_Value elem) {
+fn Opt_Texture parse_texture(ErrorContext *err, Arena *arena, xao_Reader *r, xao_Value elem) {
     Arena *scratch = arena_acquire();
     Scope scope = scope_open(err);
 
-    Texture texture = {};
+    Opt_Texture texture = {};
 
     Str base64 = xml_inner(r, elem);
     if (base64.count > 0) {
@@ -133,7 +133,7 @@ fn Texture parse_texture(ErrorContext *err, Arena *arena, xao_Reader *r, xao_Val
             err_report(err, "Image buffer too short");
         } else {
             Arr_u8 png_buf = arr_slice(full_buf, IMAGE_OFFSET, full_buf.count);
-            texture = load_texture_from_image(err, arena, png_buf);
+            texture = some(load_texture_from_image(err, arena, png_buf), Texture);
         }
     }
 
