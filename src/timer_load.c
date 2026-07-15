@@ -1,4 +1,5 @@
 #include "timer_load.h"
+#include "image_utils.h"
 #include "platform.h"
 
 fn Session *make_session(ErrorContext *err, Arena *arena, App *app, Str lss_path) {
@@ -132,61 +133,12 @@ fn Texture parse_texture(ErrorContext *err, Arena *arena, xao_Reader *r, xao_Val
             err_report(err, "Image buffer too short");
         } else {
             Arr_u8 png_buf = arr_slice(full_buf, IMAGE_OFFSET, full_buf.count);
-            texture = decode_image_to_texture(err, arena, png_buf);
+            texture = load_texture_from_image(err, arena, png_buf);
         }
     }
 
     scope_close(scope, "Parse LiveSplit image");
     arena_release(scratch);
-    return texture;
-}
-
-fn Texture convert_srgb_surface_to_rgba(Arena *arena, SDL_Surface *surface) {
-    if (!surface) return (Texture){};
-
-    u64 dest_size = (u64)(surface->w * surface->h * 4);
-    Arr_u8 buffer = {
-        .ptr = (u8 *)arena_push_bytes(arena, dest_size, 8),
-        .count = dest_size,
-    };
-    Texture texture = {
-        .format = ICON_TEXTURE_FORMAT,
-        .buffer = buffer,
-        .dims = {.w = (u16)surface->w, .h = (u16)surface->h},
-    };
-    log_assert(SDL_ConvertPixels(surface->w, surface->h, surface->format, surface->pixels,
-                                 surface->pitch, SDL_PIXELFORMAT_RGBA32, texture.buffer.ptr,
-                                 surface->w * 4));
-    return texture;
-}
-
-fn SDL_Surface *sdl_load_surface_io(ErrorContext *err, SDL_IOStream *stream) {
-    if (!stream) return nullptr;
-    Scope scope = scope_open(err);
-
-    SDL_Surface *surface = SDL_LoadSurface_IO(stream, false);
-    if (!surface) {
-        err_report(err, "%s", SDL_GetError());
-    }
-
-    scope_close(scope, "Load image from stream");
-    return surface;
-}
-
-fn void sdl_destroy_surface(SDL_Surface *surface) {
-    if (surface) SDL_DestroySurface(surface);
-}
-
-fn Texture decode_image_to_texture(ErrorContext *err, Arena *arena, Arr_u8 image_buffer) {
-    Scope scope = scope_open(err);
-
-    SDL_IOStream *stream = sdl_io_from_mem(err, image_buffer);
-    SDL_Surface *surface = sdl_load_surface_io(err, stream);
-    Texture texture = convert_srgb_surface_to_rgba(arena, surface);
-    sdl_destroy_surface(surface);
-    sdl_close_io(stream);
-
-    scope_close(scope, "Decode png to texture");
     return texture;
 }
 

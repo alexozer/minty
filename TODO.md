@@ -65,6 +65,9 @@ Memory limits
     TigerStyle mandates allocating all memory to fixed limits at startup.
     Arenas are certainly closer to this than malloc(), but it's an issue when those limits collide
     with GPU memory limits
+Faster PNG/JPEG decode
+    JPEG: libjpeg-turbo over stb_image?
+    Look into jpeg-xl?
 
 ## Low Prio
 
