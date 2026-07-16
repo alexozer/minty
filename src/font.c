@@ -248,12 +248,15 @@ fn Arr_ShapedGlyph shape_text(Arena *arena, FontInst *inst, Str text) {
     return vec_arr(&output);
 }
 
-fn void font_prepare_to_render(FontSystem *ctx, UI_Box *box, FVec_QuadRequest *quad_reqs) {
+fn void font_prepare_to_render(FontSystem *ctx,
+                               UI_Box *box,
+                               u16 depth,
+                               FVec_QuadRequest *quad_reqs) {
     Arena *scratch = arena_acquire();
 
     FontInst *inst = get_or_create_font_inst(ctx, box);
     Arr_ShapedGlyph shaped_glyphs = shape_and_align_text(scratch, inst, box);
-    emit_glyph_quads(inst, box, shaped_glyphs, quad_reqs);
+    emit_glyph_quads(inst, box, shaped_glyphs, depth, quad_reqs);
 
     arena_release(scratch);
 }
@@ -341,6 +344,7 @@ fn Arr_ShapedGlyph shape_and_align_text(Arena *arena, FontInst *inst, UI_Box *bo
 fn void emit_glyph_quads(FontInst *inst,
                          UI_Box *box,
                          Arr_ShapedGlyph shaped_glyphs,
+                         u16 depth,
                          FVec_QuadRequest *quad_reqs) {
     for (u64 i = 0; i < shaped_glyphs.count; i++) {
         ShapedGlyph shaped_glyph = A(shaped_glyphs, i);
@@ -355,6 +359,7 @@ fn void emit_glyph_quads(FontInst *inst,
             quad_req->top_right_color = color;
             quad_req->bottom_left_color = color;
             quad_req->bottom_right_color = color;
+            quad_req->depth = depth;
 
             // Position of glyph bitmap
             f32 window_px_x = shaped_glyph.pos_px.x + (f32)bitmap->offset_x;

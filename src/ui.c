@@ -259,11 +259,11 @@ fn void render_ui_impl(Arena *frame_arena,
         quad_req->bottom_left_color = color;
         quad_req->bottom_right_color = color;
         log_assert(box->depth >= MIN_DEPTH);
-        quad_req->depth = (u16)(box->depth + MIN_DEPTH);
+        quad_req->depth = (u16)(box->depth - MIN_DEPTH);
     }
 
     if (box->flags & UI_Flag_DrawText) {
-        font_prepare_to_render(font_system, box, quad_reqs);
+        font_prepare_to_render(font_system, box, -MIN_DEPTH, quad_reqs);
     }
 
     for (u64 i = 0; i < box->childs.count; i++) {
