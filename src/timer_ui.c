@@ -32,8 +32,8 @@ fn UI_Box *build_timer_ui(Arena *arena, Session *session, SizePX size) {
     ui_flags(s, UI_Flag_ChildLayoutY);
     UI_Box *base = ui_box(arena, s);
 
-    // build_timer_ui_impl(arena, base, session, size);
-    build_text_test_ui(arena, base, session, size);
+    build_timer_ui_impl(arena, base, session, size);
+    // build_text_test_ui(arena, base, session, size);
 
     layout_ui(root);
     return root;
