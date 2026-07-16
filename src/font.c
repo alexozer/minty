@@ -220,8 +220,8 @@ fn void rasterize_glyph(FontInst *inst, u32 glyph_id) {
             .bbox.y = (f32)ft_bbox.yMin / 64.f,
             .bbox.w = (f32)(ft_bbox.xMax - ft_bbox.xMin) / 64.f,
             .bbox.h = (f32)(ft_bbox.yMax - ft_bbox.yMin) / 64.f,
-            .offset_x = (i16)inst->ft_face->glyph->bitmap_left,
-            .offset_y = (i16)inst->ft_face->glyph->bitmap_top,
+            .offset_x = (i16)ft_bitmap->left,
+            .offset_y = (i16)ft_bitmap->top,
         };
 
         FT_Done_Glyph(ft_glyph);
