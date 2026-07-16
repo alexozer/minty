@@ -20,6 +20,8 @@ fn UI_Box *build_timer_ui(Arena *arena, Session *session, SizePX size) {
     ui_height_px(s, size.h);
     if (session->layout.background_image.present) {
         ui_texture(s, &session->layout.background_image.opt);
+        ui_flags(s, UI_Flag_TextureBlendColor);
+        s->color = (Color){.r = 255, .g = 255, .b = 255, .a = 70};
     }
     ui_flags(s, UI_Flag_TextureZoom);
     UI_Box *root = ui_box(arena, s);

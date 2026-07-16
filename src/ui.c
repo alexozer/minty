@@ -237,15 +237,20 @@ fn void render_ui_impl(Arena *frame_arena,
             log_fatal("Texture scale mode required");
         }
 
+        Color color = COLOR_WHITE;
+        if (box->flags & UI_Flag_TextureBlendColor) {
+            color = box->color;
+        }
+
         f32 texture_aspect_ratio = (f32)box->texture->dims.w / box->texture->dims.h;
         RectF transform = scale_rect_proportionally(box->output_size, texture_aspect_ratio, zoom);
         QuadRequest *quad_req = fvec_push_zero(quad_reqs);
         quad_req->texture = some(box->texture, P_Texture);
         quad_req->transform = transform;
-        quad_req->top_left_color = COLOR_WHITE;
-        quad_req->top_right_color = COLOR_WHITE;
-        quad_req->bottom_left_color = COLOR_WHITE;
-        quad_req->bottom_right_color = COLOR_WHITE;
+        quad_req->top_left_color = color;
+        quad_req->top_right_color = color;
+        quad_req->bottom_left_color = color;
+        quad_req->bottom_right_color = color;
     }
 
     if (box->flags & UI_Flag_DrawText) {

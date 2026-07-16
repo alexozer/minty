@@ -17,6 +17,8 @@ SamplerState Sampler : register(s0);
 Output main(Input input)
 {
     Output output;
-    output.color = Texture.Sample(Sampler, input.texcoord);
+
+    float4 tex_color = Texture.Sample(Sampler, input.texcoord);
+    output.color = tex_color * input.color;
     return output;
 }

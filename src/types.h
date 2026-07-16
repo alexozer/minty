@@ -416,6 +416,7 @@ enum UI_Flag : u16 {
     UI_Flag_ClipChilds = bit(9),
     UI_Flag_TextureContain = bit(10),
     UI_Flag_TextureZoom = bit(11),
+    UI_Flag_TextureBlendColor = bit(12),
 };
 derive_enum(UI_Flag);
 
