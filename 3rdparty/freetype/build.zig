@@ -30,6 +30,8 @@ pub fn build(b: *std.Build) void {
         .flags = &.{},
     });
 
+    mod.addCMacro("FT_CONFIG_OPTION_ERROR_STRINGS", "1");
+
     // iOS targets require the iOS SDK sysroot (libc headers are not bundled
     // with Zig). Pull the headers, frameworks, and stub libs from the bundled
     // `xcode_frameworks` package so the C sources can find <string.h> etc.

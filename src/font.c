@@ -58,36 +58,46 @@ fn FontInst *add_font_inst(ErrorContext *err,
     inst->arena = inst_arena;
     inst->font_file = font_file;
 
-    if (FT_Init_FreeType(&inst->ft_ctx) != FT_Err_Ok) {
-        err_report(err, "Failed to initialize freetype");
-    }
-    if (FT_New_Memory_Face(inst->ft_ctx, inst->font_file->contents.ptr,
-                           (long)inst->font_file->contents.count, 0, &inst->ft_face) != FT_Err_Ok) {
-        err_report(err, "Failed to load font face for glyph rendering");
-    }
-    if (FT_Set_Pixel_Sizes(inst->ft_face, face_size_px, 0) != FT_Err_Ok) {
-        err_report(err, "Failed to set font face size");
+    FT_Error ft_err = 0;
+
+    ft_err = FT_Init_FreeType(&inst->ft_ctx);
+    if (ft_err != FT_Err_Ok) {
+        err_report(err, "Failed to initialize freetype: %s", FT_Error_String(ft_err));
     }
 
-    font_file->handle = next_font_handle(ctx);
-    inst->font_file = font_file;
-    inst->px_per_em = face_size_px;
-    inst->family_name = str_clone(inst->arena, str_from_c(inst->ft_face->family_name));
-    inst->style_name = str_clone(inst->arena, str_from_c(inst->ft_face->style_name));
-    inst->bitmap_sets = arena_push_arr(inst->arena, GlyphBitmapSet, (u64)inst->ft_face->num_glyphs);
+    ft_err = FT_New_Memory_Face(inst->ft_ctx, inst->font_file->contents.ptr,
+                                (long)inst->font_file->contents.count, 0, &inst->ft_face);
+    if (ft_err != FT_Err_Ok) {
+        err_report(err, "Failed to load font face: %s", FT_Error_String(ft_err));
+    }
 
-    inst->kbts_ctx = kbts_CreateShapeContext(0, 0);
-    kbts_ShapePushFontFromMemory(inst->kbts_ctx, inst->font_file->contents.ptr,
-                                 (int)inst->font_file->contents.count, 0);
+    ft_err = FT_Set_Pixel_Sizes(inst->ft_face, face_size_px, 0);
+    if (ft_err != FT_Err_Ok) {
+        err_report(err, "Failed to set font face size: %s", FT_Error_String(ft_err));
+    }
 
-    inst->center_y_px = compute_face_center_y(inst);
+    if (!err_occurred(err)) {
+        font_file->handle = next_font_handle(ctx);
+        inst->font_file = font_file;
+        inst->px_per_em = face_size_px;
+        inst->family_name = str_clone(inst->arena, str_from_c(inst->ft_face->family_name));
+        inst->style_name = str_clone(inst->arena, str_from_c(inst->ft_face->style_name));
+        inst->bitmap_sets =
+            arena_push_arr(inst->arena, GlyphBitmapSet, (u64)inst->ft_face->num_glyphs);
 
-    // Prefetch the glyph ID of ellipsis, if the font has it
-    Arr_ShapedGlyph shaped_glyphs = shape_text(inst->arena, inst, S("…"));
-    u32 ellipsis_glyph_id = A(shaped_glyphs, 0).glyph_id;
-    if (ellipsis_glyph_id != 0) {
-        inst->ellipsis_glyph_id = some(ellipsis_glyph_id, u32);
-        rasterize_glyph(inst, ellipsis_glyph_id);
+        inst->kbts_ctx = kbts_CreateShapeContext(0, 0);
+        kbts_ShapePushFontFromMemory(inst->kbts_ctx, inst->font_file->contents.ptr,
+                                     (int)inst->font_file->contents.count, 0);
+
+        inst->center_y_px = compute_face_center_y(inst);
+
+        // Prefetch the glyph ID of ellipsis, if the font has it
+        Arr_ShapedGlyph shaped_glyphs = shape_text(inst->arena, inst, S("…"));
+        u32 ellipsis_glyph_id = A(shaped_glyphs, 0).glyph_id;
+        if (ellipsis_glyph_id != 0) {
+            inst->ellipsis_glyph_id = some(ellipsis_glyph_id, u32);
+            rasterize_glyph(inst, ellipsis_glyph_id);
+        }
     }
 
     scope_close(scope, "Load font: family = '%.*s', style = '%.*s'", SF(inst->family_name),
