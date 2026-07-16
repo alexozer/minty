@@ -359,13 +359,18 @@ Apply colors
 
 # Z ordering
 
-UI renderer should automatically assign a depth to text?
-    Nah? Maybe everything should just have a default depth that you can override
-For maximum control, Z layouts shouldn't automatically assign depth
-I think we want the texture system to:
-    Batch quad requests by depth
-    Sub-batch by texture format (grayscale vs rgb)
-Since we're manually controlling draw order with draw call batching/ordering, and we have no
-intersecting geometry otherwise, we shouldn't need to compute Z?
-    Does this mean we can omit a Z component on our vertices?
-    Maybe save vertex optimization for _really_ optimizing it
+<!-- UI renderer should automatically assign a depth to text? -->
+<!--     Nah? Maybe everything should just have a default depth that you can override -->
+<!-- For maximum control, Z layouts shouldn't automatically assign depth -->
+<!-- I think we want the texture system to: -->
+<!--     Batch quad requests by depth -->
+<!--     Sub-batch by texture format (grayscale vs rgb) -->
+<!-- Since we're manually controlling draw order with draw call batching/ordering, and we have no -->
+<!-- intersecting geometry otherwise, we shouldn't need to compute Z? -->
+<!--     Does this mean we can omit a Z component on our vertices? -->
+<!--     Maybe save vertex optimization for _really_ optimizing it -->
+
+# Outlines
+
+Just treat it as another FontInst configuration for now?
+    P smart actually

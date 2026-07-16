@@ -6,12 +6,16 @@
 
 #include "types.h"
 
-fn FontInst *get_or_create_font_inst(FontSystem *ctx, UI_Box *box);
+fn FontInst *get_or_create_font_inst(FontSystem *ctx,
+                                     FontFile *font_file,
+                                     u32 px_per_em,
+                                     f32 outline_px);
 fn void font_init(FontSystem *ctx, Arena *arena);
 fn FontInst *add_font_inst(ErrorContext *err,
                            FontSystem *ctx,
                            FontFile *font_file,
-                           u32 face_size_px);
+                           u32 face_size_px,
+                           f32 outline_radius_px);
 fn f32 compute_face_center_y(FontInst *inst);
 fn void destroy_font_inst(FontInst *inst);
 fn void rasterize_glyph(FontInst *inst, u32 glyph_id);

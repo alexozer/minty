@@ -1,6 +1,7 @@
 #include "font.h"
+#include <freetype/ftglyph.h>
+#include <freetype/ftstroke.h>
 #include "base.h"
-#include "freetype/ftglyph.h"
 
 constexpr u32 LOAD_GLYPH_FLAGS = FT_LOAD_NO_HINTING;
 
@@ -13,13 +14,17 @@ FontHandle next_font_handle(FontSystem *ctx) {
     return ctx->last_handle;
 }
 
-fn FontInst *get_or_create_font_inst(FontSystem *ctx, UI_Box *box) {
+fn FontInst *get_or_create_font_inst(FontSystem *ctx,
+                                     FontFile *font_file,
+                                     u32 px_per_em,
+                                     f32 outline_px) {
     FontInst *inst = nullptr;
     for (u64 i = 0; i < ctx->fonts.count; i++) {
         FontInst *curr_inst = &A(ctx->fonts, i);
-        bool handles_eq = font_handle_eq(curr_inst->font_file->handle, box->font_file->handle);
-        bool size_eq = curr_inst->px_per_em == box->font_size_px;
-        if (handles_eq && size_eq) {
+        bool handles_eq = font_handle_eq(curr_inst->font_file->handle, font_file->handle);
+        bool size_eq = curr_inst->px_per_em == px_per_em;
+        bool outline_eq = curr_inst->outline_radius_px == outline_px;
+        if (handles_eq && size_eq && outline_eq) {
             inst = curr_inst;
         }
     }
@@ -30,7 +35,7 @@ fn FontInst *get_or_create_font_inst(FontSystem *ctx, UI_Box *box) {
         ErrorContext err_base = {.arena = err_arena};
         ErrorContext *err = &err_base;
 
-        inst = add_font_inst(err, ctx, box->font_file, box->font_size_px);
+        inst = add_font_inst(err, ctx, font_file, px_per_em, outline_px);
 
         if (err_occurred(err)) {
             err_log(err);
@@ -49,7 +54,8 @@ fn void font_init(FontSystem *ctx, Arena *arena) {
 fn FontInst *add_font_inst(ErrorContext *err,
                            FontSystem *ctx,
                            FontFile *font_file,
-                           u32 face_size_px) {
+                           u32 face_size_px,
+                           f32 outline_radius_px) {
     Scope scope = scope_open(err);
 
     FontInst *inst = fvec_push_zero(&ctx->fonts);
@@ -82,6 +88,7 @@ fn FontInst *add_font_inst(ErrorContext *err,
         inst->px_per_em = face_size_px;
         inst->family_name = str_clone(inst->arena, str_from_c(inst->ft_face->family_name));
         inst->style_name = str_clone(inst->arena, str_from_c(inst->ft_face->style_name));
+        inst->outline_radius_px = outline_radius_px;
         inst->bitmap_sets =
             arena_push_arr(inst->arena, GlyphBitmapSet, (u64)inst->ft_face->num_glyphs);
 
@@ -169,37 +176,46 @@ fn void rasterize_glyph(FontInst *inst, u32 glyph_id) {
     for (u64 step_idx = 0; step_idx < bitmap_set->steps.count; step_idx++) {
         GlyphBitmap *bitmap = &A(bitmap_set->steps, step_idx);
 
-        // 2x2 transform matrix with 16.16 fixed-point coefficients
-        FT_Matrix matrix = {.xx = 0x10000, .yy = 0x10000};
-
         // Another option is to rasterize at quarter-pixel midpoints instead of starts, but that
         // breaks pixel fonts which really expect to be rendered at whole pixel offsets.
         // Pen position in 26.6 fixed-point pixels (so 64 = 1 pixel)
         FT_Vector pen = {.x = (i32)(16 * step_idx), .y = 0};
-        FT_Set_Transform(inst->ft_face, &matrix, &pen);
 
         // TODO re-enable hinting once we can account for spacing discrepancies
         // Also maybe disable on macos for more native look?
         FT_Load_Glyph(inst->ft_face, glyph_id, LOAD_GLYPH_FLAGS);
+        FT_Glyph ft_glyph = {};
+        FT_Get_Glyph(inst->ft_face->glyph, &ft_glyph);
+
+        if (inst->outline_radius_px > 0) {
+            FT_Stroker stroker = {};
+            FT_Stroker_New(inst->ft_ctx, &stroker);
+
+            // TODO "radius is in the same units as the outline coordinates"...
+            // I literally don't know if this means font units, 16.16 pixels, or 26.6 pixels...
+            FT_Stroker_Set(stroker, (FT_Fixed)SDL_floorf(inst->outline_radius_px / 64.f),
+                           FT_STROKER_LINECAP_ROUND, FT_STROKER_LINEJOIN_ROUND, 0);
+            FT_Glyph_Stroke(&ft_glyph, stroker, true);
+
+            FT_Stroker_Done(stroker);
+        }
 
         FT_BBox ft_bbox = {};
         {
-            FT_Glyph ft_glyph = {};
-            FT_Get_Glyph(inst->ft_face->glyph, &ft_glyph);
             // TODO wtf is grid fitting?
             FT_Glyph_Get_CBox(ft_glyph, FT_GLYPH_BBOX_SUBPIXELS, &ft_bbox);
-            FT_Done_Glyph(ft_glyph);
         }
 
-        FT_Render_Glyph(inst->ft_face->glyph, FT_RENDER_MODE_NORMAL);
+        FT_Glyph_To_Bitmap(&ft_glyph, FT_RENDER_MODE_NORMAL, &pen, true);
 
-        FT_Bitmap ft_bitmap = inst->ft_face->glyph->bitmap;
-        Arr_u8 tmp_buffer = {.ptr = ft_bitmap.buffer, .count = ft_bitmap.width * ft_bitmap.rows};
+        FT_BitmapGlyph ft_bitmap = (FT_BitmapGlyph)ft_glyph;
+        Arr_u8 tmp_buffer = {.ptr = ft_bitmap->bitmap.buffer,
+                             .count = ft_bitmap->bitmap.width * ft_bitmap->bitmap.rows};
 
         *bitmap = (GlyphBitmap){
             .texture.format = GLYPH_TEXTURE_FORMAT,
             .texture.buffer = arr_clone(inst->arena, tmp_buffer),
-            .texture.dims = (SizePX){(u16)ft_bitmap.width, (u16)ft_bitmap.rows},
+            .texture.dims = (SizePX){(u16)ft_bitmap->bitmap.width, (u16)ft_bitmap->bitmap.rows},
             .bbox.x = (f32)ft_bbox.xMin / 64.f,
             .bbox.y = (f32)ft_bbox.yMin / 64.f,
             .bbox.w = (f32)(ft_bbox.xMax - ft_bbox.xMin) / 64.f,
@@ -207,6 +223,8 @@ fn void rasterize_glyph(FontInst *inst, u32 glyph_id) {
             .offset_x = (i16)inst->ft_face->glyph->bitmap_left,
             .offset_y = (i16)inst->ft_face->glyph->bitmap_top,
         };
+
+        FT_Done_Glyph(ft_glyph);
     }
 }
 
@@ -254,7 +272,7 @@ fn void font_prepare_to_render(FontSystem *ctx,
                                FVec_QuadRequest *quad_reqs) {
     Arena *scratch = arena_acquire();
 
-    FontInst *inst = get_or_create_font_inst(ctx, box);
+    FontInst *inst = get_or_create_font_inst(ctx, box->font_file, box->font_size_px, 0);
     Arr_ShapedGlyph shaped_glyphs = shape_and_align_text(scratch, inst, box);
     emit_glyph_quads(inst, box, shaped_glyphs, depth, quad_reqs);
 

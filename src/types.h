@@ -297,6 +297,7 @@ struct FontInst {
     Str family_name;
     Str style_name;
     u32 px_per_em;  // AKA font size in pixels
+    f32 outline_radius_px;
     f32 center_y_px;
     Opt_u32 ellipsis_glyph_id;
 
