@@ -4,7 +4,9 @@
 
 Next:
 
-- Text ellipsis
+<!-- - Text ellipsis -->
+- Text outline
+    - Correct Z ordering+batching
 
 ## Prototyping
 
@@ -40,7 +42,7 @@ Evaluate using plain C
 <!-- Pixel-perfect rendering -->
 <!--     Idea: preserve pixel coordinates until shader execution? -->
 Settings UI
-Layout
+<!-- Layout -->
 Smooth resize
     How does Ghostty do it?!?
 Global hotkeys
@@ -50,18 +52,18 @@ Permanent split history / rollback / undo
 <!--     I can't think of good invariants for "just let garbage data propagate through the system and -->
 <!--     only check for problems at key points where the outcome could matter" -->
 <!--     Maybe the issue is: trading control flow combinatorics for state combinatorics -->
-Font gradients
-    Simplest solution for now within my exp. level is:
-    Vertex colors picked out by fragment shader, interpolated in good colorspace on CPU
-Font outlines
-    SDFs would probably be helpful here...
+<!-- Font gradients -->
+<!--     Simplest solution for now within my exp. level is: -->
+<!--     Vertex colors picked out by fragment shader, interpolated in good colorspace on CPU -->
+<!-- Font outlines -->
+<!--     SDFs would probably be helpful here... -->
 Latency reduction
     Is vsync necessary on macos?
     If presenting immediately, what's the best way to best-effort sync to display?
-Improve font rendering
-    Sub-pixel positioning (Chrome maybe uses four subpixel positions?)
-    Sub-pixel antialiasing (maybe not on macos?)
-    Look into FreeType outline support?
+<!-- Improve font rendering -->
+<!--     Sub-pixel positioning (Chrome maybe uses four subpixel positions?) -->
+<!--     Sub-pixel antialiasing (maybe not on macos?) -->
+<!--     Look into FreeType outline support? -->
 Generally consistent/correct hidpi scaling factors
 Cross-platform smooth scrolling (again, how does Ghostty do it?)
     Do I have to make a whole-ass Swift application shell just to get smooth scrolling?
@@ -75,14 +77,15 @@ Faster PNG/JPEG decode
 
 ## Low Prio
 
-Upgrade SDL version
-Vendor some deps so things like the above are easier
+<!-- Upgrade SDL version -->
+<!-- Vendor some deps so things like the above are easier -->
 Prune SDL features to bring down binary size
-Forward decl generator
+<!-- Forward decl generator -->
 Include file/line info in asserts / error messages, but only in non-release builds
 <!-- Only increase max quad count for debug UI -->
 <!--     Don't want to see zeroing frame arena show up in profiler -->
 Transform mesh on GPU
+    Also: reduce mesh size (with instancing? pos+size reduction?)
 Split up types.h
     Use `pub` to codegen structs/includes/derives in header
     Generate a public/private header
@@ -101,17 +104,17 @@ Split up types.h
 
 ## Simple starter renderer
 
-Box can be
-    Text (content, size, color)
-    Texture (scale?)
-    Nothing (padding)?
-Box can have
-    Padding (but not margin)
-    Width/Height (no constraints atm)
-    Hstack/Vstack children
-        In this case, box width/height is determined by children?
-        Maybe only for vertical?
-    Maybe also allow option for absolute size with children?
+<!-- Box can be -->
+<!--     Text (content, size, color) -->
+<!--     Texture (scale?) -->
+<!--     Nothing (padding)? -->
+<!-- Box can have -->
+<!--     Padding (but not margin) -->
+<!--     Width/Height (no constraints atm) -->
+<!--     Hstack/Vstack children -->
+<!--         In this case, box width/height is determined by children? -->
+<!--         Maybe only for vertical? -->
+<!--     Maybe also allow option for absolute size with children? -->
 
 # Split icon atlasing
 
@@ -173,7 +176,7 @@ Baby steps.
 <!-- Figure out how these silly font coordinate systems work -->
 <!-- Figure out how I'm supposed to position glyphs w.r.t. shaping results -->
     <!-- Read refpad -->
-Subpixel positioning
+<!-- Subpixel positioning -->
 
 # Texture caching
 
@@ -330,12 +333,12 @@ Maybe future do:
 
 # Text: next
 
-Clipping
-Ellipsis (maybe only for left-aligned text for now?)
-    I think you just... iteratively remove clipping character, replace with ellipsis, check if still
-    clipping, remove another char? repeat?
-    I guess you need to reshape each time you remove a character... does this mean we need to
-    operate at the level of extended grapheme clusters?
+<!-- Clipping -->
+<!-- Ellipsis (maybe only for left-aligned text for now?) -->
+<!--     I think you just... iteratively remove clipping character, replace with ellipsis, check if still -->
+<!--     clipping, remove another char? repeat? -->
+<!--     I guess you need to reshape each time you remove a character... does this mean we need to -->
+<!--     operate at the level of extended grapheme clusters? -->
 
 # Basic timer layout next
 
@@ -348,8 +351,21 @@ Ellipsis (maybe only for left-aligned text for now?)
 # Basic layout loading
 
 <!-- XML parsing -->
-Update SDL to get JPEG parsing (hopefully)
+<!-- Update SDL to get JPEG parsing (hopefully) -->
 Update FreeType while we're at it
-Apply background image
-Apply fonts
+<!-- Apply background image -->
+<!-- Apply fonts -->
 Apply colors
+
+# Z ordering
+
+UI renderer should automatically assign a depth to text?
+    Nah? Maybe everything should just have a default depth that you can override
+For maximum control, Z layouts shouldn't automatically assign depth
+I think we want the texture system to:
+    Batch quad requests by depth
+    Sub-batch by texture format (grayscale vs rgb)
+Since we're manually controlling draw order with draw call batching/ordering, and we have no
+intersecting geometry otherwise, we shouldn't need to compute Z?
+    Does this mean we can omit a Z component on our vertices?
+    Maybe save vertex optimization for _really_ optimizing it

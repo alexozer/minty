@@ -121,7 +121,6 @@ fn void render(App *app) {
 
         Arr_P_RenderInst render_insts = tex_prepare_to_render(
             frame_arena, app->texture_system, render_state, window_size, fvec_arr(quad_requests));
-        arr_sort(render_insts, compare_render_insts);
 
         // Group render insts by type
         FVec_P_RenderInst clear_texture_insts =
@@ -166,12 +165,6 @@ fn void render(App *app) {
 
     SDL_SubmitGPUCommandBuffer(command_buffer);
     arena_release(frame_arena);
-}
-
-fn int compare_render_insts(RenderInst *const *a, RenderInst *const *b) {
-    if ((*a)->order < (*b)->order) return -1;
-    if ((*a)->order > (*b)->order) return 1;
-    return 0;
 }
 
 fn void do_clear_texture_passes(RenderState *render_state,

@@ -2,6 +2,8 @@
 #include "font.h"
 #include "types.h"
 
+constexpr i16 MIN_DEPTH = -4;
+
 // TODO don't require ID for every box
 fn UI_Box *ui_box(Arena *frame_arena, UI_Style *s) {
     UI_Box *box = arena_push(frame_arena, UI_Box);
@@ -12,6 +14,7 @@ fn UI_Box *ui_box(Arena *frame_arena, UI_Style *s) {
     box->color = s->color;
     box->font_file = s->font_file;
     box->font_size_px = s->font_size_px;
+    box->depth = s->depth;
 
     if (s->parent != nullptr) {
         box->parent = s->parent;
@@ -81,7 +84,7 @@ fn void ui_text(UI_Style *s, Str text) {
     s->text_content = text;
 }
 
-fn void ui_font(UI_Style *s, FontFile *font_file, u32 font_size_px) {
+fn void ui_font(UI_Style *s, FontFile *font_file, u16 font_size_px) {
     s->font_file = font_file;
     s->font_size_px = font_size_px;
 }
@@ -93,6 +96,10 @@ fn void ui_texture(UI_Style *s, Texture *texture) {
 
 fn void ui_style(UI_Style *s, UI_Style *ref) {
     SDL_memcpy(s, ref, sizeof(*s));
+}
+
+fn void ui_depth(UI_Style *s, i16 depth) {
+    s->depth = depth;
 }
 
 fn void layout_ui(UI_Box *root) {
@@ -251,6 +258,8 @@ fn void render_ui_impl(Arena *frame_arena,
         quad_req->top_right_color = color;
         quad_req->bottom_left_color = color;
         quad_req->bottom_right_color = color;
+        log_assert(box->depth >= MIN_DEPTH);
+        quad_req->depth = (u16)(box->depth + MIN_DEPTH);
     }
 
     if (box->flags & UI_Flag_DrawText) {

@@ -30,15 +30,22 @@ fn TextureSystem *tex_init(ErrorContext *err,
 
     init_dummy_white_texture(arena, &ctx->dummy_texture);
 
-    constexpr u32 MAX_ICON_QUADS = MAX_QUAD_COUNT / 10;
-    constexpr u32 MAX_GLYPH_QUADS = MAX_QUAD_COUNT - MAX_ICON_QUADS;
-    ctx->icon_mesh.vertices = fvec_alloc(arena, Vertex, quad_vertices(MAX_ICON_QUADS));
-    ctx->icon_mesh.indices = fvec_alloc(arena, u16, quad_indices(MAX_ICON_QUADS));
-    ctx->glyph_mesh.vertices = fvec_alloc(arena, Vertex, quad_vertices(MAX_GLYPH_QUADS));
-    ctx->glyph_mesh.indices = fvec_alloc(arena, u16, quad_indices(MAX_GLYPH_QUADS));
-
     scope_close(scope, "Initialize texture system");
     return ctx;
+}
+
+fn MeshBuilder meshbuilder_alloc(Arena *arena, u64 quad_count) {
+    return (MeshBuilder){
+        .vertices = fvec_alloc(arena, Vertex, quad_vertices(quad_count)),
+        .indices = fvec_alloc(arena, u16, quad_indices(quad_count)),
+    };
+}
+
+fn Mesh meshbuilder_as_mesh(MeshBuilder *builder) {
+    return (Mesh){
+        .vertices = fvec_arr(&builder->vertices),
+        .indices = fvec_arr(&builder->indices),
+    };
 }
 
 fn void init_dummy_white_texture(Arena *arena, Texture *texture) {
@@ -140,10 +147,6 @@ fn Arr_P_RenderInst tex_prepare_to_render(Arena *frame_arena,
                                           SizePX window_size,
                                           Arr_QuadRequest requests) {
     FVec_P_RenderInst render_insts = fvec_alloc(frame_arena, P_RenderInst, (u64)8);
-    fvec_reset(&ctx->icon_mesh.vertices);
-    fvec_reset(&ctx->icon_mesh.indices);
-    fvec_reset(&ctx->glyph_mesh.vertices);
-    fvec_reset(&ctx->glyph_mesh.indices);
 
     if (!ctx->textures_cleared) {
         tex_build_clear_insts(frame_arena, ctx, render_state, &render_insts);
@@ -162,7 +165,6 @@ fn void tex_build_clear_insts(Arena *frame_arena,
     // Clear atlas textures by performing render pass with no draw calls
     RenderInst *icon_clear_inst = arena_push(frame_arena, RenderInst);
     icon_clear_inst->type = RenderInstType_ClearTexture;
-    icon_clear_inst->order = 0;
     icon_clear_inst->pipeline = render_state->clear_icon_pipeline;
     icon_clear_inst->texture = ctx->icon_atlas->texture;
     icon_clear_inst->sampler = ctx->icon_atlas->sampler;
@@ -171,7 +173,6 @@ fn void tex_build_clear_insts(Arena *frame_arena,
 
     RenderInst *glyph_clear_inst = arena_push(frame_arena, RenderInst);
     glyph_clear_inst->type = RenderInstType_ClearTexture;
-    glyph_clear_inst->order = 0;
     glyph_clear_inst->pipeline = render_state->clear_glyph_pipeline;
     glyph_clear_inst->texture = ctx->glyph_atlas->texture;
     glyph_clear_inst->sampler = ctx->glyph_atlas->sampler;
@@ -318,51 +319,87 @@ fn void pack_textures_into_existing_atlas(Arena *frame_arena,
     arena_release(scratch);
 }
 
+struct MeshLayer {
+    MeshBuilder icon_mesh;
+    MeshBuilder glyph_mesh;
+};
+derive_struct(MeshLayer);
+
 fn void tex_build_draw_insts(Arena *frame_arena,
                              TextureSystem *ctx,
                              RenderState *render_state,
                              SizePX window_size,
                              Arr_QuadRequest requests,
                              FVec_P_RenderInst *render_insts) {
+    Vec_MeshLayer layers = {};
+    Vec_u32 layer_icon_counts = {};
+    Vec_u32 layer_glyph_counts = {};
+
+    // Preallocate mesh layers
+    for (u64 i = 0; i < requests.count; i++) {
+        QuadRequest *req = &A(requests, i);
+        while (req->depth >= layers.count) {
+            vec_push_zero(frame_arena, &layers);
+            vec_push_zero(frame_arena, &layer_icon_counts);
+            vec_push_zero(frame_arena, &layer_glyph_counts);
+        }
+
+        Texture *texture = req->texture.present ? req->texture.opt : &ctx->dummy_texture;
+        if (texture->format == ICON_TEXTURE_FORMAT) {
+            A(layer_icon_counts, req->depth)++;
+        } else if (texture->format == GLYPH_TEXTURE_FORMAT) {
+            A(layer_glyph_counts, req->depth)++;
+        }
+    }
+    for (u64 i = 0; i < layers.count; i++) {
+        u64 icon_count = A(layer_icon_counts, i);
+        u64 glyph_count = A(layer_glyph_counts, i);
+        A(layers, i).icon_mesh = meshbuilder_alloc(frame_arena, icon_count);
+        A(layers, i).glyph_mesh = meshbuilder_alloc(frame_arena, glyph_count);
+    }
+
+    // Build quads
     for (u64 i = 0; i < requests.count; i++) {
         QuadRequest *req = &A(requests, i);
 
         Texture *texture = req->texture.present ? req->texture.opt : &ctx->dummy_texture;
         RectPX src = A(ctx->cache_entries, texture->handle.idx).placement;
+        MeshLayer *layer = &A(layers, req->depth);
         if (texture->format == ICON_TEXTURE_FORMAT) {
-            push_atlas_quad(window_size, ctx->icon_atlas, &ctx->icon_mesh, src, req);
+            push_atlas_quad(window_size, ctx->icon_atlas, &layer->icon_mesh, src, req);
         } else if (texture->format == GLYPH_TEXTURE_FORMAT) {
-            push_atlas_quad(window_size, ctx->glyph_atlas, &ctx->glyph_mesh, src, req);
+            push_atlas_quad(window_size, ctx->glyph_atlas, &layer->glyph_mesh, src, req);
         }
     }
 
-    RenderInst *icon_inst = arena_push(frame_arena, RenderInst);
-    icon_inst->type = RenderInstType_Draw;
-    icon_inst->order = 0;
-    icon_inst->pipeline = render_state->icon_pipeline;
-    icon_inst->texture = ctx->icon_atlas->texture;
-    icon_inst->sampler = ctx->icon_atlas->sampler;
-    icon_inst->vertex_shader = render_state->vertex_shader;
-    icon_inst->fragment_shader = render_state->icon_frag_shader;
-    icon_inst->mesh = (Mesh){
-        .vertices = fvec_arr(&ctx->icon_mesh.vertices),
-        .indices = fvec_arr(&ctx->icon_mesh.indices),
-    };
-    fvec_push(render_insts, icon_inst);
+    // Build render insts
+    for (u64 layer_idx = 0; layer_idx < layers.count; layer_idx++) {
+        MeshLayer *layer = &A(layers, layer_idx);
 
-    RenderInst *glyph_inst = arena_push(frame_arena, RenderInst);
-    glyph_inst->type = RenderInstType_Draw;
-    glyph_inst->order = 0;
-    glyph_inst->pipeline = render_state->glyph_pipeline;
-    glyph_inst->texture = ctx->glyph_atlas->texture;
-    glyph_inst->sampler = ctx->glyph_atlas->sampler;
-    glyph_inst->vertex_shader = render_state->vertex_shader;
-    glyph_inst->fragment_shader = render_state->glyph_frag_shader;
-    glyph_inst->mesh = (Mesh){
-        .vertices = fvec_arr(&ctx->glyph_mesh.vertices),
-        .indices = fvec_arr(&ctx->glyph_mesh.indices),
-    };
-    fvec_push(render_insts, glyph_inst);
+        if (layer->icon_mesh.indices.count > 0) {
+            RenderInst *inst = arena_push(frame_arena, RenderInst);
+            inst->type = RenderInstType_Draw;
+            inst->pipeline = render_state->icon_pipeline;
+            inst->texture = ctx->icon_atlas->texture;
+            inst->sampler = ctx->icon_atlas->sampler;
+            inst->vertex_shader = render_state->vertex_shader;
+            inst->fragment_shader = render_state->icon_frag_shader;
+            inst->mesh = meshbuilder_as_mesh(&layer->icon_mesh);
+            fvec_push(render_insts, inst);
+        }
+
+        if (layer->glyph_mesh.indices.count > 0) {
+            RenderInst *inst = arena_push(frame_arena, RenderInst);
+            inst->type = RenderInstType_Draw;
+            inst->pipeline = render_state->glyph_pipeline;
+            inst->texture = ctx->glyph_atlas->texture;
+            inst->sampler = ctx->glyph_atlas->sampler;
+            inst->vertex_shader = render_state->vertex_shader;
+            inst->fragment_shader = render_state->glyph_frag_shader;
+            inst->mesh = meshbuilder_as_mesh(&layer->glyph_mesh);
+            fvec_push(render_insts, inst);
+        }
+    }
 }
 
 fn void push_atlas_quad(SizePX window_size,

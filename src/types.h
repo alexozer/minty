@@ -331,8 +331,6 @@ struct TextureSystem {
     SDL_GPUGraphicsPipeline *clear_icon_pipeline;
     SDL_GPUGraphicsPipeline *clear_glyph_pipeline;
     Texture dummy_texture;
-    MeshBuilder icon_mesh;
-    MeshBuilder glyph_mesh;
 };
 derive_struct(TextureSystem);
 
@@ -345,6 +343,7 @@ struct QuadRequest {
     Color top_right_color;
     Color bottom_left_color;
     Color bottom_right_color;
+    u32 depth;
 };
 derive_struct(QuadRequest);
 
@@ -430,7 +429,8 @@ struct UI_Box {
     Color color;
     Str text_content;
     FontFile *font_file;
-    u32 font_size_px;
+    u16 font_size_px;
+    i16 depth;
 
     UI_Box *parent;
     Vec_P_UI_Box childs;
@@ -448,7 +448,8 @@ struct UI_Style {
     Color color;
     u16 child_idx;
     FontFile *font_file;
-    u32 font_size_px;
+    u16 font_size_px;
+    i16 depth;
 };
 derive_struct(UI_Style);
 
@@ -469,7 +470,6 @@ derive_struct(TextureUpload);
 // Inspired by GfxRenderInst concept from noclip.website
 struct RenderInst {
     RenderInstType type;
-    u16 order;
     SDL_GPUGraphicsPipeline *pipeline;
     SDL_GPUTexture *texture;
     SDL_GPUSampler *sampler;

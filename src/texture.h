@@ -11,6 +11,8 @@ fn TextureSystem *tex_init(ErrorContext *err,
                            SDL_GPUDevice *device,
                            SDL_GPUShader *vertex_shader,
                            SDL_GPUShader *dummy_fragment_shader);
+fn MeshBuilder meshbuilder_alloc(Arena *arena, u64 quad_count);
+fn Mesh meshbuilder_as_mesh(MeshBuilder *builder);
 fn void init_dummy_white_texture(Arena *arena, Texture *texture);
 fn Atlas *tex_init_atlas(ErrorContext *err,
                          Arena *arena,

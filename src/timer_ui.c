@@ -24,6 +24,7 @@ fn UI_Box *build_timer_ui(Arena *arena, Session *session, SizePX size) {
         s->color = (Color){.r = 255, .g = 255, .b = 255, .a = 70};
     }
     ui_flags(s, UI_Flag_TextureZoom);
+    ui_depth(s, -1);
     UI_Box *root = ui_box(arena, s);
 
     // Inner root

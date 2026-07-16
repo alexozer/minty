@@ -10,7 +10,6 @@ fn void render_init(ErrorContext *err, App *app);
 fn void init_vertex_buffers(ErrorContext *err, RenderState *render_state);
 fn void init_render_pipelines(ErrorContext *err, SDL_Window *window, RenderState *render_state);
 fn void render(App *app);
-fn int compare_render_insts(RenderInst *const *a, RenderInst *const *b);
 fn void do_clear_texture_passes(RenderState *render_state,
                                 SDL_GPUCommandBuffer *command_buffer,
                                 Arr_P_RenderInst clear_texture_insts);
