@@ -198,6 +198,9 @@ fn void layout_ui_impl(UI_Box *box) {
     log_assert(box->input_size.dims[Axis_X].value > 0);
     log_assert(box->input_size.dims[Axis_Y].value > 0);
 
+    log_assert(box->depth >= MIN_DEPTH);
+    box->depth -= MIN_DEPTH;
+
     if (box->flags & UI_Flag_ChildLayoutX) {
         layout_ui_main_axis(box, Axis_X);
         layout_ui_cross_axis(box, Axis_Y);
@@ -263,12 +266,11 @@ fn void render_ui_impl(Arena *frame_arena,
         quad_req->top_right_color = color;
         quad_req->bottom_left_color = color;
         quad_req->bottom_right_color = color;
-        log_assert(box->depth >= MIN_DEPTH);
-        quad_req->depth = (u16)(box->depth - MIN_DEPTH);
+        quad_req->depth = (u16)(box->depth);
     }
 
     if (box->flags & UI_Flag_DrawText) {
-        font_prepare_to_render(font_system, box, -MIN_DEPTH, quad_reqs);
+        font_prepare_to_render(font_system, box, quad_reqs);
     }
 
     for (u64 i = 0; i < box->childs.count; i++) {

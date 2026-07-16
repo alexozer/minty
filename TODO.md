@@ -1,13 +1,5 @@
 # TODO
 
-<!-- Full timer layout -->
-
-Next:
-
-<!-- - Text ellipsis -->
-- Text outline
-    - Correct Z ordering+batching
-
 ## Prototyping
 
 <!-- Render Roboto font -->
@@ -24,14 +16,41 @@ Next:
 <!-- Load/unload session -->
 <!--     Right-click menu? -->
 <!-- Either handle SDL errors or assert their absence -->
-Draw split/segment times
-Generate header files with function forward declarations
+<!-- Draw split/segment times -->
+<!-- Generate header files with function forward declarations -->
 <!-- Test on Windows -->
 <!--     Port shaders to HLSL I suppose? -->
-Evaluate using plain C
-    No practical advantage, it's mostly just a flex
+<!-- Evaluate using plain C -->
+<!--     No practical advantage, it's mostly just a flex -->
 
 ## Research
+
+GUI elements
+SDF curve rendering
+    Realistically just squircle for now
+Settings UX design
+Permanent split history / rollback / undo
+Windowing
+    Generally consistent/correct hidpi scaling factors
+        Pretty sure there's just some SDL thing that tells you
+    Cross-platform smooth scrolling (again, how does Ghostty do it?)
+        Do I have to make a whole-ass Swift application shell just to get smooth scrolling?
+    Smooth resize
+        How does Ghostty do it?!?
+        Window isn't resizable on Windows also btw? SDL's windowing stuff seems pretty janky in general
+    Latency reduction
+        Is vsync necessary on macos?
+        If presenting immediately, what's the best way to best-effort sync to display?
+Cross-platform global hotkeys
+    See how OBS does it?
+Faster PNG/JPEG decode
+    JPEG: libjpeg-turbo over stb_image?
+    Look into jpeg-xl?
+Memory limits
+    TigerStyle mandates allocating all memory to fixed limits at startup.
+    Arenas are certainly closer to this than malloc(), but it's an issue when those limits collide
+    with GPU memory limits
+Make my hashtable implementation...
 
 <!-- File Pilot render system interview -->
 <!-- Split icon atlasing -->
@@ -41,13 +60,7 @@ Evaluate using plain C
 <!-- Modern rendering APIs (webgpu, sdl gpu) -->
 <!-- Pixel-perfect rendering -->
 <!--     Idea: preserve pixel coordinates until shader execution? -->
-Settings UI
 <!-- Layout -->
-Smooth resize
-    How does Ghostty do it?!?
-Global hotkeys
-    See how OBS does it?
-Permanent split history / rollback / undo
 <!-- Clearer error handling strategy -->
 <!--     I can't think of good invariants for "just let garbage data propagate through the system and -->
 <!--     only check for problems at key points where the outcome could matter" -->
@@ -57,29 +70,17 @@ Permanent split history / rollback / undo
 <!--     Vertex colors picked out by fragment shader, interpolated in good colorspace on CPU -->
 <!-- Font outlines -->
 <!--     SDFs would probably be helpful here... -->
-Latency reduction
-    Is vsync necessary on macos?
-    If presenting immediately, what's the best way to best-effort sync to display?
 <!-- Improve font rendering -->
 <!--     Sub-pixel positioning (Chrome maybe uses four subpixel positions?) -->
 <!--     Sub-pixel antialiasing (maybe not on macos?) -->
 <!--     Look into FreeType outline support? -->
-Generally consistent/correct hidpi scaling factors
-Cross-platform smooth scrolling (again, how does Ghostty do it?)
-    Do I have to make a whole-ass Swift application shell just to get smooth scrolling?
-Memory limits
-    TigerStyle mandates allocating all memory to fixed limits at startup.
-    Arenas are certainly closer to this than malloc(), but it's an issue when those limits collide
-    with GPU memory limits
-Faster PNG/JPEG decode
-    JPEG: libjpeg-turbo over stb_image?
-    Look into jpeg-xl?
 
 ## Low Prio
 
 <!-- Upgrade SDL version -->
 <!-- Vendor some deps so things like the above are easier -->
 Prune SDL features to bring down binary size
+Update freetype
 <!-- Forward decl generator -->
 Include file/line info in asserts / error messages, but only in non-release builds
 <!-- Only increase max quad count for debug UI -->
@@ -90,6 +91,9 @@ Split up types.h
     Use `pub` to codegen structs/includes/derives in header
     Generate a public/private header
     Move generated files out of repo
+Cache shaping
+Try enabling LTO again
+Do depth normalization during layout
 
 ## Error handling
 
@@ -352,7 +356,6 @@ Maybe future do:
 
 <!-- XML parsing -->
 <!-- Update SDL to get JPEG parsing (hopefully) -->
-Update FreeType while we're at it
 <!-- Apply background image -->
 <!-- Apply fonts -->
 Apply colors
@@ -372,5 +375,5 @@ Apply colors
 
 # Outlines
 
-Just treat it as another FontInst configuration for now?
-    P smart actually
+<!-- Just treat it as another FontInst configuration for now? -->
+<!--     P smart actually -->

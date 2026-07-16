@@ -271,10 +271,7 @@ fn Arr_ShapedGlyph shape_text(Arena *arena, FontInst *inst, Str text) {
     return vec_arr(&output);
 }
 
-fn void font_prepare_to_render(FontSystem *ctx,
-                               UI_Box *box,
-                               u16 depth,
-                               FVec_QuadRequest *quad_reqs) {
+fn void font_prepare_to_render(FontSystem *ctx, UI_Box *box, FVec_QuadRequest *quad_reqs) {
     Arena *scratch = arena_acquire();
 
     FontInst *non_outline_inst = get_or_create_font_inst(ctx, box->font_file, box->font_size_px, 0);
@@ -291,7 +288,7 @@ fn void font_prepare_to_render(FontSystem *ctx,
         }
 
         shaped_glyphs = align_text(ctx, box, non_outline_inst, shaped_glyphs);
-        emit_glyph_quads(ctx, box, non_outline_inst, outline_inst, shaped_glyphs, depth, quad_reqs);
+        emit_glyph_quads(ctx, box, non_outline_inst, outline_inst, shaped_glyphs, quad_reqs);
     }
 
     arena_release(scratch);
@@ -381,7 +378,6 @@ fn void emit_glyph_quads(FontSystem *ctx,
                          FontInst *non_outline_inst,
                          FontInst *outline_inst,
                          Arr_ShapedGlyph shaped_glyphs,
-                         u16 depth,
                          FVec_QuadRequest *quad_reqs) {
     for (u64 i = 0; i < shaped_glyphs.count; i++) {
         ShapedGlyph shaped_glyph = A(shaped_glyphs, i);
@@ -389,11 +385,11 @@ fn void emit_glyph_quads(FontSystem *ctx,
         if (box->font_outline_px > 0) {
             // Draw outline glyphs at same positions as non-outline glyphs
             GlyphBitmap *bitmap = get_glyph_bitmap(outline_inst, A(shaped_glyphs, i));
-            emit_glyph_quad(box, bitmap, shaped_glyph, COLOR_BLACK, depth,
+            emit_glyph_quad(box, bitmap, shaped_glyph, COLOR_BLACK, (u16)box->depth,
                             non_outline_inst->center_y_px, quad_reqs);
         }
         GlyphBitmap *bitmap = get_glyph_bitmap(non_outline_inst, A(shaped_glyphs, i));
-        emit_glyph_quad(box, bitmap, shaped_glyph, COLOR_WHITE, depth + 1,
+        emit_glyph_quad(box, bitmap, shaped_glyph, COLOR_WHITE, (u16)(box->depth + 1),
                         non_outline_inst->center_y_px, quad_reqs);
     }
 }

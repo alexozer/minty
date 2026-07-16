@@ -20,10 +20,7 @@ fn f32 compute_face_center_y(FontInst *inst);
 fn void destroy_font_inst(FontInst *inst);
 fn void rasterize_glyph(FontInst *inst, u32 glyph_id);
 fn Arr_ShapedGlyph shape_text(Arena *arena, FontInst *inst, Str text);
-fn void font_prepare_to_render(FontSystem *ctx,
-                               UI_Box *box,
-                               u16 depth,
-                               FVec_QuadRequest *quad_reqs);
+fn void font_prepare_to_render(FontSystem *ctx, UI_Box *box, FVec_QuadRequest *quad_reqs);
 fn void ensure_bitmap_set_rasterized(FontInst *inst, u32 glyph_id);
 fn Arr_ShapedGlyph align_text(FontSystem *ctx,
                               UI_Box *box,
@@ -34,7 +31,6 @@ fn void emit_glyph_quads(FontSystem *ctx,
                          FontInst *non_outline_inst,
                          FontInst *outline_inst,
                          Arr_ShapedGlyph shaped_glyphs,
-                         u16 depth,
                          FVec_QuadRequest *quad_reqs);
 fn void emit_glyph_quad(UI_Box *box,
                         GlyphBitmap *bitmap,
