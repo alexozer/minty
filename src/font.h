@@ -24,11 +24,20 @@ fn void font_prepare_to_render(FontSystem *ctx,
                                UI_Box *box,
                                u16 depth,
                                FVec_QuadRequest *quad_reqs);
-fn Arr_ShapedGlyph shape_and_align_text(Arena *arena, FontInst *inst, UI_Box *box);
-fn void emit_glyph_quads(FontInst *inst,
+fn void ensure_bitmap_set_rasterized(FontInst *inst, u32 glyph_id);
+fn void align_text(FontSystem *ctx, UI_Box *box, FontInst *inst, Arr_ShapedGlyph shaped_glyphs);
+fn void emit_glyph_quads(FontSystem *ctx,
                          UI_Box *box,
+                         FontInst *non_outline_inst,
+                         FontInst *outline_inst,
                          Arr_ShapedGlyph shaped_glyphs,
                          u16 depth,
-                         bool override_color_with_black,
                          FVec_QuadRequest *quad_reqs);
+fn void emit_glyph_quad(UI_Box *box,
+                        GlyphBitmap *bitmap,
+                        ShapedGlyph shaped_glyph,
+                        Color color,
+                        u16 depth,
+                        f32 center_y_px,
+                        FVec_QuadRequest *quad_reqs);
 fn GlyphBitmap *get_glyph_bitmap(FontInst *inst, ShapedGlyph shaped_glyph);

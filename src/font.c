@@ -277,142 +277,156 @@ fn void font_prepare_to_render(FontSystem *ctx,
                                FVec_QuadRequest *quad_reqs) {
     Arena *scratch = arena_acquire();
 
-    if (box->font_outline_px > 0) {
-        FontInst *inst =
-            get_or_create_font_inst(ctx, box->font_file, box->font_size_px, box->font_outline_px);
-        Arr_ShapedGlyph shaped_glyphs = shape_and_align_text(scratch, inst, box);
-        emit_glyph_quads(inst, box, shaped_glyphs, depth, true, quad_reqs);
-    }
+    FontInst *non_outline_inst = get_or_create_font_inst(ctx, box->font_file, box->font_size_px, 0);
+    FontInst *outline_inst =
+        get_or_create_font_inst(ctx, box->font_file, box->font_size_px, box->font_outline_px);
 
-    FontInst *inst = get_or_create_font_inst(ctx, box->font_file, box->font_size_px, 0);
-    Arr_ShapedGlyph shaped_glyphs = shape_and_align_text(scratch, inst, box);
-    emit_glyph_quads(inst, box, shaped_glyphs, depth + 1, false, quad_reqs);
+    Arr_ShapedGlyph shaped_glyphs = shape_text(scratch, non_outline_inst, box->text_content);
+    if (shaped_glyphs.count > 0) {
+        // Rasterize glyphs. Must be done before alignment so glyph metrics are available
+        for (u64 i = 0; i < shaped_glyphs.count; i++) {
+            u32 glyph_id = A(shaped_glyphs, i).glyph_id;
+            ensure_bitmap_set_rasterized(non_outline_inst, glyph_id);
+            ensure_bitmap_set_rasterized(outline_inst, glyph_id);
+        }
+
+        align_text(ctx, box, non_outline_inst, shaped_glyphs);
+        emit_glyph_quads(ctx, box, non_outline_inst, outline_inst, shaped_glyphs, depth, quad_reqs);
+    }
 
     arena_release(scratch);
 }
 
-fn Arr_ShapedGlyph shape_and_align_text(Arena *arena, FontInst *inst, UI_Box *box) {
-    Arr_ShapedGlyph shaped_glyphs = shape_text(arena, inst, box->text_content);
-    if (shaped_glyphs.count > 0) {
-        // Rasterize glyphs
-        for (u64 i = 0; i < shaped_glyphs.count; i++) {
-            u32 glyph_id = A(shaped_glyphs, i).glyph_id;
-            GlyphBitmapSet *bitmap_set = &A(inst->bitmap_sets, glyph_id);
-            if (!bitmap_set->rendered) {
-                rasterize_glyph(inst, glyph_id);
-            }
-        }
-
-        // Calculate left and right bound, and clip if necessary
-        f32 x_left_rt_line = 0;
-        f32 x_right_rt_line = 0;
-        while (true) {
-            if (shaped_glyphs.count == 0) {
-                break;
-            }
-
-            GlyphBitmap *left_bitmap = get_glyph_bitmap(inst, A(shaped_glyphs, 0));
-            GlyphBitmap *right_bitmap = get_glyph_bitmap(inst, arr_last(shaped_glyphs));
-            x_left_rt_line = A(shaped_glyphs, 0).pos_px.x + left_bitmap->bbox.x;
-            x_right_rt_line =
-                arr_last(shaped_glyphs).pos_px.x + right_bitmap->bbox.x + right_bitmap->bbox.w;
-
-            f32 width = x_right_rt_line - x_left_rt_line;
-            bool clip = box->flags & UI_Flag_TextClipEllipsis;
-            if (!clip || width <= box->output_size.w) {
-                break;
-            }
-
-            // If we're going to clip, force left-alignment to prevent jittering
-            box->flags &= ~(UI_Flag_TextAlignCenter | UI_Flag_TextAlignRight);
-            box->flags |= UI_Flag_TextAlignLeft;
-
-            if (inst->ellipsis_glyph_id.present) {
-                u32 ellipsis_id = inst->ellipsis_glyph_id.opt;
-                // Add ellipsis and try again
-                if (shaped_glyphs.count == 1) {
-                    // Chop off final glyph :(
-                    shaped_glyphs = (Arr_ShapedGlyph){};
-                } else if (arr_last(shaped_glyphs).glyph_id == ellipsis_id) {
-                    // We already have an ellipsis, so chop off two glyphs
-                    shaped_glyphs = arr_slice(shaped_glyphs, 0, shaped_glyphs.count - 1);
-                    arr_last(shaped_glyphs).glyph_id = ellipsis_id;
-                } else {
-                    // Just make the final glyph an ellipsis
-                    arr_last(shaped_glyphs).glyph_id = ellipsis_id;
-                }
-            } else {
-                // Just chop off a glyph and try again
-                shaped_glyphs = arr_slice(shaped_glyphs, 0, shaped_glyphs.count - 1);
-            }
-        }
-
-        f32 x_ref_rt_line = 0;    // Alignment point (left/center/right) relative to start of line
-        f32 x_ref_rt_window = 0;  // Alignment point in window coordinates
-        if (box->flags & UI_Flag_TextAlignRight) {
-            // TODO debug why right align can overflow right boundary by 1-2px
-            x_ref_rt_line = x_right_rt_line;
-            x_ref_rt_window = box->output_size.x + box->output_size.w;
-        } else if (box->flags & UI_Flag_TextAlignCenter) {
-            x_ref_rt_line = (x_left_rt_line + x_right_rt_line) / 2.f;
-            x_ref_rt_window = box->output_size.x + (box->output_size.w / 2.f);
-        } else {
-            // Default to left align
-            x_ref_rt_line = x_left_rt_line;
-            x_ref_rt_window = box->output_size.x;
-        }
-
-        // Reposition shape result so that subpixel bitmap selection respects center transform
-        for (u64 i = 0; i < shaped_glyphs.count; i++) {
-            ShapedGlyph *g = &A(shaped_glyphs, i);
-            g->pos_px.x = g->pos_px.x + x_ref_rt_window - x_ref_rt_line;
-        }
+fn void ensure_bitmap_set_rasterized(FontInst *inst, u32 glyph_id) {
+    GlyphBitmapSet *bitmap_set = &A(inst->bitmap_sets, glyph_id);
+    if (!bitmap_set->rendered) {
+        rasterize_glyph(inst, glyph_id);
     }
-    return shaped_glyphs;
 }
 
-fn void emit_glyph_quads(FontInst *inst,
+fn void align_text(FontSystem *ctx, UI_Box *box, FontInst *inst, Arr_ShapedGlyph shaped_glyphs) {
+    // Calculate left and right bound, and clip if necessary
+    f32 x_left_rt_line = 0;
+    f32 x_right_rt_line = 0;
+    while (true) {
+        if (shaped_glyphs.count == 0) {
+            break;
+        }
+
+        GlyphBitmap *left_bitmap = get_glyph_bitmap(inst, A(shaped_glyphs, 0));
+        GlyphBitmap *right_bitmap = get_glyph_bitmap(inst, arr_last(shaped_glyphs));
+        x_left_rt_line = A(shaped_glyphs, 0).pos_px.x + left_bitmap->bbox.x;
+        x_right_rt_line =
+            arr_last(shaped_glyphs).pos_px.x + right_bitmap->bbox.x + right_bitmap->bbox.w;
+
+        f32 width = x_right_rt_line - x_left_rt_line;
+        bool clip = box->flags & UI_Flag_TextClipEllipsis;
+        if (!clip || width <= box->output_size.w) {
+            break;
+        }
+
+        // If we're going to clip, force left-alignment to prevent jittering
+        box->flags &= ~(UI_Flag_TextAlignCenter | UI_Flag_TextAlignRight);
+        box->flags |= UI_Flag_TextAlignLeft;
+
+        if (inst->ellipsis_glyph_id.present) {
+            u32 ellipsis_id = inst->ellipsis_glyph_id.opt;
+            // Add ellipsis and try again
+            if (shaped_glyphs.count == 1) {
+                // Chop off final glyph :(
+                shaped_glyphs = (Arr_ShapedGlyph){};
+            } else if (arr_last(shaped_glyphs).glyph_id == ellipsis_id) {
+                // We already have an ellipsis, so chop off two glyphs
+                shaped_glyphs = arr_slice(shaped_glyphs, 0, shaped_glyphs.count - 1);
+                arr_last(shaped_glyphs).glyph_id = ellipsis_id;
+            } else {
+                // Just make the final glyph an ellipsis
+                arr_last(shaped_glyphs).glyph_id = ellipsis_id;
+            }
+        } else {
+            // Just chop off a glyph and try again
+            shaped_glyphs = arr_slice(shaped_glyphs, 0, shaped_glyphs.count - 1);
+        }
+    }
+
+    f32 x_ref_rt_line = 0;    // Alignment point (left/center/right) relative to start of line
+    f32 x_ref_rt_window = 0;  // Alignment point in window coordinates
+    if (box->flags & UI_Flag_TextAlignRight) {
+        // TODO debug why right align can overflow right boundary by 1-2px
+        x_ref_rt_line = x_right_rt_line;
+        x_ref_rt_window = box->output_size.x + box->output_size.w;
+    } else if (box->flags & UI_Flag_TextAlignCenter) {
+        x_ref_rt_line = (x_left_rt_line + x_right_rt_line) / 2.f;
+        x_ref_rt_window = box->output_size.x + (box->output_size.w / 2.f);
+    } else {
+        // Default to left align
+        x_ref_rt_line = x_left_rt_line;
+        x_ref_rt_window = box->output_size.x;
+    }
+
+    // Reposition shape result so that subpixel bitmap selection respects center transform
+    for (u64 i = 0; i < shaped_glyphs.count; i++) {
+        ShapedGlyph *g = &A(shaped_glyphs, i);
+        g->pos_px.x = g->pos_px.x + x_ref_rt_window - x_ref_rt_line;
+    }
+}
+
+fn void emit_glyph_quads(FontSystem *ctx,
                          UI_Box *box,
+                         FontInst *non_outline_inst,
+                         FontInst *outline_inst,
                          Arr_ShapedGlyph shaped_glyphs,
                          u16 depth,
-                         bool override_color_with_black,
                          FVec_QuadRequest *quad_reqs) {
     for (u64 i = 0; i < shaped_glyphs.count; i++) {
         ShapedGlyph shaped_glyph = A(shaped_glyphs, i);
-        GlyphBitmap *bitmap = get_glyph_bitmap(inst, A(shaped_glyphs, i));
 
-        // TODO support vertex colors (and outline colors?)
-        Color color = COLOR_WHITE;
-        if (override_color_with_black) {
-            color = COLOR_BLACK;
+        if (box->font_outline_px > 0) {
+            // Draw outline glyphs at same positions as non-outline glyphs
+            GlyphBitmap *bitmap = get_glyph_bitmap(outline_inst, A(shaped_glyphs, i));
+            emit_glyph_quad(box, bitmap, shaped_glyph, COLOR_BLACK, depth,
+                            non_outline_inst->center_y_px, quad_reqs);
         }
+        GlyphBitmap *bitmap = get_glyph_bitmap(non_outline_inst, A(shaped_glyphs, i));
+        emit_glyph_quad(box, bitmap, shaped_glyph, COLOR_WHITE, depth,
+                        non_outline_inst->center_y_px, quad_reqs);
+    }
+}
 
-        if (bitmap->texture.dims.w > 0 && bitmap->texture.dims.h > 0) {
-            QuadRequest *quad_req = fvec_push_zero(quad_reqs);
-            quad_req->texture = some(&bitmap->texture, P_Texture);
-            quad_req->top_left_color = color;
-            quad_req->top_right_color = color;
-            quad_req->bottom_left_color = color;
-            quad_req->bottom_right_color = color;
-            quad_req->depth = depth;
+fn void emit_glyph_quad(UI_Box *box,
+                        GlyphBitmap *bitmap,
+                        ShapedGlyph shaped_glyph,
+                        Color color,
+                        u16 depth,
+                        f32 center_y_px,
+                        FVec_QuadRequest *quad_reqs) {
+    if (bitmap->texture.dims.w > 0 && bitmap->texture.dims.h > 0) {
+        QuadRequest *quad_req = fvec_push_zero(quad_reqs);
+        quad_req->texture = some(&bitmap->texture, P_Texture);
+        quad_req->top_left_color = color;
+        quad_req->top_right_color = color;
+        quad_req->bottom_left_color = color;
+        quad_req->bottom_right_color = color;
+        quad_req->depth = depth;
 
-            // Position of glyph bitmap
-            f32 window_px_x = shaped_glyph.pos_px.x + (f32)bitmap->offset_x;
-            f32 center_y_rt_window = box->output_size.y + (box->output_size.h / 2);
-            f32 baseline_y_rt_line = (shaped_glyph.pos_px.y + (f32)bitmap->offset_y);
-            f32 window_px_y = center_y_rt_window - baseline_y_rt_line + inst->center_y_px;
+        // Position of glyph bitmap
+        // TODO we should probably group this positioning with the previous positioning during
+        // shaping?
+        f32 window_px_x = shaped_glyph.pos_px.x + (f32)bitmap->offset_x;
+        f32 center_y_rt_window = box->output_size.y + (box->output_size.h / 2);
+        f32 baseline_y_rt_line = (shaped_glyph.pos_px.y + (f32)bitmap->offset_y);
+        f32 window_px_y = center_y_rt_window - baseline_y_rt_line + center_y_px;
 
-            // Snap position nearest pixel to render glyph pixel-perfect
-            // (maybe we shouldn't snap during animations?)
-            quad_req->transform = (RectF){
-                // Floor because we round to nearest subpixel in bitmap selection
-                .x = SDL_floorf(window_px_x),
-                // Snap to nearest pixel
-                .y = SDL_roundf(window_px_y),
-                .w = (f32)bitmap->texture.dims.w,
-                .h = (f32)bitmap->texture.dims.h,
-            };
-        }
+        // Snap position nearest pixel to render glyph pixel-perfect
+        // (maybe we shouldn't snap during animations?)
+        quad_req->transform = (RectF){
+            // Floor because we round to nearest subpixel in bitmap selection
+            .x = SDL_floorf(window_px_x),
+            // Snap to nearest pixel
+            .y = SDL_roundf(window_px_y),
+            .w = (f32)bitmap->texture.dims.w,
+            .h = (f32)bitmap->texture.dims.h,
+        };
     }
 }
 
