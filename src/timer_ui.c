@@ -166,7 +166,7 @@ fn void build_bottom_timer_ui(Arena *arena, Session *session, UI_Box *parent) {
     ui_flags(s, UI_Flag_TextAlignRight);
     ui_font(s, &session->layout.nunito_sans_bold, BIG_TIME_FONT_SIZE_PX);
     ui_text(s, format_duration(arena, 7758289389452, 2, false));
-    ui_text_outline(s, 4);
+    ui_text_outline(s, 3);
     ui_box(arena, s);
 
     build_bottom_stat(arena, parent, session, S("Previous Segment"),

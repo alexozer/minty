@@ -25,7 +25,10 @@ fn void font_prepare_to_render(FontSystem *ctx,
                                u16 depth,
                                FVec_QuadRequest *quad_reqs);
 fn void ensure_bitmap_set_rasterized(FontInst *inst, u32 glyph_id);
-fn void align_text(FontSystem *ctx, UI_Box *box, FontInst *inst, Arr_ShapedGlyph shaped_glyphs);
+fn Arr_ShapedGlyph align_text(FontSystem *ctx,
+                              UI_Box *box,
+                              FontInst *inst,
+                              Arr_ShapedGlyph shaped_glyphs);
 fn void emit_glyph_quads(FontSystem *ctx,
                          UI_Box *box,
                          FontInst *non_outline_inst,

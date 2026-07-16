@@ -290,7 +290,7 @@ fn void font_prepare_to_render(FontSystem *ctx,
             ensure_bitmap_set_rasterized(outline_inst, glyph_id);
         }
 
-        align_text(ctx, box, non_outline_inst, shaped_glyphs);
+        shaped_glyphs = align_text(ctx, box, non_outline_inst, shaped_glyphs);
         emit_glyph_quads(ctx, box, non_outline_inst, outline_inst, shaped_glyphs, depth, quad_reqs);
     }
 
@@ -304,7 +304,10 @@ fn void ensure_bitmap_set_rasterized(FontInst *inst, u32 glyph_id) {
     }
 }
 
-fn void align_text(FontSystem *ctx, UI_Box *box, FontInst *inst, Arr_ShapedGlyph shaped_glyphs) {
+fn Arr_ShapedGlyph align_text(FontSystem *ctx,
+                              UI_Box *box,
+                              FontInst *inst,
+                              Arr_ShapedGlyph shaped_glyphs) {
     // Calculate left and right bound, and clip if necessary
     f32 x_left_rt_line = 0;
     f32 x_right_rt_line = 0;
@@ -369,6 +372,8 @@ fn void align_text(FontSystem *ctx, UI_Box *box, FontInst *inst, Arr_ShapedGlyph
         ShapedGlyph *g = &A(shaped_glyphs, i);
         g->pos_px.x = g->pos_px.x + x_ref_rt_window - x_ref_rt_line;
     }
+
+    return shaped_glyphs;
 }
 
 fn void emit_glyph_quads(FontSystem *ctx,
