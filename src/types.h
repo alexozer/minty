@@ -298,6 +298,7 @@ struct FontInst {
     Str style_name;
     u32 px_per_em;  // AKA font size in pixels
     f32 center_y_px;
+    Opt_u32 ellipsis_glyph_id;
 
     FT_Library ft_ctx;
     FT_Face ft_face;
@@ -417,6 +418,7 @@ enum UI_Flag : u16 {
     UI_Flag_TextureContain = bit(10),
     UI_Flag_TextureZoom = bit(11),
     UI_Flag_TextureBlendColor = bit(12),
+    UI_Flag_TextClipEllipsis = bit(13),
 };
 derive_enum(UI_Flag);
 

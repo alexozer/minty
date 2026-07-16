@@ -2,6 +2,10 @@
 
 <!-- Full timer layout -->
 
+Next:
+
+- Text ellipsis
+
 ## Prototyping
 
 <!-- Render Roboto font -->

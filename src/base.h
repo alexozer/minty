@@ -201,6 +201,13 @@ constexpr u64 MIN_VEC_CAPACITY = 8;
         _A_i_ < _A_arr_->count ? &_A_arr_->ptr[_A_i_] : (typeof(_A_arr_->ptr[0]) *)oob(); \
     }))
 
+#define arr_last(arr)                                                                     \
+    (*({                                                                                  \
+        typeof(arr) *_A_arr_ = &(arr);                                                    \
+        u64 _A_i_ = _A_arr_->count > 0 ? _A_arr_->count - 1 : (u64)oob();                 \
+        _A_i_ < _A_arr_->count ? &_A_arr_->ptr[_A_i_] : (typeof(_A_arr_->ptr[0]) *)oob(); \
+    }))
+
 typedef Arr_u8 Str;
 derive_type(Str);
 

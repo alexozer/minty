@@ -69,7 +69,7 @@ fn void build_game_info_ui(Arena *arena, UI_Box *base, Session *session, SizePX 
     ui_width_flex(s_header);
     ui_height_px(s_header, 40);
     ui_font(s_header, &session->layout.nunito_sans_bold, 32);
-    ui_flags(s_header, UI_Flag_TextAlignCenter);
+    ui_flags(s_header, UI_Flag_TextAlignCenter | UI_Flag_TextClipEllipsis);
 
     // Game name
     ui_style(s, s_header);
@@ -113,7 +113,7 @@ fn void build_segment_ui(Arena *arena, UI_Box *parent, Session *session, u64 seg
     ui_parent(s, row);
     ui_width_flex(s);
     ui_height_flex(s);
-    ui_flags(s, UI_Flag_TextAlignLeft);
+    ui_flags(s, UI_Flag_TextAlignLeft | UI_Flag_TextClipEllipsis);
     ui_font(s, &session->layout.nunito_sans_bold, 27);
     ui_text(s, segment->name);
     ui_box(arena, s);
@@ -196,6 +196,7 @@ fn void build_bottom_stat(Arena *arena, UI_Box *parent, Session *session, Str la
     ui_height_flex(s);
     ui_font(s, &session->layout.nunito_sans_bold, 27);
     ui_text(s, label);
+    ui_flags(s, UI_Flag_TextClipEllipsis);
     ui_box(arena, s);
 
     // Value
@@ -267,7 +268,7 @@ fn void build_text_test_ui(Arena *arena, UI_Box *base, Session *session, SizePX 
     ui_parent(s_row, base);
     ui_width_flex(s_row);
     ui_height_px(s_row, 40);
-    ui_flags(s_row, UI_Flag_TextAlignLeft);
+    ui_flags(s_row, UI_Flag_TextAlignLeft | UI_Flag_TextClipEllipsis);
 
     ui_style(s, s_row);
     ui_font(s, &session->layout.nunito_sans_bold, 30);

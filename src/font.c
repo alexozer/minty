@@ -82,6 +82,14 @@ fn FontInst *add_font_inst(ErrorContext *err,
 
     inst->center_y_px = compute_face_center_y(inst);
 
+    // Prefetch the glyph ID of ellipsis, if the font has it
+    Arr_ShapedGlyph shaped_glyphs = shape_text(inst->arena, inst, S("…"));
+    u32 ellipsis_glyph_id = A(shaped_glyphs, 0).glyph_id;
+    if (ellipsis_glyph_id != 0) {
+        inst->ellipsis_glyph_id = some(ellipsis_glyph_id, u32);
+        rasterize_glyph(inst, ellipsis_glyph_id);
+    }
+
     scope_close(scope, "Load font: family = '%.*s', style = '%.*s'", SF(inst->family_name),
                 SF(inst->style_name));
     return inst;
@@ -251,13 +259,47 @@ fn Arr_ShapedGlyph shape_and_align_text(Arena *arena, FontInst *inst, UI_Box *bo
                 rasterize_glyph(inst, glyph_id);
             }
         }
-        // Calculate left and right bound
-        GlyphBitmap *left_bitmap = get_glyph_bitmap(inst, A(shaped_glyphs, 0));
-        GlyphBitmap *right_bitmap =
-            get_glyph_bitmap(inst, A(shaped_glyphs, shaped_glyphs.count - 1));
-        f32 x_left_rt_line = A(shaped_glyphs, 0).pos_px.x + left_bitmap->bbox.x;
-        f32 x_right_rt_line = A(shaped_glyphs, shaped_glyphs.count - 1).pos_px.x +
+
+        // Calculate left and right bound, and clip if necessary
+        f32 x_left_rt_line = 0;
+        f32 x_right_rt_line = 0;
+        while (true) {
+            if (shaped_glyphs.count == 0) {
+                break;
+            }
+
+            GlyphBitmap *left_bitmap = get_glyph_bitmap(inst, A(shaped_glyphs, 0));
+            GlyphBitmap *right_bitmap =
+                get_glyph_bitmap(inst, A(shaped_glyphs, shaped_glyphs.count - 1));
+            x_left_rt_line = A(shaped_glyphs, 0).pos_px.x + left_bitmap->bbox.x;
+            x_right_rt_line = A(shaped_glyphs, shaped_glyphs.count - 1).pos_px.x +
                               right_bitmap->bbox.x + right_bitmap->bbox.w;
+
+            f32 width = x_right_rt_line - x_left_rt_line;
+            bool clip = box->flags & UI_Flag_TextClipEllipsis;
+            if (!clip || width <= box->output_size.w) {
+                break;
+            }
+
+            if (inst->ellipsis_glyph_id.present) {
+                u32 ellipsis_id = inst->ellipsis_glyph_id.opt;
+                // Add ellipsis and try again
+                if (shaped_glyphs.count == 1) {
+                    // Chop off final glyph :(
+                    shaped_glyphs = (Arr_ShapedGlyph){};
+                } else if (arr_last(shaped_glyphs).glyph_id == ellipsis_id) {
+                    // We already have an ellipsis, so chop off two glyphs
+                    shaped_glyphs = arr_slice(shaped_glyphs, 0, shaped_glyphs.count - 1);
+                    arr_last(shaped_glyphs).glyph_id = ellipsis_id;
+                } else {
+                    // Just make the final glyph an ellipsis
+                    arr_last(shaped_glyphs).glyph_id = ellipsis_id;
+                }
+            } else {
+                // Just chop off a glyph and try again
+                shaped_glyphs = arr_slice(shaped_glyphs, 0, shaped_glyphs.count - 1);
+            }
+        }
 
         f32 x_ref_rt_line = 0;    // Alignment point (left/center/right) relative to start of line
         f32 x_ref_rt_window = 0;  // Alignment point in window coordinates
