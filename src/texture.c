@@ -141,12 +141,12 @@ fn Atlas *tex_init_atlas(ErrorContext *err,
     return atlas;
 }
 
-fn Arr_P_RenderInst tex_prepare_to_render(Arena *frame_arena,
-                                          TextureSystem *ctx,
-                                          RenderState *render_state,
-                                          SizePX window_size,
-                                          Arr_QuadRequest requests) {
-    FVec_P_RenderInst render_insts = fvec_alloc(frame_arena, P_RenderInst, (u64)8);
+fn Arr_RenderInst tex_prepare_to_render(Arena *frame_arena,
+                                        TextureSystem *ctx,
+                                        RenderState *render_state,
+                                        SizePX window_size,
+                                        Arr_QuadRequest requests) {
+    FVec_RenderInst render_insts = fvec_alloc(frame_arena, RenderInst, (u64)8);
 
     if (!ctx->textures_cleared) {
         tex_build_clear_insts(frame_arena, ctx, render_state, &render_insts);
@@ -161,9 +161,9 @@ fn Arr_P_RenderInst tex_prepare_to_render(Arena *frame_arena,
 fn void tex_build_clear_insts(Arena *frame_arena,
                               TextureSystem *ctx,
                               RenderState *render_state,
-                              FVec_P_RenderInst *render_insts) {
+                              FVec_RenderInst *render_insts) {
     // Clear atlas textures by performing render pass with no draw calls
-    RenderInst *icon_clear_inst = arena_push(frame_arena, RenderInst);
+    RenderInst *icon_clear_inst = fvec_push_zero(render_insts);
     icon_clear_inst->type = RenderInstType_ClearTexture;
     icon_clear_inst->pipeline = render_state->clear_icon_pipeline;
     icon_clear_inst->texture = ctx->icon_atlas->texture;
@@ -171,23 +171,20 @@ fn void tex_build_clear_insts(Arena *frame_arena,
     icon_clear_inst->vertex_shader = render_state->vertex_shader;
     icon_clear_inst->fragment_shader = render_state->icon_frag_shader;
 
-    RenderInst *glyph_clear_inst = arena_push(frame_arena, RenderInst);
+    RenderInst *glyph_clear_inst = fvec_push_zero(render_insts);
     glyph_clear_inst->type = RenderInstType_ClearTexture;
     glyph_clear_inst->pipeline = render_state->clear_glyph_pipeline;
     glyph_clear_inst->texture = ctx->glyph_atlas->texture;
     glyph_clear_inst->sampler = ctx->glyph_atlas->sampler;
     glyph_clear_inst->vertex_shader = render_state->vertex_shader;
     glyph_clear_inst->fragment_shader = render_state->glyph_frag_shader;
-
-    fvec_push(render_insts, icon_clear_inst);
-    fvec_push(render_insts, glyph_clear_inst);
 }
 
 fn void tex_build_upload_insts(Arena *frame_arena,
                                TextureSystem *ctx,
                                RenderState *render_state,
                                Arr_QuadRequest requests,
-                               FVec_P_RenderInst *render_insts) {
+                               FVec_RenderInst *render_insts) {
     Arena *scratch = arena_acquire();
 
     FVec_P_Texture uncached_icon_requests = fvec_alloc(scratch, P_Texture, requests.count);
@@ -244,7 +241,7 @@ fn void pack_textures_into_existing_atlas(Arena *frame_arena,
                                           Atlas *atlas,
                                           RenderState *render_state,
                                           Arr_P_Texture textures,
-                                          FVec_P_RenderInst *render_insts) {
+                                          FVec_RenderInst *render_insts) {
     Arena *scratch = arena_acquire();
 
     //
@@ -303,7 +300,7 @@ fn void pack_textures_into_existing_atlas(Arena *frame_arena,
     // Build texture upload render insts
     //
 
-    RenderInst *inst = arena_push(frame_arena, RenderInst);
+    RenderInst *inst = fvec_push_zero(render_insts);
     inst->type = RenderInstType_Upload;
     inst->texture = atlas->texture;
     inst->texture_uploads = arena_push_arr(frame_arena, TextureUpload, offsets.count);
@@ -313,8 +310,6 @@ fn void pack_textures_into_existing_atlas(Arena *frame_arena,
         A(inst->texture_uploads, i).transfer_buffer_offset = A(offsets, i);
         A(inst->texture_uploads, i).dest = A(placements, i);
     }
-
-    fvec_push(render_insts, inst);
 
     arena_release(scratch);
 }
@@ -330,7 +325,7 @@ fn void tex_build_draw_insts(Arena *frame_arena,
                              RenderState *render_state,
                              SizePX window_size,
                              Arr_QuadRequest requests,
-                             FVec_P_RenderInst *render_insts) {
+                             FVec_RenderInst *render_insts) {
     Vec_MeshLayer layers = {};
     Vec_u32 layer_icon_counts = {};
     Vec_u32 layer_glyph_counts = {};
@@ -377,7 +372,7 @@ fn void tex_build_draw_insts(Arena *frame_arena,
         MeshLayer *layer = &A(layers, layer_idx);
 
         if (layer->icon_mesh.indices.count > 0) {
-            RenderInst *inst = arena_push(frame_arena, RenderInst);
+            RenderInst *inst = fvec_push_zero(render_insts);
             inst->type = RenderInstType_Draw;
             inst->pipeline = render_state->icon_pipeline;
             inst->texture = ctx->icon_atlas->texture;
@@ -385,11 +380,10 @@ fn void tex_build_draw_insts(Arena *frame_arena,
             inst->vertex_shader = render_state->vertex_shader;
             inst->fragment_shader = render_state->icon_frag_shader;
             inst->mesh = meshbuilder_as_mesh(&layer->icon_mesh);
-            fvec_push(render_insts, inst);
         }
 
         if (layer->glyph_mesh.indices.count > 0) {
-            RenderInst *inst = arena_push(frame_arena, RenderInst);
+            RenderInst *inst = fvec_push_zero(render_insts);
             inst->type = RenderInstType_Draw;
             inst->pipeline = render_state->glyph_pipeline;
             inst->texture = ctx->glyph_atlas->texture;
@@ -397,7 +391,6 @@ fn void tex_build_draw_insts(Arena *frame_arena,
             inst->vertex_shader = render_state->vertex_shader;
             inst->fragment_shader = render_state->glyph_frag_shader;
             inst->mesh = meshbuilder_as_mesh(&layer->glyph_mesh);
-            fvec_push(render_insts, inst);
         }
     }
 }

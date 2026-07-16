@@ -119,16 +119,16 @@ fn void render(App *app) {
             debug_render_ui(frame_arena, root, quad_requests);
         }
 
-        Arr_P_RenderInst render_insts = tex_prepare_to_render(
+        Arr_RenderInst render_insts = tex_prepare_to_render(
             frame_arena, app->texture_system, render_state, window_size, fvec_arr(quad_requests));
 
         // Group render insts by type
-        FVec_P_RenderInst clear_texture_insts =
-            fvec_alloc(frame_arena, P_RenderInst, render_insts.count);
-        FVec_P_RenderInst upload_insts = fvec_alloc(frame_arena, P_RenderInst, render_insts.count);
-        FVec_P_RenderInst draw_insts = fvec_alloc(frame_arena, P_RenderInst, render_insts.count);
+        FVec_RenderInst clear_texture_insts =
+            fvec_alloc(frame_arena, RenderInst, render_insts.count);
+        FVec_RenderInst upload_insts = fvec_alloc(frame_arena, RenderInst, render_insts.count);
+        FVec_RenderInst draw_insts = fvec_alloc(frame_arena, RenderInst, render_insts.count);
         for (u64 i = 0; i < render_insts.count; i++) {
-            switch (A(render_insts, i)->type) {
+            switch (A(render_insts, i).type) {
             case RenderInstType_ClearTexture: {
                 fvec_push(&clear_texture_insts, A(render_insts, i));
                 break;
@@ -146,7 +146,7 @@ fn void render(App *app) {
 
         // Hacky scroll
         for (u64 inst_idx = 0; inst_idx < draw_insts.count; inst_idx++) {
-            Arr_Vertex vertices = A(draw_insts, inst_idx)->mesh.vertices;
+            Arr_Vertex vertices = A(draw_insts, inst_idx).mesh.vertices;
             for (u64 i = 0; i < vertices.count; i++) {
                 A(vertices, i).y -= app->scroll * 0.1f;
             }
@@ -169,10 +169,10 @@ fn void render(App *app) {
 
 fn void do_clear_texture_passes(RenderState *render_state,
                                 SDL_GPUCommandBuffer *command_buffer,
-                                Arr_P_RenderInst clear_texture_insts) {
+                                Arr_RenderInst clear_texture_insts) {
     for (u64 i = 0; i < clear_texture_insts.count; i++) {
         SDL_GPUColorTargetInfo color_target_infos[] = {{
-            .texture = A(clear_texture_insts, i)->texture,
+            .texture = A(clear_texture_insts, i).texture,
             .clear_color = {0.f, 0.f, 0.f, 1.f},
             .load_op = SDL_GPU_LOADOP_CLEAR,
             .store_op = SDL_GPU_STOREOP_STORE,
@@ -185,10 +185,10 @@ fn void do_clear_texture_passes(RenderState *render_state,
 
 fn void do_upload_texture_passes(RenderState *render_state,
                                  SDL_GPUCommandBuffer *command_buffer,
-                                 Arr_P_RenderInst upload_insts) {
+                                 Arr_RenderInst upload_insts) {
     SDL_GPUCopyPass *copy_pass = SDL_BeginGPUCopyPass(command_buffer);
     for (u64 inst_idx = 0; inst_idx < upload_insts.count; inst_idx++) {
-        RenderInst *inst = A(upload_insts, inst_idx);
+        RenderInst *inst = &A(upload_insts, inst_idx);
 
         for (u64 texture_idx = 0; texture_idx < inst->texture_uploads.count; texture_idx++) {
             TextureUpload *upload = &A(inst->texture_uploads, texture_idx);
@@ -255,7 +255,7 @@ fn void do_draw_pass(SDL_GPUCommandBuffer *command_buffer,
                      SDL_GPUTexture *swapchain_texture,
                      SDL_GPUBuffer *vertex_buffer,
                      SDL_GPUBuffer *index_buffer,
-                     Arr_P_RenderInst render_insts,
+                     Arr_RenderInst render_insts,
                      Arr_VertexBufferRegion regions) {
     SDL_GPUColorTargetInfo color_target_infos[] = {{
         .texture = swapchain_texture,
@@ -273,7 +273,7 @@ fn void do_draw_pass(SDL_GPUCommandBuffer *command_buffer,
     SDL_BindGPUIndexBuffer(render_pass, &index_buffer_binding, SDL_GPU_INDEXELEMENTSIZE_16BIT);
 
     for (u64 inst_idx = 0; inst_idx < render_insts.count; inst_idx++) {
-        RenderInst *inst = A(render_insts, inst_idx);
+        RenderInst *inst = &A(render_insts, inst_idx);
         VertexBufferRegion region = A(regions, inst_idx);
 
         if (inst->mesh.indices.count > 0) {
@@ -300,7 +300,7 @@ fn void do_draw_pass(SDL_GPUCommandBuffer *command_buffer,
 fn void do_draw_passes(RenderState *render_state,
                        SDL_GPUCommandBuffer *command_buffer,
                        SDL_GPUTexture *swapchain_texture,
-                       Arr_P_RenderInst draw_insts) {
+                       Arr_RenderInst draw_insts) {
     Arena *scratch = arena_acquire();
 
     void *transfer_data = (Vertex *)SDL_MapGPUTransferBuffer(
@@ -318,10 +318,10 @@ fn void do_draw_passes(RenderState *render_state,
     for (u64 i = 0; i < draw_insts.count; i++) {
         A(regions, i).first_vertex = (u32)vertices.count;
         A(regions, i).first_index = (u32)indices.count;
-        A(regions, i).index_count = (u32)A(draw_insts, i)->mesh.indices.count;
+        A(regions, i).index_count = (u32)A(draw_insts, i).mesh.indices.count;
 
-        fvec_extend(&vertices, A(draw_insts, i)->mesh.vertices);
-        fvec_extend(&indices, A(draw_insts, i)->mesh.indices);
+        fvec_extend(&vertices, A(draw_insts, i).mesh.vertices);
+        fvec_extend(&indices, A(draw_insts, i).mesh.indices);
     }
     SDL_UnmapGPUTransferBuffer(render_state->device, render_state->geom_transfer_buffer);
     if (indices.count > 0) {
