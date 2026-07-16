@@ -300,21 +300,6 @@ fn void build_text_test_ui(Arena *arena, UI_Box *base, Session *session, SizePX 
     ui_box(arena, s);
 
     ui_style(s, s_row);
-    ui_font(s, &session->layout.departure_mono_regular, 22);
-    ui_text(s, S("Ellipsis test…"));
-    ui_box(arena, s);
-
-    ui_style(s, s_row);
-    ui_font(s, &session->layout.nunito_sans_bold, 22);
-    ui_text(s, S("Ellipsis test…"));
-    ui_box(arena, s);
-
-    ui_style(s, s_row);
-    ui_font(s, &session->layout.kosugi_maru_regular, 25);
-    ui_text(s, S("人類社会のすべての構成員の固有の尊厳と平等で…"));
-    ui_box(arena, s);
-
-    ui_style(s, s_row);
     ui_font(s, &session->layout.nunito_sans_bold, 22);
     ui_text(s, S("Emoji test… 🍓"));
     ui_box(arena, s);

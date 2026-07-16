@@ -269,17 +269,20 @@ fn Arr_ShapedGlyph shape_and_align_text(Arena *arena, FontInst *inst, UI_Box *bo
             }
 
             GlyphBitmap *left_bitmap = get_glyph_bitmap(inst, A(shaped_glyphs, 0));
-            GlyphBitmap *right_bitmap =
-                get_glyph_bitmap(inst, A(shaped_glyphs, shaped_glyphs.count - 1));
+            GlyphBitmap *right_bitmap = get_glyph_bitmap(inst, arr_last(shaped_glyphs));
             x_left_rt_line = A(shaped_glyphs, 0).pos_px.x + left_bitmap->bbox.x;
-            x_right_rt_line = A(shaped_glyphs, shaped_glyphs.count - 1).pos_px.x +
-                              right_bitmap->bbox.x + right_bitmap->bbox.w;
+            x_right_rt_line =
+                arr_last(shaped_glyphs).pos_px.x + right_bitmap->bbox.x + right_bitmap->bbox.w;
 
             f32 width = x_right_rt_line - x_left_rt_line;
             bool clip = box->flags & UI_Flag_TextClipEllipsis;
             if (!clip || width <= box->output_size.w) {
                 break;
             }
+
+            // If we're going to clip, force left-alignment to prevent jittering
+            box->flags &= ~(UI_Flag_TextAlignCenter | UI_Flag_TextAlignRight);
+            box->flags |= UI_Flag_TextAlignLeft;
 
             if (inst->ellipsis_glyph_id.present) {
                 u32 ellipsis_id = inst->ellipsis_glyph_id.opt;

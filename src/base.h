@@ -280,8 +280,6 @@ StrPair str_split2(Str base, u8 delim);
         });                                 \
     })
 
-// #define arr_last(v) A(v, ((v).count - 1))
-
 // For non-overlapping arrays
 #define arr_copy(dest, source)                                                          \
     ({                                                                                  \

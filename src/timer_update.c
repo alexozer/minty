@@ -57,7 +57,7 @@ fn void timer_apply_action_running(Arena *arena, Session *session, TimerAction a
     }
     case TimerAction_DeleteSplit: {
         if (timer->live_splits.count > 0) {
-            A(timer->live_splits, timer->live_splits.count - 1) = (Opt_Duration){};
+            arr_last(timer->live_splits) = (Opt_Duration){};
         }
         break;
     }
@@ -256,7 +256,7 @@ fn Duration timer_get_elapsed(Timer *timer, Instant event_time) {
         return 0;
     }
     case TimerMode_Finished: {
-        return A(timer->live_splits, timer->live_splits.count - 1).opt;
+        return arr_last(timer->live_splits).opt;
     }
     case TimerMode_Running: {
         return instant_sub(event_time, timer->start_time) - timer->total_paused_duration;
