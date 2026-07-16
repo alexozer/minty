@@ -15,7 +15,7 @@ fn FontInst *add_font_inst(ErrorContext *err,
                            FontSystem *ctx,
                            FontFile *font_file,
                            u32 face_size_px,
-                           f32 outline_radius_px);
+                           f32 outline_px);
 fn f32 compute_face_center_y(FontInst *inst);
 fn void destroy_font_inst(FontInst *inst);
 fn void rasterize_glyph(FontInst *inst, u32 glyph_id);
@@ -29,5 +29,6 @@ fn void emit_glyph_quads(FontInst *inst,
                          UI_Box *box,
                          Arr_ShapedGlyph shaped_glyphs,
                          u16 depth,
+                         bool override_color_with_black,
                          FVec_QuadRequest *quad_reqs);
 fn GlyphBitmap *get_glyph_bitmap(FontInst *inst, ShapedGlyph shaped_glyph);

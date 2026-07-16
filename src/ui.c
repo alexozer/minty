@@ -14,6 +14,7 @@ fn UI_Box *ui_box(Arena *frame_arena, UI_Style *s) {
     box->color = s->color;
     box->font_file = s->font_file;
     box->font_size_px = s->font_size_px;
+    box->font_outline_px = s->font_outline_px;
     box->depth = s->depth;
 
     if (s->parent != nullptr) {
@@ -82,6 +83,10 @@ fn void ui_child_idx(UI_Style *s, u16 idx) {
 fn void ui_text(UI_Style *s, Str text) {
     s->flags |= UI_Flag_DrawText;
     s->text_content = text;
+}
+
+fn void ui_text_outline(UI_Style *s, f32 outline_px) {
+    s->font_outline_px = outline_px;
 }
 
 fn void ui_font(UI_Style *s, FontFile *font_file, u16 font_size_px) {

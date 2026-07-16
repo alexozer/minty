@@ -297,7 +297,7 @@ struct FontInst {
     Str family_name;
     Str style_name;
     u32 px_per_em;  // AKA font size in pixels
-    f32 outline_radius_px;
+    f32 outline_px;
     f32 center_y_px;
     Opt_u32 ellipsis_glyph_id;
 
@@ -431,6 +431,7 @@ struct UI_Box {
     Str text_content;
     FontFile *font_file;
     u16 font_size_px;
+    f32 font_outline_px;
     i16 depth;
 
     UI_Box *parent;
@@ -450,6 +451,7 @@ struct UI_Style {
     u16 child_idx;
     FontFile *font_file;
     u16 font_size_px;
+    f32 font_outline_px;
     i16 depth;
 };
 derive_struct(UI_Style);

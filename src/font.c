@@ -1,6 +1,8 @@
 #include "font.h"
+
 #include <freetype/ftglyph.h>
 #include <freetype/ftstroke.h>
+
 #include "base.h"
 
 constexpr u32 LOAD_GLYPH_FLAGS = FT_LOAD_NO_HINTING;
@@ -23,7 +25,7 @@ fn FontInst *get_or_create_font_inst(FontSystem *ctx,
         FontInst *curr_inst = &A(ctx->fonts, i);
         bool handles_eq = font_handle_eq(curr_inst->font_file->handle, font_file->handle);
         bool size_eq = curr_inst->px_per_em == px_per_em;
-        bool outline_eq = curr_inst->outline_radius_px == outline_px;
+        bool outline_eq = curr_inst->outline_px == outline_px;
         if (handles_eq && size_eq && outline_eq) {
             inst = curr_inst;
         }
@@ -55,7 +57,7 @@ fn FontInst *add_font_inst(ErrorContext *err,
                            FontSystem *ctx,
                            FontFile *font_file,
                            u32 face_size_px,
-                           f32 outline_radius_px) {
+                           f32 outline_px) {
     Scope scope = scope_open(err);
 
     FontInst *inst = fvec_push_zero(&ctx->fonts);
@@ -88,7 +90,7 @@ fn FontInst *add_font_inst(ErrorContext *err,
         inst->px_per_em = face_size_px;
         inst->family_name = str_clone(inst->arena, str_from_c(inst->ft_face->family_name));
         inst->style_name = str_clone(inst->arena, str_from_c(inst->ft_face->style_name));
-        inst->outline_radius_px = outline_radius_px;
+        inst->outline_px = outline_px;
         inst->bitmap_sets =
             arena_push_arr(inst->arena, GlyphBitmapSet, (u64)inst->ft_face->num_glyphs);
 
@@ -187,15 +189,18 @@ fn void rasterize_glyph(FontInst *inst, u32 glyph_id) {
         FT_Glyph ft_glyph = {};
         FT_Get_Glyph(inst->ft_face->glyph, &ft_glyph);
 
-        if (inst->outline_radius_px > 0) {
+        if (inst->outline_px > 0) {
             FT_Stroker stroker = {};
             FT_Stroker_New(inst->ft_ctx, &stroker);
 
-            // TODO "radius is in the same units as the outline coordinates"...
-            // I literally don't know if this means font units, 16.16 pixels, or 26.6 pixels...
-            FT_Stroker_Set(stroker, (FT_Fixed)SDL_floorf(inst->outline_radius_px / 64.f),
-                           FT_STROKER_LINECAP_ROUND, FT_STROKER_LINEJOIN_ROUND, 0);
-            FT_Glyph_Stroke(&ft_glyph, stroker, true);
+            // Freetype claims radius has units of "same units as the outline coordinates". I don't
+            // know what that is. Font units doesn't seem to be correct - 26.6 pixels seems
+            // plausibly correct visually...
+            FT_Fixed radius = (FT_Fixed)SDL_roundf(inst->outline_px * (1 << 6));
+            FT_Stroker_Set(stroker, radius, FT_STROKER_LINECAP_ROUND, FT_STROKER_LINEJOIN_ROUND, 0);
+            bool stroke_inside = false;
+            bool destroy_original_glyph = true;
+            FT_Glyph_StrokeBorder(&ft_glyph, stroker, stroke_inside, destroy_original_glyph);
 
             FT_Stroker_Done(stroker);
         }
@@ -272,9 +277,16 @@ fn void font_prepare_to_render(FontSystem *ctx,
                                FVec_QuadRequest *quad_reqs) {
     Arena *scratch = arena_acquire();
 
+    if (box->font_outline_px > 0) {
+        FontInst *inst =
+            get_or_create_font_inst(ctx, box->font_file, box->font_size_px, box->font_outline_px);
+        Arr_ShapedGlyph shaped_glyphs = shape_and_align_text(scratch, inst, box);
+        emit_glyph_quads(inst, box, shaped_glyphs, depth, true, quad_reqs);
+    }
+
     FontInst *inst = get_or_create_font_inst(ctx, box->font_file, box->font_size_px, 0);
     Arr_ShapedGlyph shaped_glyphs = shape_and_align_text(scratch, inst, box);
-    emit_glyph_quads(inst, box, shaped_glyphs, depth, quad_reqs);
+    emit_glyph_quads(inst, box, shaped_glyphs, depth + 1, false, quad_reqs);
 
     arena_release(scratch);
 }
@@ -363,12 +375,17 @@ fn void emit_glyph_quads(FontInst *inst,
                          UI_Box *box,
                          Arr_ShapedGlyph shaped_glyphs,
                          u16 depth,
+                         bool override_color_with_black,
                          FVec_QuadRequest *quad_reqs) {
     for (u64 i = 0; i < shaped_glyphs.count; i++) {
         ShapedGlyph shaped_glyph = A(shaped_glyphs, i);
         GlyphBitmap *bitmap = get_glyph_bitmap(inst, A(shaped_glyphs, i));
 
+        // TODO support vertex colors (and outline colors?)
         Color color = COLOR_WHITE;
+        if (override_color_with_black) {
+            color = COLOR_BLACK;
+        }
 
         if (bitmap->texture.dims.w > 0 && bitmap->texture.dims.h > 0) {
             QuadRequest *quad_req = fvec_push_zero(quad_reqs);

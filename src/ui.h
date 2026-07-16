@@ -17,6 +17,7 @@ fn void ui_flags(UI_Style *style, UI_Flag flags);
 fn void ui_parent(UI_Style *s, UI_Box *parent);
 fn void ui_child_idx(UI_Style *s, u16 idx);
 fn void ui_text(UI_Style *s, Str text);
+fn void ui_text_outline(UI_Style *s, f32 outline_px);
 fn void ui_font(UI_Style *s, FontFile *font_file, u16 font_size_px);
 fn void ui_texture(UI_Style *s, Texture *texture);
 fn void ui_style(UI_Style *s, UI_Style *ref);
