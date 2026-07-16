@@ -8,6 +8,8 @@ constexpr f32 SEGMENT_HEIGHT_PX = 100.f;
 constexpr f32 ICON_PADDING_PX = 8.f;
 constexpr f32 SMALL_TIME_WIDTH_PX = 150.f;
 constexpr u32 BIG_TIME_FONT_SIZE_PX = 90;
+constexpr f32 SMALL_TEXT_OUTLINE_PX = 1.5;
+constexpr f32 BIG_TEXT_OUTLINE_PX = 3;
 
 fn UI_Box *build_timer_ui(Arena *arena, Session *session, SizePX size) {
     constexpr f32 OUTER_PADDING = 12.f;
@@ -70,6 +72,7 @@ fn void build_game_info_ui(Arena *arena, UI_Box *base, Session *session, SizePX 
     ui_width_flex(s_header);
     ui_height_px(s_header, 40);
     ui_font(s_header, &session->layout.nunito_sans_bold, 32);
+    ui_text_outline(s_header, SMALL_TEXT_OUTLINE_PX);
     ui_flags(s_header, UI_Flag_TextAlignCenter | UI_Flag_TextClipEllipsis);
 
     // Game name
@@ -116,6 +119,7 @@ fn void build_segment_ui(Arena *arena, UI_Box *parent, Session *session, u64 seg
     ui_height_flex(s);
     ui_flags(s, UI_Flag_TextAlignLeft | UI_Flag_TextClipEllipsis);
     ui_font(s, &session->layout.nunito_sans_bold, 27);
+    ui_text_outline(s, SMALL_TEXT_OUTLINE_PX);
     ui_text(s, segment->name);
     ui_box(arena, s);
 
@@ -130,6 +134,7 @@ fn void build_segment_ui(Arena *arena, UI_Box *parent, Session *session, u64 seg
         ui_height_flex(s_time);
         ui_flags(s_time, UI_Flag_TextAlignRight);
         ui_font(s_time, &session->layout.nunito_sans_bold, 27);
+        ui_text_outline(s_time, SMALL_TEXT_OUTLINE_PX);
 
         Str duration_str = format_duration(arena, (Duration)(segment_idx * 78273472834), 2, false);
 
@@ -166,7 +171,7 @@ fn void build_bottom_timer_ui(Arena *arena, Session *session, UI_Box *parent) {
     ui_flags(s, UI_Flag_TextAlignRight);
     ui_font(s, &session->layout.nunito_sans_bold, BIG_TIME_FONT_SIZE_PX);
     ui_text(s, format_duration(arena, 7758289389452, 2, false));
-    ui_text_outline(s, 3);
+    ui_text_outline(s, BIG_TEXT_OUTLINE_PX);
     ui_box(arena, s);
 
     build_bottom_stat(arena, parent, session, S("Previous Segment"),
@@ -199,6 +204,7 @@ fn void build_bottom_stat(Arena *arena, UI_Box *parent, Session *session, Str la
     ui_font(s, &session->layout.nunito_sans_bold, 27);
     ui_text(s, label);
     ui_flags(s, UI_Flag_TextClipEllipsis);
+    ui_text_outline(s, SMALL_TEXT_OUTLINE_PX);
     ui_box(arena, s);
 
     // Value
@@ -208,6 +214,7 @@ fn void build_bottom_stat(Arena *arena, UI_Box *parent, Session *session, Str la
     ui_font(s, &session->layout.nunito_sans_bold, 27);
     ui_flags(s, UI_Flag_TextAlignRight);
     ui_text(s, value);
+    ui_text_outline(s, SMALL_TEXT_OUTLINE_PX);
     ui_box(arena, s);
 
     // Right Pad

@@ -393,7 +393,7 @@ fn void emit_glyph_quads(FontSystem *ctx,
                             non_outline_inst->center_y_px, quad_reqs);
         }
         GlyphBitmap *bitmap = get_glyph_bitmap(non_outline_inst, A(shaped_glyphs, i));
-        emit_glyph_quad(box, bitmap, shaped_glyph, COLOR_WHITE, depth,
+        emit_glyph_quad(box, bitmap, shaped_glyph, COLOR_WHITE, depth + 1,
                         non_outline_inst->center_y_px, quad_reqs);
     }
 }
