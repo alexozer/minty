@@ -160,6 +160,18 @@ fn SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
             app->debug_draw = !app->debug_draw;
             break;
         }
+        case SDLK_EQUALS: {
+            app->zoom += .1f;
+            break;
+        }
+        case SDLK_MINUS: {
+            app->zoom -= .1f;
+            break;
+        }
+        case SDLK_0: {
+            app->zoom = 0.f;
+            break;
+        }
         }
     }
 

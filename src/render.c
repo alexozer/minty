@@ -111,7 +111,7 @@ fn void render(App *app) {
         FVec_QuadRequest *quad_requests = &render_state->quad_requests;
         fvec_reset(quad_requests);
 
-        UI_Box *root = build_timer_ui(frame_arena, app->session, window_size);
+        UI_Box *root = build_timer_ui(frame_arena, app->session, window_size, app->zoom + 1.f);
 
         render_ui(frame_arena, root, &app->font_system, quad_requests);
 
@@ -173,7 +173,7 @@ fn void do_clear_texture_passes(RenderState *render_state,
     for (u64 i = 0; i < clear_texture_insts.count; i++) {
         SDL_GPUColorTargetInfo color_target_infos[] = {{
             .texture = A(clear_texture_insts, i).texture,
-            .clear_color = {0.f, 0.f, 0.f, 1.f},
+            .clear_color = {0.f, 0.f, 0.f, 0.f},
             .load_op = SDL_GPU_LOADOP_CLEAR,
             .store_op = SDL_GPU_STOREOP_STORE,
         }};

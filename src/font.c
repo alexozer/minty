@@ -50,7 +50,7 @@ fn FontInst *get_or_create_font_inst(FontSystem *ctx,
 }
 
 fn void font_init(FontSystem *ctx, Arena *arena) {
-    ctx->fonts = fvec_alloc(arena, FontInst, (u64)8);
+    ctx->fonts = fvec_alloc(arena, FontInst, (u64)1024);
 }
 
 fn FontInst *add_font_inst(ErrorContext *err,

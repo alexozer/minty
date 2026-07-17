@@ -107,14 +107,38 @@ fn void ui_depth(UI_Style *s, i16 depth) {
     s->depth = depth;
 }
 
-fn void layout_ui(UI_Box *root) {
-    log_assert(root->input_size.w.type == UI_DimType_FixedPX);
-    log_assert(root->input_size.h.type == UI_DimType_FixedPX);
+fn void layout_ui(UI_Box *root, SizePX device_size, f32 scale) {
+    root->input_size.w.type = UI_DimType_FixedPX;
+    root->input_size.w.value = device_size.w;
+    root->input_size.h.type = UI_DimType_FixedPX;
+    root->input_size.h.value = device_size.h;
     root->output_size.x = 0;
     root->output_size.y = 0;
-    root->output_size.w = root->input_size.w.value;
-    root->output_size.h = root->input_size.h.value;
+    root->output_size.w = device_size.w;
+    root->output_size.h = device_size.h;
+
+    for (u64 i = 0; i < root->childs.count; i++) {
+        UI_Box *child = A(root->childs, i);
+        scale_ui(child, scale);
+    }
+
     layout_ui_impl(root);
+}
+
+fn void scale_ui(UI_Box *box, f32 scale) {
+    if (box->input_size.w.type == UI_DimType_FixedPX) {
+        box->input_size.w.value *= scale;
+    }
+    if (box->input_size.h.type == UI_DimType_FixedPX) {
+        box->input_size.h.value *= scale;
+    }
+    box->font_size_px = (u16)SDL_lroundf(box->font_size_px * scale);
+    box->font_outline_px *= scale;
+
+    for (u64 i = 0; i < box->childs.count; i++) {
+        UI_Box *child = A(box->childs, i);
+        scale_ui(child, scale);
+    }
 }
 
 fn void layout_ui_main_axis(UI_Box *parent, Axis axis) {

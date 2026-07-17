@@ -360,28 +360,6 @@ enum FilterType {
 };
 derive_enum(FilterType);
 
-enum BoxType {
-    BoxType_Empty,
-    BoxType_Text,
-    BoxType_Texture,
-    BoxType_SolidColor,
-    BoxType_TopToBottomStack,
-    BoxType_LeftToRightStack,
-    BoxType_BackToFrontStack,
-};
-derive_enum(BoxType);
-
-// Try some fat struct stuff?
-derive_struct_pre(Box);
-struct Box {
-    BoxType type;
-    Opt_SizePX bbox;
-    u64 texture_idx;
-    Color color;
-    Vec_P_Box children;
-};
-derive_struct_post(Box);
-
 // New UI stuff
 
 enum UI_DimType : u8 {
@@ -456,6 +434,11 @@ struct UI_Style {
 };
 derive_struct(UI_Style);
 
+struct UI_System {
+    f32 ui_scale;
+};
+derive_struct(UI_System);
+
 enum RenderInstType : u8 {
     RenderInstType_ClearTexture,
     RenderInstType_Upload,
@@ -524,6 +507,7 @@ struct App {
     // TODO: float-based scrolling on NDC could mess with pixel-perfect alignment
     f32 scroll;
     bool debug_draw;
+    f32 zoom;  // Scale - 1
 
     Arena *session_arena;
     Session *session;  // Nullable

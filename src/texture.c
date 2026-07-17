@@ -3,7 +3,7 @@
 #include "types.h"
 
 // TODO We may not want a max texture count...
-constexpr u64 MAX_TEXTURES = 4096;
+constexpr u64 MAX_TEXTURES = 8192;
 
 fn TextureSystem *tex_init(ErrorContext *err,
                            Arena *arena,
@@ -16,7 +16,7 @@ fn TextureSystem *tex_init(ErrorContext *err,
     // TODO REDUCE SIZE
     ctx->icon_atlas = tex_init_atlas(err, arena, device, S("Icon Atlas"), (SizePX){4096, 4096},
                                      ICON_TEXTURE_FORMAT, FilterType_Linear);
-    ctx->glyph_atlas = tex_init_atlas(err, arena, device, S("Glyph Atlas"), (SizePX){1024, 1024},
+    ctx->glyph_atlas = tex_init_atlas(err, arena, device, S("Glyph Atlas"), (SizePX){4096, 4096},
                                       GLYPH_TEXTURE_FORMAT, FilterType_Nearest);
 
     ctx->clear_icon_pipeline = gpu_make_pipeline(err, device, vertex_shader, dummy_fragment_shader,

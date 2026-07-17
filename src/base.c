@@ -14,7 +14,7 @@
 #undef char16_t
 
 // TODO sane arena sizing/lifetime scheme
-static constexpr u64 ARENA_POOL_MAX = 16;
+static constexpr u64 ARENA_POOL_MAX = 1024;
 static constexpr u64 ARENA_SIZE = megabytes(32);
 static Arena s_arena_pool[ARENA_POOL_MAX];
 static Arena *s_arena_stack[ARENA_POOL_MAX];

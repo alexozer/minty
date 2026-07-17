@@ -11,15 +11,13 @@ constexpr u32 BIG_TIME_FONT_SIZE_PX = 90;
 constexpr f32 SMALL_TEXT_OUTLINE_PX = 1.5;
 constexpr f32 BIG_TEXT_OUTLINE_PX = 3;
 
-fn UI_Box *build_timer_ui(Arena *arena, Session *session, SizePX size) {
+fn UI_Box *build_timer_ui(Arena *arena, Session *session, SizePX device_size, f32 scale) {
     constexpr f32 OUTER_PADDING = 12.f;
 
     UI_Style style = {};
     UI_Style *s = &style;
 
     // Outer root
-    ui_width_px(s, size.w);
-    ui_height_px(s, size.h);
     if (session->layout.background_image.present) {
         ui_texture(s, &session->layout.background_image.opt);
         ui_flags(s, UI_Flag_TextureBlendColor);
@@ -34,18 +32,18 @@ fn UI_Box *build_timer_ui(Arena *arena, Session *session, SizePX size) {
     ui_flags(s, UI_Flag_ChildLayoutY);
     UI_Box *base = ui_box(arena, s);
 
-    build_timer_ui_impl(arena, base, session, size);
+    build_timer_ui_impl(arena, base, session);
     // build_text_test_ui(arena, base, session, size);
 
-    layout_ui(root);
+    layout_ui(root, device_size, scale);
     return root;
 }
 
-fn void build_timer_ui_impl(Arena *arena, UI_Box *base, Session *session, SizePX size) {
+fn void build_timer_ui_impl(Arena *arena, UI_Box *base, Session *session) {
     UI_Style style = {};
     UI_Style *s = &style;
 
-    build_game_info_ui(arena, base, session, size);
+    build_game_info_ui(arena, base, session);
 
     // Segments container
     ui_parent(s, base);
@@ -61,7 +59,7 @@ fn void build_timer_ui_impl(Arena *arena, UI_Box *base, Session *session, SizePX
     build_bottom_timer_ui(arena, session, base);
 }
 
-fn void build_game_info_ui(Arena *arena, UI_Box *base, Session *session, SizePX size) {
+fn void build_game_info_ui(Arena *arena, UI_Box *base, Session *session) {
     UI_Style b1 = {};
     UI_Style *s = &b1;
 
@@ -267,7 +265,7 @@ fn void build_padding(Arena *arena, UI_Style *s, UI_Box *parent, f32 pad_px) {
     // ... applied to style, so next box will be inserted in the correct position
 }
 
-fn void build_text_test_ui(Arena *arena, UI_Box *base, Session *session, SizePX size) {
+fn void build_text_test_ui(Arena *arena, UI_Box *base, Session *session) {
     UI_Style b1 = {};
     UI_Style *s = &b1;
 
