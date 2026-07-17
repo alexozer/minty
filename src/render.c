@@ -111,7 +111,9 @@ fn void render(App *app) {
         FVec_QuadRequest *quad_requests = &render_state->quad_requests;
         fvec_reset(quad_requests);
 
-        UI_Box *root = build_timer_ui(frame_arena, app->session, window_size, app->zoom + 1.f);
+        // 0.5f is just remnant of originally building the UI at 1X scale
+        f32 scale = SDL_GetWindowDisplayScale(app->window) * 0.5f * (app->zoom + 1.f);
+        UI_Box *root = build_timer_ui(frame_arena, app->session, window_size, scale);
 
         render_ui(frame_arena, root, &app->font_system, quad_requests);
 
