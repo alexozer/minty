@@ -351,6 +351,7 @@ fn void debug_render_ui_impl(UI_Box *box, u64 depth, FVec_QuadRequest *reqs) {
     top->top_right_color = color;
     top->bottom_left_color = color;
     top->bottom_right_color = color;
+    top->depth = 15;  // Arbitrary high value
 
     QuadRequest *bottom = fvec_push_zero(reqs);
     bottom->transform.x = box_tf.x;
@@ -361,6 +362,7 @@ fn void debug_render_ui_impl(UI_Box *box, u64 depth, FVec_QuadRequest *reqs) {
     bottom->top_right_color = color;
     bottom->bottom_left_color = color;
     bottom->bottom_right_color = color;
+    top->depth = 15;  // Arbitrary high value
 
     QuadRequest *left = fvec_push_zero(reqs);
     left->transform.x = box_tf.x;
@@ -371,6 +373,7 @@ fn void debug_render_ui_impl(UI_Box *box, u64 depth, FVec_QuadRequest *reqs) {
     left->top_right_color = color;
     left->bottom_left_color = color;
     left->bottom_right_color = color;
+    top->depth = 15;  // Arbitrary high value
 
     QuadRequest *right = fvec_push_zero(reqs);
     right->transform.x = box_tf.x + box_tf.w - BORDER_THICKNESS_PX;
@@ -381,6 +384,7 @@ fn void debug_render_ui_impl(UI_Box *box, u64 depth, FVec_QuadRequest *reqs) {
     right->top_right_color = color;
     right->bottom_left_color = color;
     right->bottom_right_color = color;
+    top->depth = 15;  // Arbitrary high value
 
     for (u64 i = 0; i < box->childs.count; i++) {
         debug_render_ui_impl(A(box->childs, i), depth + 1, reqs);

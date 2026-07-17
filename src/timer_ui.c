@@ -33,7 +33,7 @@ fn UI_Box *build_timer_ui(Arena *arena, Session *session, SizePX device_size, f3
     UI_Box *base = ui_box(arena, s);
 
     build_timer_ui_impl(arena, base, session);
-    // build_text_test_ui(arena, base, session, size);
+    // build_text_test_ui(arena, base, session);
 
     layout_ui(root, device_size, scale);
     return root;
