@@ -51,6 +51,7 @@ Memory limits
     Arenas are certainly closer to this than malloc(), but it's an issue when those limits collide
     with GPU memory limits
 Make my hashtable implementation...
+UI scaling
 
 <!-- File Pilot render system interview -->
 <!-- Split icon atlasing -->
@@ -92,8 +93,9 @@ Split up types.h
     Generate a public/private header
     Move generated files out of repo
 Cache shaping
-Try enabling LTO again
-Do depth normalization during layout
+<!-- Try enabling LTO again -->
+<!--     Not available on macos, I think -->
+<!-- Do depth normalization during layout -->
 
 ## Error handling
 
@@ -377,3 +379,12 @@ Apply colors
 
 <!-- Just treat it as another FontInst configuration for now? -->
 <!--     P smart actually -->
+
+# UI Scaling
+
+Simple idea: build UI in "pixels-but-not-really", then layout engine scales them to "real pixels"
+    Which is exactly what CSS "pixels" are
+    Don't see the need for a macos-centric "logical pixels" concept - I don't care, all that really matters is
+    physical pixels and how many of them you're using
+Still can provide an option to round/snap pos/width to exact pixels
+    For e.g. sharp+thin lines
