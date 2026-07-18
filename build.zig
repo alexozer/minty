@@ -7,6 +7,7 @@ const thirdparty_c_sources: []const []const u8 = &.{
     "3rdparty/kb_text_shape.c",
     "3rdparty/stb_rect_pack.c",
     "3rdparty/stb_image.c",
+    "3rdparty/xxhash.c",
 };
 
 // Build in separate library to (maybe?) avoid linking libcpp

@@ -384,22 +384,6 @@ u64 parse_u64(ErrorContext *err, Str s) {
 }
 
 //
-// Idk
-//
-
-SDL_IOStream *sdl_io_from_mem(ErrorContext *err, Arr_u8 buf) {
-    SDL_IOStream *stream = SDL_IOFromMem(buf.ptr, buf.count);
-    if (!stream) {
-        err_report(err, "%s", SDL_GetError());
-    }
-    return stream;
-}
-
-void sdl_close_io(SDL_IOStream *stream) {
-    if (stream) SDL_CloseIO(stream);
-}
-
-//
 // Time
 //
 
@@ -486,3 +470,22 @@ Arr_u8 decode_base64(ErrorContext *err, Arena *arena, Str s) {
     scope_close(scope, "Decode base64");
     return out;
 }
+
+// Hashmaps
+
+struct MapSlot {
+    u32 item_idx;
+    u32 next_slot_idx;
+};
+derive_struct(Bucket);
+
+struct Map_Str_to_Arr_ShapedGlyph {
+    void *__typeid_str_map[0];
+    Arr_u32 buckets;
+    Arr_MapSlot slots;
+    u32 first_free_slot_idx;
+
+    FVec_Key keys;
+    FVec_Arr_ShapedGlyph values;
+};
+derive_struct(Map_Str_to_Arr_ShapedGlyph);

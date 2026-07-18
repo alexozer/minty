@@ -96,6 +96,9 @@ derive_type(i64);
 derive_type(f32);
 derive_type(f64);
 
+// Marker for header codegen
+#define fn
+
 #define kilobytes(n) (1024 * (n))
 #define megabytes(n) (1024 * kilobytes(n))
 
@@ -636,9 +639,6 @@ u64 parse_u64(ErrorContext *err, Str s);
 // SDL helpers
 //
 
-SDL_IOStream *sdl_io_from_mem(ErrorContext *err, Arr_u8 buf);
-void sdl_close_io(SDL_IOStream *stream);
-
 #define sdl_assert(func)                     \
     ({                                       \
         typeof(func) ret = (func);           \
@@ -662,5 +662,3 @@ derive_struct(Packer);
 Packer packer_from_arr(Arr_u8 arr);
 // Returns offset iff packed
 Opt_u64 packer_try_push(Packer *packer, Arr_u8 buf, u64 alignment);
-
-#define fn
