@@ -161,11 +161,11 @@ fn SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
             break;
         }
         case SDLK_EQUALS: {
-            app->zoom += .1f;
+            app->zoom++;
             break;
         }
         case SDLK_MINUS: {
-            app->zoom -= .1f;
+            app->zoom--;
             break;
         }
         case SDLK_0: {

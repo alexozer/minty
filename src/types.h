@@ -384,6 +384,7 @@ union UI_Size {
 derive_union(UI_Size);
 
 enum UI_Flag : u16 {
+    UI_Flag_None = 0,
     UI_Flag_ChildLayoutX = bit(0),
     UI_Flag_ChildLayoutY = bit(1),
     UI_Flag_ChildLayoutZ = bit(2),
@@ -398,6 +399,7 @@ enum UI_Flag : u16 {
     UI_Flag_TextureZoom = bit(11),
     UI_Flag_TextureBlendColor = bit(12),
     UI_Flag_TextClipEllipsis = bit(13),
+    UI_Flag_IgnoreUserScale = bit(14),
 };
 derive_enum(UI_Flag);
 
@@ -508,7 +510,7 @@ struct App {
     // TODO: float-based scrolling on NDC could mess with pixel-perfect alignment
     f32 scroll;
     bool debug_draw;
-    f32 zoom;  // Scale - 1
+    i32 zoom;
 
     Arena *session_arena;
     Session *session;  // Nullable

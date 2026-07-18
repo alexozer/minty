@@ -11,7 +11,11 @@ constexpr u32 BIG_TIME_FONT_SIZE_PX = 90;
 constexpr f32 SMALL_TEXT_OUTLINE_PX = 1.5;
 constexpr f32 BIG_TEXT_OUTLINE_PX = 3;
 
-fn UI_Box *build_timer_ui(Arena *arena, Session *session, SizePX device_size, f32 scale) {
+fn UI_Box *build_timer_ui(Arena *arena,
+                          Session *session,
+                          SizePX device_size,
+                          f32 os_scale,
+                          f32 user_scale) {
     constexpr f32 OUTER_PADDING = 12.f;
 
     UI_Style style = {};
@@ -28,14 +32,14 @@ fn UI_Box *build_timer_ui(Arena *arena, Session *session, SizePX device_size, f3
     UI_Box *root = ui_box(arena, s);
 
     // Inner root
-    build_padding(arena, s, root, OUTER_PADDING);
+    build_padding(arena, s, root, OUTER_PADDING, UI_Flag_IgnoreUserScale);
     ui_flags(s, UI_Flag_ChildLayoutY);
     UI_Box *base = ui_box(arena, s);
 
     build_timer_ui_impl(arena, base, session);
     // build_text_test_ui(arena, base, session);
 
-    layout_ui(root, device_size, scale);
+    layout_ui(root, device_size, os_scale, user_scale);
     return root;
 }
 
@@ -105,7 +109,7 @@ fn void build_segment_ui(Arena *arena, UI_Box *parent, Session *session, u64 seg
 
     // Icon inner
     if (segment->icon_texture.present) {
-        build_padding(arena, s, icon_outer, ICON_PADDING_PX);
+        build_padding(arena, s, icon_outer, ICON_PADDING_PX, UI_Flag_None);
         ui_texture(s, &segment->icon_texture.opt);
         ui_flags(s, UI_Flag_TextureContain);
     }
@@ -222,7 +226,7 @@ fn void build_bottom_stat(Arena *arena, UI_Box *parent, Session *session, Str la
     ui_box(arena, s);
 }
 
-fn void build_padding(Arena *arena, UI_Style *s, UI_Box *parent, f32 pad_px) {
+fn void build_padding(Arena *arena, UI_Style *s, UI_Box *parent, f32 pad_px, UI_Flag flags) {
     // Don't tell anyone we're not using UI_Style
     parent->flags |= UI_Flag_ChildLayoutY;
 
@@ -230,31 +234,35 @@ fn void build_padding(Arena *arena, UI_Style *s, UI_Box *parent, f32 pad_px) {
     ui_parent(s, parent);
     ui_width_flex(s);
     ui_height_px(s, pad_px);
+    ui_flags(s, flags);
     ui_box(arena, s);
 
     // Middle row
     ui_parent(s, parent);
     ui_width_flex(s);
     ui_height_flex(s);
-    ui_flags(s, UI_Flag_ChildLayoutX);
+    ui_flags(s, flags | UI_Flag_ChildLayoutX);
     UI_Box *middle_row = ui_box(arena, s);
 
     // Bottom pad
     ui_parent(s, parent);
     ui_width_flex(s);
     ui_height_px(s, pad_px);
+    ui_flags(s, flags);
     ui_box(arena, s);
 
     // Left pad
     ui_parent(s, middle_row);
     ui_width_px(s, pad_px);
     ui_height_flex(s);
+    ui_flags(s, flags);
     ui_box(arena, s);
 
     // Right pad
     ui_parent(s, middle_row);
     ui_width_px(s, pad_px);
     ui_height_flex(s);
+    ui_flags(s, flags);
     ui_box(arena, s);
 
     // Middle box

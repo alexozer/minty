@@ -107,7 +107,7 @@ fn void ui_depth(UI_Style *s, i16 depth) {
     s->depth = depth;
 }
 
-fn void layout_ui(UI_Box *root, SizePX device_size, f32 scale) {
+fn void layout_ui(UI_Box *root, SizePX device_size, f32 os_scale, f32 user_scale) {
     root->input_size.w.type = UI_DimType_FixedPX;
     root->input_size.w.value = device_size.w;
     root->input_size.h.type = UI_DimType_FixedPX;
@@ -119,13 +119,14 @@ fn void layout_ui(UI_Box *root, SizePX device_size, f32 scale) {
 
     for (u64 i = 0; i < root->childs.count; i++) {
         UI_Box *child = A(root->childs, i);
-        scale_ui(child, scale);
+        scale_ui(child, os_scale, user_scale);
     }
 
     layout_ui_impl(root);
 }
 
-fn void scale_ui(UI_Box *box, f32 scale) {
+fn void scale_ui(UI_Box *box, f32 os_scale, f32 user_scale) {
+    f32 scale = (box->flags & UI_Flag_IgnoreUserScale) ? os_scale : os_scale * user_scale;
     if (box->input_size.w.type == UI_DimType_FixedPX) {
         box->input_size.w.value *= scale;
     }
@@ -137,7 +138,7 @@ fn void scale_ui(UI_Box *box, f32 scale) {
 
     for (u64 i = 0; i < box->childs.count; i++) {
         UI_Box *child = A(box->childs, i);
-        scale_ui(child, scale);
+        scale_ui(child, os_scale, user_scale);
     }
 }
 
