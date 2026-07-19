@@ -321,7 +321,7 @@ fn Arr_ShapedGlyph align_text(FontSystem *ctx,
 
         f32 width = x_right_rt_line - x_left_rt_line;
         bool clip = box->flags & UI_Flag_TextClipEllipsis;
-        if (!clip || width <= box->output_size.w) {
+        if (!clip || width <= box->bbox.w) {
             break;
         }
 
@@ -354,14 +354,14 @@ fn Arr_ShapedGlyph align_text(FontSystem *ctx,
     if (box->flags & UI_Flag_TextAlignRight) {
         // TODO debug why right align can overflow right boundary by 1-2px
         x_ref_rt_line = x_right_rt_line;
-        x_ref_rt_window = box->output_size.x + box->output_size.w;
+        x_ref_rt_window = box->bbox.x + box->bbox.w;
     } else if (box->flags & UI_Flag_TextAlignCenter) {
         x_ref_rt_line = (x_left_rt_line + x_right_rt_line) / 2.f;
-        x_ref_rt_window = box->output_size.x + (box->output_size.w / 2.f);
+        x_ref_rt_window = box->bbox.x + (box->bbox.w / 2.f);
     } else {
         // Default to left align
         x_ref_rt_line = x_left_rt_line;
-        x_ref_rt_window = box->output_size.x;
+        x_ref_rt_window = box->bbox.x;
     }
 
     // Reposition shape result so that subpixel bitmap selection respects center transform
@@ -414,7 +414,7 @@ fn void emit_glyph_quad(UI_Box *box,
         // TODO we should probably group this positioning with the previous positioning during
         // shaping?
         f32 window_px_x = shaped_glyph.pos_px.x + (f32)bitmap->offset_x;
-        f32 center_y_rt_window = box->output_size.y + (box->output_size.h / 2);
+        f32 center_y_rt_window = box->bbox.y + (box->bbox.h / 2);
         f32 baseline_y_rt_line = (shaped_glyph.pos_px.y + (f32)bitmap->offset_y);
         f32 window_px_y = center_y_rt_window - baseline_y_rt_line + center_y_px;
 

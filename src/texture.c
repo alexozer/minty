@@ -4,6 +4,9 @@
 
 // TODO We may not want a max texture count...
 constexpr u64 MAX_TEXTURES = 8192;
+constexpr u64 MAX_RENDER_INSTS = 16;
+constexpr SizePX ICON_ATLAS_SIZE = {4096, 4096};
+constexpr SizePX GLYPH_ATLAS_SIZE = {4096, 4096};
 
 fn TextureSystem *tex_init(ErrorContext *err,
                            Arena *arena,
@@ -14,9 +17,9 @@ fn TextureSystem *tex_init(ErrorContext *err,
 
     TextureSystem *ctx = arena_push(arena, TextureSystem);
     // TODO REDUCE SIZE
-    ctx->icon_atlas = tex_init_atlas(err, arena, device, S("Icon Atlas"), (SizePX){4096, 4096},
+    ctx->icon_atlas = tex_init_atlas(err, arena, device, S("Icon Atlas"), ICON_ATLAS_SIZE,
                                      ICON_TEXTURE_FORMAT, FilterType_Linear);
-    ctx->glyph_atlas = tex_init_atlas(err, arena, device, S("Glyph Atlas"), (SizePX){4096, 4096},
+    ctx->glyph_atlas = tex_init_atlas(err, arena, device, S("Glyph Atlas"), GLYPH_ATLAS_SIZE,
                                       GLYPH_TEXTURE_FORMAT, FilterType_Nearest);
 
     ctx->clear_icon_pipeline = gpu_make_pipeline(err, device, vertex_shader, dummy_fragment_shader,
@@ -152,7 +155,7 @@ fn Arr_RenderInst tex_prepare_to_render(Arena *frame_arena,
                                         RenderState *render_state,
                                         SizePX window_size,
                                         Arr_QuadRequest requests) {
-    FVec_RenderInst render_insts = fvec_alloc(frame_arena, RenderInst, (u64)8);
+    FVec_RenderInst render_insts = fvec_alloc(frame_arena, RenderInst, MAX_RENDER_INSTS);
 
     if (!ctx->textures_cleared) {
         tex_build_clear_insts(frame_arena, ctx, render_state, &render_insts);

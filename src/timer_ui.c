@@ -29,7 +29,7 @@ fn UI_Box *build_timer_ui(Arena *arena,
         s->color = (Color){.r = 255, .g = 255, .b = 255, .a = 70};
     }
     ui_flags(s, UI_Flag_TextureZoom);
-    ui_depth(s, -1);
+    ui_depth(s, -4);
     UI_Box *root = ui_box(arena, s);
 
     // Inner root
@@ -100,6 +100,10 @@ fn void build_segment_ui(Arena *arena, UI_Box *parent, Session *session, u64 seg
     ui_width_flex(s);
     ui_height_px(s, INFO_HEIGHT_PX);
     ui_flags(s, UI_Flag_ChildLayoutX);
+    if (segment_idx == 3) {
+        ui_color_bg(s, (Color){.r = 23, .g = 40, .b = 200, .a = 127});
+    }
+    ui_depth(s, -3);
     UI_Box *row = ui_box(arena, s);
 
     // Icon outer

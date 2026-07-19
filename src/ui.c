@@ -107,15 +107,20 @@ fn void ui_depth(UI_Style *s, i16 depth) {
     s->depth = depth;
 }
 
+fn void ui_color_bg(UI_Style *s, Color color) {
+    s->flags |= UI_Flag_DrawColoredBG;
+    s->color = color;
+}
+
 fn void layout_ui(UI_Box *root, SizePX device_size, f32 os_scale, f32 user_scale) {
     root->input_size.w.type = UI_DimType_FixedPX;
     root->input_size.w.value = device_size.w;
     root->input_size.h.type = UI_DimType_FixedPX;
     root->input_size.h.value = device_size.h;
-    root->output_size.x = 0;
-    root->output_size.y = 0;
-    root->output_size.w = device_size.w;
-    root->output_size.h = device_size.h;
+    root->bbox.x = 0;
+    root->bbox.y = 0;
+    root->bbox.w = device_size.w;
+    root->bbox.h = device_size.h;
 
     for (u64 i = 0; i < root->childs.count; i++) {
         UI_Box *child = A(root->childs, i);
@@ -144,10 +149,10 @@ fn void scale_ui(UI_Box *box, f32 os_scale, f32 user_scale) {
 
 fn void layout_ui_main_axis(UI_Box *parent, Axis axis) {
     // Uh oh, unbounded array access?!? Call the safety police
-    log_assert(axis < c_arr_count(parent->output_size.size.dims));
+    log_assert(axis < c_arr_count(parent->bbox.size.dims));
 
-    f32 parent_pos = parent->output_size.pos.dims[axis];
-    f32 parent_size = parent->output_size.size.dims[axis];
+    f32 parent_pos = parent->bbox.pos.dims[axis];
+    f32 parent_size = parent->bbox.size.dims[axis];
     f32 total_fixed_px = 0;
     for (u64 i = 0; i < parent->childs.count; i++) {
         UI_Dim *child_input = &A(parent->childs, i)->input_size.dims[axis];
@@ -172,8 +177,8 @@ fn void layout_ui_main_axis(UI_Box *parent, Axis axis) {
     f32 current_pos_px = 0;
     for (u64 i = 0; i < parent->childs.count; i++) {
         UI_Dim *in_size = &A(parent->childs, i)->input_size.dims[axis];
-        f32 *out_size = &A(parent->childs, i)->output_size.size.dims[axis];
-        f32 *out_pos = &A(parent->childs, i)->output_size.pos.dims[axis];
+        f32 *out_size = &A(parent->childs, i)->bbox.size.dims[axis];
+        f32 *out_pos = &A(parent->childs, i)->bbox.pos.dims[axis];
 
         *out_pos = current_pos_px + parent_pos;
 
@@ -194,16 +199,16 @@ fn void layout_ui_main_axis(UI_Box *parent, Axis axis) {
 
 fn void layout_ui_cross_axis(UI_Box *parent, Axis axis) {
     // Uh oh, unbounded array access?!? Call the safety police
-    log_assert(axis < c_arr_count(parent->output_size.size.dims));
+    log_assert(axis < c_arr_count(parent->bbox.size.dims));
 
-    f32 parent_size = parent->output_size.size.dims[axis];
+    f32 parent_size = parent->bbox.size.dims[axis];
 
     for (u64 i = 0; i < parent->childs.count; i++) {
         UI_Dim *in_size = &A(parent->childs, i)->input_size.dims[axis];
-        f32 *out_size = &A(parent->childs, i)->output_size.size.dims[axis];
-        f32 *out_pos = &A(parent->childs, i)->output_size.pos.dims[axis];
+        f32 *out_size = &A(parent->childs, i)->bbox.size.dims[axis];
+        f32 *out_pos = &A(parent->childs, i)->bbox.pos.dims[axis];
 
-        *out_pos = parent->output_size.pos.dims[axis];
+        *out_pos = parent->bbox.pos.dims[axis];
 
         switch (in_size->type) {
         case UI_DimType_FixedPX: {
@@ -236,7 +241,7 @@ fn void layout_ui_impl(UI_Box *box) {
         // Simple stack
         for (u64 i = 0; i < box->childs.count; i++) {
             UI_Box *child = A(box->childs, i);
-            child->output_size = box->output_size;
+            child->bbox = box->bbox;
         }
     } else if (box->childs.count > 0) {
         log_fatal("No child layout direciton provided");
@@ -262,7 +267,7 @@ fn void render_ui_impl(Arena *frame_arena,
                        FVec_QuadRequest *quad_reqs) {
     Opt_P_RectF clip_rect = {};
     if (box->flags & UI_Flag_ClipChilds) {
-        clip_rect = some(&box->output_size, P_RectF);
+        clip_rect = some(&box->bbox, P_RectF);
     }
 
     if (box->flags & UI_Flag_DrawTexture) {
@@ -283,7 +288,7 @@ fn void render_ui_impl(Arena *frame_arena,
         }
 
         f32 texture_aspect_ratio = (f32)box->texture->dims.w / box->texture->dims.h;
-        RectF transform = scale_rect_proportionally(box->output_size, texture_aspect_ratio, zoom);
+        RectF transform = scale_rect_proportionally(box->bbox, texture_aspect_ratio, zoom);
         QuadRequest *quad_req = fvec_push_zero(quad_reqs);
         quad_req->texture = some(box->texture, P_Texture);
         quad_req->transform = transform;
@@ -298,9 +303,19 @@ fn void render_ui_impl(Arena *frame_arena,
         font_prepare_to_render(font_system, box, quad_reqs);
     }
 
+    if (box->flags & UI_Flag_DrawColoredBG) {
+        QuadRequest *quad_req = fvec_push_zero(quad_reqs);
+        quad_req->transform = box->bbox;
+        quad_req->top_left_color = box->color;
+        quad_req->top_right_color = box->color;
+        quad_req->bottom_left_color = box->color;
+        quad_req->bottom_right_color = box->color;
+        quad_req->depth = (u16)(box->depth);
+    }
+
     for (u64 i = 0; i < box->childs.count; i++) {
         UI_Box *child = A(box->childs, i);
-        if (!clip_rect.present || rectf_contains(clip_rect.opt, &child->output_size)) {
+        if (!clip_rect.present || rectf_contains(clip_rect.opt, &child->bbox)) {
             render_ui_impl(frame_arena, child, font_system, quad_reqs);
         }
     }
@@ -339,7 +354,7 @@ fn void debug_render_ui(Arena *frame_arena, UI_Box *root, FVec_QuadRequest *requ
 fn void debug_render_ui_impl(UI_Box *box, u64 depth, FVec_QuadRequest *reqs) {
     constexpr f32 BORDER_THICKNESS_PX = 2.f;
 
-    RectF box_tf = box->output_size;
+    RectF box_tf = box->bbox;
 
     Color color = {.g = 0xff, .a = (u8)((1.f / ((f32)depth + 1)) * 0xff)};
 

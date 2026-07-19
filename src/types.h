@@ -400,6 +400,7 @@ enum UI_Flag : u16 {
     UI_Flag_TextureBlendColor = bit(12),
     UI_Flag_TextClipEllipsis = bit(13),
     UI_Flag_IgnoreUserScale = bit(14),
+    UI_Flag_DrawColoredBG = bit(15),
 };
 derive_enum(UI_Flag);
 
@@ -418,7 +419,7 @@ struct UI_Box {
     UI_Box *parent;
     Vec_P_UI_Box childs;
 
-    RectF output_size;
+    RectF bbox;
 };
 derive_struct_post(UI_Box);
 

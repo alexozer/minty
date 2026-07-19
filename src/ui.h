@@ -22,6 +22,7 @@ fn void ui_font(UI_Style *s, FontFile *font_file, u16 font_size_px);
 fn void ui_texture(UI_Style *s, Texture *texture);
 fn void ui_style(UI_Style *s, UI_Style *ref);
 fn void ui_depth(UI_Style *s, i16 depth);
+fn void ui_color_bg(UI_Style *s, Color color);
 fn void layout_ui(UI_Box *root, SizePX device_size, f32 os_scale, f32 user_scale);
 fn void scale_ui(UI_Box *box, f32 os_scale, f32 user_scale);
 fn void layout_ui_main_axis(UI_Box *parent, Axis axis);
