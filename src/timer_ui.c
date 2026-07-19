@@ -10,6 +10,7 @@ constexpr f32 SMALL_TIME_WIDTH_PX = 150.f;
 constexpr u32 BIG_TIME_FONT_SIZE_PX = 90;
 constexpr f32 SMALL_TEXT_OUTLINE_PX = 1.5;
 constexpr f32 BIG_TEXT_OUTLINE_PX = 3;
+constexpr f32 TEXT_PAD = 10.f;  // ??
 
 fn UI_Box *build_timer_ui(Arena *arena,
                           Session *session,
@@ -146,7 +147,7 @@ fn void build_segment_ui(Arena *arena, UI_Box *parent, Session *session, u64 seg
 
         // Pad
         ui_parent(s, row);
-        ui_width_px(s, 10);
+        ui_width_px(s, TEXT_PAD);
         ui_height_flex(s);
         ui_box(arena, s);
 
@@ -156,7 +157,7 @@ fn void build_segment_ui(Arena *arena, UI_Box *parent, Session *session, u64 seg
 
         // Pad
         ui_parent(s, row);
-        ui_width_px(s, 10);
+        ui_width_px(s, TEXT_PAD);
         ui_height_flex(s);
         ui_box(arena, s);
     }
@@ -166,14 +167,26 @@ fn void build_bottom_timer_ui(Arena *arena, Session *session, UI_Box *parent) {
     UI_Style style = {};
     UI_Style *s = &style;
 
-    // Big timer
     ui_parent(s, parent);
     ui_width_flex(s);
     ui_height_px(s, (f32)BIG_TIME_FONT_SIZE_PX * 1.05f);
+    ui_flags(s, UI_Flag_ChildLayoutX);
+    UI_Box *big_timer_row = ui_box(arena, s);
+
+    // Big timer
+    ui_parent(s, big_timer_row);
+    ui_width_flex(s);
+    ui_height_flex(s);
     ui_flags(s, UI_Flag_TextAlignRight);
     ui_font(s, &session->layout.nunito_sans_bold, BIG_TIME_FONT_SIZE_PX);
     ui_text(s, format_duration(arena, 7758289389452, 2, false));
     ui_text_outline(s, BIG_TEXT_OUTLINE_PX);
+    ui_box(arena, s);
+
+    // Right Pad
+    ui_parent(s, big_timer_row);
+    ui_width_px(s, TEXT_PAD);
+    ui_height_flex(s);
     ui_box(arena, s);
 
     build_bottom_stat(arena, parent, session, S("Previous Segment"),
@@ -195,7 +208,7 @@ fn void build_bottom_stat(Arena *arena, UI_Box *parent, Session *session, Str la
 
     // Left Pad
     ui_parent(s, row);
-    ui_width_px(s, 10);
+    ui_width_px(s, TEXT_PAD);
     ui_height_flex(s);
     ui_box(arena, s);
 
@@ -221,7 +234,7 @@ fn void build_bottom_stat(Arena *arena, UI_Box *parent, Session *session, Str la
 
     // Right Pad
     ui_parent(s, row);
-    ui_width_px(s, 10);
+    ui_width_px(s, TEXT_PAD);
     ui_height_flex(s);
     ui_box(arena, s);
 }
