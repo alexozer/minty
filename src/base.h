@@ -662,3 +662,65 @@ derive_struct(Packer);
 Packer packer_from_arr(Arr_u8 arr);
 // Returns offset iff packed
 Opt_u64 packer_try_push(Packer *packer, Arr_u8 buf, u64 alignment);
+
+// Hashmaps
+
+constexpr u32 HASHMAP_MIN_BUCKETS = 8;
+constexpr f32 HASHMAP_LOAD_FACTOR = 0.75f;
+
+struct MapSlot {
+    u32 item_idx;
+    u32 next_slot_idx;
+};
+derive_struct(MapSlot);
+
+struct Map_Str_to_Any {
+    void *__typeid_str_map[0];
+    Arr_u32 buckets;
+    Arr_MapSlot slots;
+    u32 next_slot;      // Index into slots pool for never-used slots
+    u32 slot_freelist;  // Deleted slots go here
+
+    FVec_Str keys;
+    FVec_u8 values;
+};
+derive_struct(Map_Str_to_Any);
+
+fn Opt_u32 map__get(Map_Str_to_Any *map, Str key);
+fn bool map_has(Map_Str_to_Any *map, Str key);
+fn Opt_u32 map__del(Map_Str_to_Any *map, Str key);
+fn u32 map__set(Arena *arena, Map_Str_to_Any *map, Str key);
+fn void map__grow(Arena *arena,
+                  Map_Str_to_Any *map,
+                  u32 value_size,
+                  u32 value_count,
+                  u32 value_alignment);
+
+#define map_get(map, key)                                       \
+    ({                                                          \
+        typeof(map) _map_ = (map);                              \
+        Str _key_ = (key);                                      \
+        Opt_u32 idx = map__get((Map_Str_to_Any *)_map_, _key_); \
+        typeof(*_map_->values.ptr) value = {};                  \
+        if (idx.present) {                                      \
+            value = _map_->values.ptr[idx.opt];                 \
+        }                                                       \
+        value;                                                  \
+    })
+
+#define map_set(arena, map, key, value)                                                \
+    ({                                                                                 \
+        Arena *_arena_ = (arena);                                                      \
+        typeof(map) _map_ = (map);                                                     \
+        Str _key_ = (key);                                                             \
+                                                                                       \
+        u32 idx = map__set((Map_Str_to_Any *)_map_, _key_);                            \
+        if (idx > _map_->keys.capacity) {                                              \
+            map__grow(_arena_, _map_, sizeof(*_map_->values.ptr), _map_->values.count, \
+                      alignof(typeof(*_map_->values.ptr)));                            \
+            idx = map__set((Map_Str_to_Any *)_map_, key);                              \
+        }                                                                              \
+        if (idx >= _map_->values.count) {                                              \
+            fvec_push(_map_->values, _value_);                                         \
+        }                                                                              \
+    })
