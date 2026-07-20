@@ -6,6 +6,8 @@
 #include <SDL3/SDL_log.h>
 #include <SDL3/SDL_timer.h>
 
+#include <xxhash.h>
+
 // Not sure why these defines are necessary, looks like the header ought to define them?
 #define char16_t uint16_t
 #define char32_t uint32_t
@@ -473,19 +475,160 @@ Arr_u8 decode_base64(ErrorContext *err, Arena *arena, Str s) {
 
 // Hashmaps
 
+constexpr u32 HASHMAP_MIN_BUCKETS = 8;
+constexpr f32 HASHMAP_LOAD_FACTOR = 0.75f;
+
 struct MapSlot {
     u32 item_idx;
     u32 next_slot_idx;
 };
-derive_struct(Bucket);
+derive_struct(MapSlot);
 
-struct Map_Str_to_Arr_ShapedGlyph {
+derive_type(Arr_u8);
+
+struct Map_Str_to_Arr_u8 {
     void *__typeid_str_map[0];
     Arr_u32 buckets;
     Arr_MapSlot slots;
-    u32 first_free_slot_idx;
+    u32 next_slot;      // Index into slots pool for never-used slots
+    u32 slot_freelist;  // Deleted slots go here
 
-    FVec_Key keys;
-    FVec_Arr_ShapedGlyph values;
+    FVec_Str keys;
+    FVec_Arr_u8 values;
 };
-derive_struct(Map_Str_to_Arr_ShapedGlyph);
+derive_struct(Map_Str_to_Arr_u8);
+
+fn Opt_u32 map__get_idx(Map_Str_to_Arr_u8 *map, Str key) {
+    if (map->keys.count == 0) {
+        return none(u32);
+    }
+    u64 hash = XXH3_64bits(key.ptr, key.count);
+    u32 bucket_idx = (u32)(hash % (map->buckets.count));
+
+    u32 slot_idx = A(map->buckets, bucket_idx);
+    while (slot_idx > 0) {
+        u32 item_idx = A(map->slots, slot_idx).item_idx;
+        if (str_eq(A(map->keys, item_idx), key)) {
+            return some(item_idx, u32);
+        }
+    }
+    return none(u32);
+}
+
+fn bool map_has(Map_Str_to_Arr_u8 *map, Str key) {
+    return map__get_idx(map, key).present;
+}
+
+fn Arr_u8 map_get(Map_Str_to_Arr_u8 *map, Str key) {
+    Opt_u32 item_idx = map__get_idx(map, key);
+    if (item_idx.present) {
+        return A(map->values, item_idx.opt);
+    } else {
+        return (typeof(*map->values.ptr)){};
+    }
+}
+
+fn void map_del(Map_Str_to_Arr_u8 *map, Str key) {
+    if (map->keys.count == 0) {
+        return;
+    }
+    u64 hash = XXH3_64bits(key.ptr, key.count);
+    u32 bucket_idx = (u32)(hash % (map->buckets.count));
+
+    u32 first_slot_idx = A(map->buckets, bucket_idx);
+    u32 slot_idx = first_slot_idx;
+    MapSlot *prev_slot = nullptr;
+    while (slot_idx > 0) {
+        MapSlot *slot = &A(map->slots, slot_idx);
+        if (str_eq(A(map->keys, slot->item_idx), key)) {
+            // Delete key/value from key/value arrays
+            A(map->keys, slot->item_idx) = arr_last(map->keys);
+            A(map->values, slot->item_idx) = arr_last(map->values);
+            fvec_pop(&map->keys);
+            fvec_pop(&map->values);
+
+            // Remove slot from bucket
+            if (prev_slot == nullptr) {
+                // Delete head of slot list
+                A(map->buckets, bucket_idx) = slot->next_slot_idx;
+            } else {
+                // Delete middle of slot list
+                prev_slot->next_slot_idx = slot->next_slot_idx;
+            }
+
+            // Add slot to slot freelist
+            if (map->slot_freelist == 0) {
+                map->slot_freelist = slot_idx;
+            } else {
+                // Prepend
+                slot->next_slot_idx = map->slot_freelist;
+                map->slot_freelist = slot_idx;
+            }
+
+            break;
+        }
+        prev_slot = slot;
+    }
+}
+
+fn void map__grow(Arena *arena, Map_Str_to_Arr_u8 *map, u32 max_elems);
+
+fn void map_set(Arena *arena, Map_Str_to_Arr_u8 *map, Str key, Arr_u8 value) {
+    u64 hash = XXH3_64bits(key.ptr, key.count);
+    u32 bucket_idx = (u32)(hash % (map->buckets.count));
+
+    // Replace existing value if present
+    u32 slot_idx = A(map->buckets, bucket_idx);
+    while (slot_idx > 0) {
+        MapSlot *slot = &A(map->slots, slot_idx);
+        if (str_eq(A(map->keys, slot->item_idx), key)) {
+            A(map->values, slot->item_idx) = value;
+            return;
+        }
+    }
+
+    // We must append - grow if necessary
+    if (map->keys.count + 1 > map->keys.capacity) {
+        map__grow(arena, map, (u32)max(HASHMAP_MIN_BUCKETS, next_pow2(map->buckets.count + 1)));
+        map_set(arena, map, key, value);
+        return;
+    }
+
+    // Prepend new value to slot list
+    slot_idx = 0;
+    if (map->slot_freelist != 0) {
+        slot_idx = map->slot_freelist;
+        map->slot_freelist = A(map->slots, slot_idx).next_slot_idx;
+    } else {
+        map->next_slot++;
+        slot_idx = map->next_slot;
+    }
+
+    // Add slot to bucket
+    MapSlot *slot = &A(map->slots, slot_idx);
+    u32 *bucket = &A(map->buckets, bucket_idx);
+    slot->next_slot_idx = *bucket;
+    *bucket = slot_idx;
+
+    // Append key+value to key+value arrays
+    slot->item_idx = (u32)map->keys.count;
+    fvec_push(&map->keys, key);
+    fvec_push(&map->values, value);
+}
+
+fn void map__grow(Arena *arena, Map_Str_to_Arr_u8 *map, u32 bucket_count) {
+    FVec_Str old_keys = map->keys;
+    FVec_Arr_u8 old_values = map->values;
+    SDL_memset(map, 0, sizeof(*map));
+
+    // Prealloc item arrays to be exactly the maximum load factor-based size
+    u32 elem_count = (u32)SDL_ceilf((f32)bucket_count * HASHMAP_LOAD_FACTOR);
+
+    map->keys = fvec_alloc(arena, Str, elem_count);
+    map->values = fvec_alloc(arena, Arr_u8, elem_count);
+    map->buckets = arena_push_arr(arena, u32, bucket_count);
+
+    for (u32 i = 0; i < old_keys.count; i++) {
+        map_set(arena, map, A(old_keys, i), A(old_values, i));
+    }
+}

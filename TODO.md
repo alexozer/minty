@@ -31,12 +31,12 @@ SDF curve rendering
 Settings UX design
 Permanent split history / rollback / undo
 Windowing
-    Generally consistent/correct hidpi scaling factors
-        Pretty sure there's just some SDL thing that tells you
+    <!-- Generally consistent/correct hidpi scaling factors -->
+    <!--     Pretty sure there's just some SDL thing that tells you -->
     Cross-platform smooth scrolling (again, how does Ghostty do it?)
         Do I have to make a whole-ass Swift application shell just to get smooth scrolling?
     Smooth resize
-        How does Ghostty do it?!?
+        How does Zed do it??
         Window isn't resizable on Windows also btw? SDL's windowing stuff seems pretty janky in general
     Latency reduction
         Is vsync necessary on macos?
@@ -51,7 +51,7 @@ Memory limits
     Arenas are certainly closer to this than malloc(), but it's an issue when those limits collide
     with GPU memory limits
 Make my hashtable implementation...
-UI scaling
+<!-- UI scaling -->
 
 <!-- File Pilot render system interview -->
 <!-- Split icon atlasing -->
@@ -388,3 +388,12 @@ Simple idea: build UI in "pixels-but-not-really", then layout engine scales them
     physical pixels and how many of them you're using
 Still can provide an option to round/snap pos/width to exact pixels
     For e.g. sharp+thin lines
+
+# Async
+
+Maybe we can implement threading with a promises kind of model
+You dispatch work, expect it to arrive back and fill a Promise hole, and check the Promise every
+frame
+    Recursive promises? Like, for first draw we maybe want to block on entire UI promise, but
+    otherwise be smart about remaining stable during background work?
+Is this any better than Ryan's locking/refcount/pointer-based caching system?
