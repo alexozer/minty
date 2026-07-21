@@ -34,6 +34,12 @@ fn TextureSystem *tex_init(ErrorContext *err,
     return ctx;
 }
 
+fn void test_hashmap() {
+    log_info("Begin hashmap test");
+
+    log_info("End hashmap test");
+}
+
 fn MeshBuilder meshbuilder_alloc(Arena *arena, u64 quad_count) {
     return (MeshBuilder){
         .vertices = fvec_alloc(arena, Vertex, quad_vertices(quad_count)),

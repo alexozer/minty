@@ -492,7 +492,7 @@ fn Opt_u32 map__get(Map_Str_to_Any *map, Str key) {
     return none(u32);
 }
 
-fn bool map_has(Map_Str_to_Any *map, Str key) {
+fn bool map__has(Map_Str_to_Any *map, Str key) {
     return map__get(map, key).present;
 }
 
@@ -515,9 +515,11 @@ fn Opt_u32 map__del(Map_Str_to_Any *map, Str key) {
             // Delete key/value from key/value arrays
             deleted_idx = some(slot->item_idx, u32);
 
-            // A(map->keys, slot->item_idx) = arr_last(map->keys);
+            A(map->keys, slot->item_idx) = arr_last(map->keys);
+            fvec_pop(&map->keys);
+            // Macro deletes from map->values
+
             // A(map->values, slot->item_idx) = arr_last(map->values);
-            // fvec_pop(&map->keys);
             // fvec_pop(&map->values);
 
             // Remove slot from bucket
@@ -547,6 +549,11 @@ fn Opt_u32 map__del(Map_Str_to_Any *map, Str key) {
 }
 
 fn u32 map__set(Arena *arena, Map_Str_to_Any *map, Str key) {
+    if (map->keys.capacity == 0) {
+        // Signal we need to grow
+        return 0;
+    }
+
     u64 hash = XXH3_64bits(key.ptr, key.count);
     u32 bucket_idx = (u32)(hash % (map->buckets.count));
 
@@ -559,6 +566,7 @@ fn u32 map__set(Arena *arena, Map_Str_to_Any *map, Str key) {
             return slot->item_idx;
             // A(map->values, slot->item_idx) = value;
         }
+        slot_idx = slot->next_slot_idx;
     }
 
     // We must append - grow if necessary
@@ -610,6 +618,7 @@ fn void map__grow(Arena *arena,
     map->values.ptr = arena_push_bytes(arena, value_size * elem_count, value_alignment);
     map->values.capacity = elem_count;
     map->buckets = arena_push_arr(arena, u32, bucket_count);
+    map->slots = arena_push_arr(arena, MapSlot, elem_count);
 
     for (u32 i = 0; i < old_keys.count; i++) {
         map__set(arena, map, A(old_keys, i));

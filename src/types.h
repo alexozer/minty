@@ -227,6 +227,7 @@ struct ShapedGlyph {
     PosF pos_px;
 };
 derive_struct(ShapedGlyph);
+derive_type(Arr_ShapedGlyph);
 
 struct GlyphBitmap {
     Texture texture;

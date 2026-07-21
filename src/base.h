@@ -674,20 +674,22 @@ struct MapSlot {
 };
 derive_struct(MapSlot);
 
-struct Map_Str_to_Any {
-    void *__typeid_str_map[0];
-    Arr_u32 buckets;
-    Arr_MapSlot slots;
-    u32 next_slot;      // Index into slots pool for never-used slots
-    u32 slot_freelist;  // Deleted slots go here
+#define __SMapHeader__                                                  \
+    void *__typeid_str_map[0];                                          \
+    Arr_u32 buckets;                                                    \
+    Arr_MapSlot slots;                                                  \
+    u32 next_slot;     /* Index into slots pool for never-used slots */ \
+    u32 slot_freelist; /* Deleted slots go here */                      \
+    FVec_Str keys
 
-    FVec_Str keys;
+struct Map_Str_to_Any {
+    __SMapHeader__;
     FVec_u8 values;
 };
 derive_struct(Map_Str_to_Any);
 
 fn Opt_u32 map__get(Map_Str_to_Any *map, Str key);
-fn bool map_has(Map_Str_to_Any *map, Str key);
+fn bool map__has(Map_Str_to_Any *map, Str key);
 fn Opt_u32 map__del(Map_Str_to_Any *map, Str key);
 fn u32 map__set(Arena *arena, Map_Str_to_Any *map, Str key);
 fn void map__grow(Arena *arena,
@@ -695,6 +697,13 @@ fn void map__grow(Arena *arena,
                   u32 value_size,
                   u32 value_count,
                   u32 value_alignment);
+
+#define map_has(map, key)                         \
+    ({                                            \
+        typeof(map) _map_ = (map);                \
+        Str _key_ = (key);                        \
+        map__has((Map_Str_to_Any *)_map_, _key_); \
+    })
 
 #define map_get(map, key)                                       \
     ({                                                          \
@@ -708,19 +717,34 @@ fn void map__grow(Arena *arena,
         value;                                                  \
     })
 
-#define map_set(arena, map, key, value)                                                \
-    ({                                                                                 \
-        Arena *_arena_ = (arena);                                                      \
-        typeof(map) _map_ = (map);                                                     \
-        Str _key_ = (key);                                                             \
-                                                                                       \
-        u32 idx = map__set((Map_Str_to_Any *)_map_, _key_);                            \
-        if (idx > _map_->keys.capacity) {                                              \
-            map__grow(_arena_, _map_, sizeof(*_map_->values.ptr), _map_->values.count, \
-                      alignof(typeof(*_map_->values.ptr)));                            \
-            idx = map__set((Map_Str_to_Any *)_map_, key);                              \
-        }                                                                              \
-        if (idx >= _map_->values.count) {                                              \
-            fvec_push(_map_->values, _value_);                                         \
-        }                                                                              \
+#define map_set(arena, map, key, value)                                                  \
+    ({                                                                                   \
+        Arena *_arena_ = (arena);                                                        \
+        typeof(map) _map_ = (map);                                                       \
+        Str _key_ = (key);                                                               \
+        typeof(value) _value_ = (value);                                                 \
+                                                                                         \
+        u32 idx = map__set(_arena_, (Map_Str_to_Any *)_map_, _key_);                     \
+        if (idx >= _map_->keys.capacity) {                                               \
+            map__grow(_arena_, (Map_Str_to_Any *)_map_, (u32)sizeof(*_map_->values.ptr), \
+                      (u32)_map_->values.count, alignof(typeof(*_map_->values.ptr)));    \
+            idx = map__set(_arena_, (Map_Str_to_Any *)_map_, key);                       \
+        }                                                                                \
+        if (idx >= _map_->values.count) {                                                \
+            _map_->values.count++;                                                       \
+            _map_->values.ptr[idx] = _value_;                                            \
+        }                                                                                \
+    })
+
+#define map_del(map, key)                                                                \
+    ({                                                                                   \
+        typeof(map) _map_ = (map);                                                       \
+        Str _key_ = (key);                                                               \
+                                                                                         \
+        Opt_u32 idx = map__del((Map_Str_to_Any *)_map_, _key_);                          \
+        if (idx.present) {                                                               \
+            _map_->values.ptr[idx.opt] = _map_->values.ptr[_map_->values.count - 1];     \
+            _map_->values.ptr[_map_->values.count - 1] = (typeof(*_map_->values.ptr)){}; \
+            _map_->values.count--;                                                       \
+        }                                                                                \
     })

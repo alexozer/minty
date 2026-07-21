@@ -397,3 +397,9 @@ frame
     Recursive promises? Like, for first draw we maybe want to block on entire UI promise, but
     otherwise be smart about remaining stable during background work?
 Is this any better than Ryan's locking/refcount/pointer-based caching system?
+
+# Hashmaps V2
+
+Indices are i64
+    Initialized to -1 on grow (aka also on first insertion)
+Slots contain next idx + key + value
