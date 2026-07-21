@@ -668,83 +668,79 @@ Opt_u64 packer_try_push(Packer *packer, Arr_u8 buf, u64 alignment);
 constexpr u32 HASHMAP_MIN_BUCKETS = 8;
 constexpr f32 HASHMAP_LOAD_FACTOR = 0.75f;
 
-struct MapSlot {
-    u32 item_idx;
-    u32 next_slot_idx;
+#define derive_maps(value_t)                             \
+    struct CONCAT(MapsItem_, value_t) {                  \
+        i64 next;                                        \
+        Str key;                                         \
+        value_t value;                                   \
+    };                                                   \
+    derive_struct(CONCAT(MapsItem_, value_t));           \
+                                                         \
+    struct CONCAT(Maps_, value_t) {                      \
+        void *__typeid_str_map[0];                       \
+        Arr_i64 buckets;                                 \
+        CONCAT(FVec_, CONCAT(MapsItem_, value_t)) items; \
+    };                                                   \
+    derive_struct(CONCAT(Maps_, value_t))
+
+struct MapsItem_Any {
+    i64 next;
+    Str key;
+    u8 value_placeholder[0];
+    // Who knows what the size of value is?
 };
-derive_struct(MapSlot);
+derive_struct(MapsItem_Any);
 
-#define __SMapHeader__                                                  \
-    void *__typeid_str_map[0];                                          \
-    Arr_u32 buckets;                                                    \
-    Arr_MapSlot slots;                                                  \
-    u32 next_slot;     /* Index into slots pool for never-used slots */ \
-    u32 slot_freelist; /* Deleted slots go here */                      \
-    FVec_Str keys
-
-struct Map_Str_to_Any {
-    __SMapHeader__;
-    FVec_u8 values;
+struct Maps_Any {
+    void *__typeid_str_map[0];
+    Arr_i64 buckets;
+    FVec_MapsItem_Any items;
 };
-derive_struct(Map_Str_to_Any);
+derive_struct(Maps_Any);
 
-fn Opt_u32 map__get(Map_Str_to_Any *map, Str key);
-fn bool map__has(Map_Str_to_Any *map, Str key);
-fn Opt_u32 map__del(Map_Str_to_Any *map, Str key);
-fn u32 map__set(Arena *arena, Map_Str_to_Any *map, Str key);
-fn void map__grow(Arena *arena,
-                  Map_Str_to_Any *map,
-                  u32 value_size,
-                  u32 value_count,
-                  u32 value_alignment);
+fn bool maps__has(Maps_Any *map, Str key, u64 value_size);
+fn void maps__get(Maps_Any *map, Str key, void *value_out, u64 value_size);
+fn void maps__set(Arena *arena, Maps_Any *map, Str key, void *value, u64 value_size);
+fn i64 maps__del_from_buckets(Maps_Any *map, Str key, u64 value_size);
+fn void maps__del(Maps_Any *map, Str key, u64 value_size);
+fn void maps__grow(Arena *arena, Maps_Any *map, u64 value_size);
 
-#define map_has(map, key)                         \
-    ({                                            \
-        typeof(map) _map_ = (map);                \
-        Str _key_ = (key);                        \
-        map__has((Map_Str_to_Any *)_map_, _key_); \
+#define maps_has(map, key)                                     \
+    ({                                                         \
+        typeof(map) _map_ = (map);                             \
+        [[maybe_unused]] auto dummy = _map_->__typeid_str_map; \
+        Str _key_ = (key);                                     \
+        u64 value_size = sizeof(_map_->items.ptr[0].value);    \
+        maps__has((Maps_Any *)_map_, _key_, value_size);       \
     })
 
-#define map_get(map, key)                                       \
-    ({                                                          \
-        typeof(map) _map_ = (map);                              \
-        Str _key_ = (key);                                      \
-        Opt_u32 idx = map__get((Map_Str_to_Any *)_map_, _key_); \
-        typeof(*_map_->values.ptr) value = {};                  \
-        if (idx.present) {                                      \
-            value = _map_->values.ptr[idx.opt];                 \
-        }                                                       \
-        value;                                                  \
+#define maps_get(map, key)                                       \
+    ({                                                           \
+        typeof(map) _map_ = (map);                               \
+        [[maybe_unused]] auto dummy = _map_->__typeid_str_map;   \
+        Str _key_ = (key);                                       \
+        typeof(_map_->items.ptr[0].value) value = {};            \
+        u64 value_size = sizeof(value);                          \
+        maps__get((Maps_Any *)_map_, _key_, &value, value_size); \
+        value;                                                   \
     })
 
-#define map_set(arena, map, key, value)                                                  \
-    ({                                                                                   \
-        Arena *_arena_ = (arena);                                                        \
-        typeof(map) _map_ = (map);                                                       \
-        Str _key_ = (key);                                                               \
-        typeof(value) _value_ = (value);                                                 \
-                                                                                         \
-        u32 idx = map__set(_arena_, (Map_Str_to_Any *)_map_, _key_);                     \
-        if (idx >= _map_->keys.capacity) {                                               \
-            map__grow(_arena_, (Map_Str_to_Any *)_map_, (u32)sizeof(*_map_->values.ptr), \
-                      (u32)_map_->values.count, alignof(typeof(*_map_->values.ptr)));    \
-            idx = map__set(_arena_, (Map_Str_to_Any *)_map_, key);                       \
-        }                                                                                \
-        if (idx >= _map_->values.count) {                                                \
-            _map_->values.count++;                                                       \
-            _map_->values.ptr[idx] = _value_;                                            \
-        }                                                                                \
+#define maps_set(arena, map, key, value_)                                   \
+    ({                                                                      \
+        Arena *_arena_ = (arena);                                           \
+        typeof(map) _map_ = (map);                                          \
+        [[maybe_unused]] auto dummy = _map_->__typeid_str_map;              \
+        Str _key_ = (key);                                                  \
+        typeof(_map_->items.ptr[0].value) _value_ = (value_);               \
+        u64 value_size = sizeof(_value_);                                   \
+        maps__set(_arena_, (Maps_Any *)_map_, _key_, &_value_, value_size); \
     })
 
-#define map_del(map, key)                                                                \
-    ({                                                                                   \
-        typeof(map) _map_ = (map);                                                       \
-        Str _key_ = (key);                                                               \
-                                                                                         \
-        Opt_u32 idx = map__del((Map_Str_to_Any *)_map_, _key_);                          \
-        if (idx.present) {                                                               \
-            _map_->values.ptr[idx.opt] = _map_->values.ptr[_map_->values.count - 1];     \
-            _map_->values.ptr[_map_->values.count - 1] = (typeof(*_map_->values.ptr)){}; \
-            _map_->values.count--;                                                       \
-        }                                                                                \
+#define maps_del(map, key)                                     \
+    ({                                                         \
+        typeof(map) _map_ = (map);                             \
+        [[maybe_unused]] auto dummy = _map_->__typeid_str_map; \
+        Str _key_ = (key);                                     \
+        u64 value_size = sizeof(_map_->items.ptr[0].value);    \
+        maps__del((Maps_Any *)_map_, _key_, value_size);       \
     })
