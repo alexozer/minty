@@ -19,7 +19,7 @@ fn FontInst *add_font_inst(ErrorContext *err,
 fn f32 compute_face_center_y(FontSystem *ctx, FontInst *inst);
 fn void destroy_font_inst(FontInst *inst);
 fn void rasterize_glyph(FontInst *inst, u32 glyph_id);
-fn Arr_ShapedGlyph shape_text(FontSystem *ctx, FontInst *inst, Str text);
+fn Arr_ShapedGlyph shape_text(Arena *arena, FontSystem *ctx, FontInst *inst, Str text);
 fn Arr_ShapedGlyph shape_text_uncached(Arena *arena, FontInst *inst, Str text);
 fn void font_prepare_to_render(FontSystem *ctx, UI_Box *box, FVec_QuadRequest *quad_reqs);
 fn void ensure_bitmap_set_rasterized(FontInst *inst, u32 glyph_id);

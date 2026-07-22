@@ -61,6 +61,7 @@ fn FontInst *add_font_inst(ErrorContext *err,
                            FontFile *font_file,
                            u32 face_size_px,
                            f32 outline_px) {
+    Arena *scratch = arena_acquire();
     Scope scope = scope_open(err);
 
     FontInst *inst = fvec_push_zero(&ctx->fonts);
@@ -104,7 +105,7 @@ fn FontInst *add_font_inst(ErrorContext *err,
         inst->center_y_px = compute_face_center_y(ctx, inst);
 
         // Prefetch the glyph ID of ellipsis, if the font has it
-        Arr_ShapedGlyph shaped_glyphs = shape_text(ctx, inst, S("…"));
+        Arr_ShapedGlyph shaped_glyphs = shape_text(scratch, ctx, inst, S("…"));
         u32 ellipsis_glyph_id = A(shaped_glyphs, 0).glyph_id;
         if (ellipsis_glyph_id != 0) {
             inst->ellipsis_glyph_id = some(ellipsis_glyph_id, u32);
@@ -114,6 +115,7 @@ fn FontInst *add_font_inst(ErrorContext *err,
 
     scope_close(scope, "Load font: family = '%.*s', style = '%.*s'", SF(inst->family_name),
                 SF(inst->style_name));
+    arena_release(scratch);
     return inst;
 }
 
@@ -134,7 +136,7 @@ fn f32 compute_face_center_y(FontSystem *ctx, FontInst *inst) {
     Arena *scratch = arena_acquire();
     f32 center_y_px = 0.f;
 
-    Arr_ShapedGlyph shaped_glyphs = shape_text(ctx, inst, S("A"));
+    Arr_ShapedGlyph shaped_glyphs = shape_text(scratch, ctx, inst, S("A"));
     u32 glyph_id = A(shaped_glyphs, 0).glyph_id;
     if (glyph_id != 0) {
         // 'A' glyph is in font
@@ -236,17 +238,20 @@ fn void rasterize_glyph(FontInst *inst, u32 glyph_id) {
     }
 }
 
-fn Arr_ShapedGlyph shape_text(FontSystem *ctx, FontInst *inst, Str text) {
-    // TODO avoid double hash
+fn Arr_ShapedGlyph shape_text(Arena *arena, FontSystem *ctx, FontInst *inst, Str text) {
+    Arr_ShapedGlyph shape_result = {};
+
     if (maps_has(&ctx->shape_cache, text)) {
-        return maps_get(&ctx->shape_cache, text);
+        // TODO avoid double hash
+        shape_result = maps_get(&ctx->shape_cache, text);
+    } else {
+        // TODO may need to heap allocate to invalidate
+        Str stable_text = str_clone(ctx->arena, text);
+        shape_result = shape_text_uncached(ctx->arena, inst, text);
+        maps_set(ctx->arena, &ctx->shape_cache, stable_text, shape_result);
     }
 
-    // TODO may need to heap allocate to invalidate
-    Str stable_text = str_clone(ctx->arena, text);
-    Arr_ShapedGlyph stable_shape_result = shape_text_uncached(ctx->arena, inst, text);
-    maps_set(ctx->arena, &ctx->shape_cache, stable_text, stable_shape_result);
-    return stable_shape_result;
+    return arr_clone(arena, shape_result);
 }
 
 // TODO check font for errors on load, but afterwards assume it's good
@@ -294,7 +299,9 @@ fn void font_prepare_to_render(FontSystem *ctx, UI_Box *box, FVec_QuadRequest *q
     FontInst *outline_inst =
         get_or_create_font_inst(ctx, box->font_file, box->font_size_px, box->font_outline_px);
 
-    Arr_ShapedGlyph shaped_glyphs = shape_text(ctx, non_outline_inst, box->text_content);
+    // Clone because we may mutate when clipping with `…`
+    Arr_ShapedGlyph shaped_glyphs = shape_text(scratch, ctx, non_outline_inst, box->text_content);
+
     if (shaped_glyphs.count > 0) {
         // Rasterize glyphs. Must be done before alignment so glyph metrics are available
         for (u64 i = 0; i < shaped_glyphs.count; i++) {
