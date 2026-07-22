@@ -53,6 +53,7 @@
     })
 
 derive_maps(i32);
+derive_maps(u64);
 
 fn u64 get_filled_bucket_count(Arr_i64 buckets) {
     u64 count = 0;
@@ -122,9 +123,39 @@ fn void test_hashmaps_many_insertions() {
     arena_release(scratch);
 }
 
+fn void test_hashmaps_big() {
+    Arena *scratch = arena_acquire();
+
+    Maps_u64 map = {};
+    for (u64 i = 0; i < 10000; i++) {
+        Str key = str_format(scratch, "Key%" PRIu64, i);
+        maps_set(scratch, &map, key, i);
+    }
+
+    for (u64 i = 0; i < 10000; i += 3) {
+        Str key = str_format(scratch, "Key%" PRIu64, i);
+        maps_del(&map, key);
+        maps_set(scratch, &map, key, i);
+        maps_del(&map, key);
+    }
+
+    for (u64 i = 0; i < 10000; i++) {
+        Str key = str_format(scratch, "Key%" PRIu64, i);
+        if (i % 3 == 0) {
+            assert_true(!maps_has(&map, key));
+        } else {
+            assert_true(maps_has(&map, key));
+            assert_eq(maps_get(&map, key), i);
+        }
+    }
+
+    arena_release(scratch);
+}
+
 int main() {
     thread_init();
 
-    // test_hashmaps_basic();
+    test_hashmaps_basic();
     test_hashmaps_many_insertions();
+    test_hashmaps_big();
 }
