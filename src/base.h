@@ -234,6 +234,7 @@ bool str_is_valid_utf8(Arr_u8 s);
 Opt_u64 str_find(Str haystack, Str needle);
 bool str_contains(Str haystack, Str needle);
 Str str_slice(Str s, u64 start, u64 end);
+Str path_basename(Str path);
 
 // Certainly possible to do this simply and w/o an iterator object, but just messin around
 struct StrLineIter {
@@ -747,3 +748,20 @@ fn void maps__grow(Arena *arena, Maps_Any *map, u64 value_size);
         u64 _value_size_ = sizeof(_map_->items.ptr[0].value);  \
         maps__del((Maps_Any *)_map_, _key_, _value_size_);     \
     })
+
+//
+// Debug print
+//
+
+#define dbg(x)                \
+    _Generic((x),             \
+        u8: debug_print_u8,   \
+        u16: debug_print_u16, \
+        u32: debug_print_u32, \
+        u64: debug_print_u64, \
+        Str: debug_print_Str)(__FILE__, __LINE__, #x, x)
+u8 debug_print_u8(const char *file, int line, const char *thing, u8 x);
+u16 debug_print_u16(const char *file, int line, const char *thing, u16 x);
+u32 debug_print_u32(const char *file, int line, const char *thing, u32 x);
+u64 debug_print_u64(const char *file, int line, const char *thing, u64 x);
+Str debug_print_Str(const char *file, int line, const char *thing, Str x);

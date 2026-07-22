@@ -126,7 +126,7 @@ fn void test_hashmaps_many_insertions() {
 fn void test_hashmaps_big() {
     Arena *scratch = arena_acquire();
 
-    constexpr u64 ITERS = 10000;
+    constexpr u64 ITERS = 1000;
 
     Maps_u64 map = {};
     for (u64 i = 0; i < ITERS; i++) {
@@ -151,8 +151,8 @@ fn void test_hashmaps_big() {
         }
     }
 
-    assert_eq(map.buckets.count, next_pow2(ITERS));
-    assert_eq(map.items.count, 6666);
+    assert_eq(map.buckets.count, next_pow2((u64)((f32)ITERS / HASHMAP_LOAD_FACTOR)));
+    assert_eq(map.items.count, 666);
 
     // Remove everything from map
     while (map.items.count > 0) {

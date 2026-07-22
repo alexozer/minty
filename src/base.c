@@ -42,17 +42,7 @@ u64 next_pow2(u64 x) {
 [[noreturn]] void crash(const char *file, i32 line, const char *why) {
     if (line > 0) {
         Str f = str_from_c(file);
-
-        // Try to find basename
-        u64 pos = f.count;
-        while (true) {
-            if (pos == 0) break;
-            if (A(f, pos - 1) == C('/')) break;
-            if (A(f, pos - 1) == C('\\')) break;
-            pos--;
-        }
-
-        Str basename = str_slice(f, pos, f.count);
+        Str basename = path_basename(f);
         log_fatal("%.*s:%d: %s", SF(basename), line, why);
     } else {
         log_fatal("%s", why);
@@ -61,6 +51,31 @@ u64 next_pow2(u64 x) {
 
 [[noreturn]] void *oob() {
     crash("", 0, "Array index out of bounds");
+}
+
+u8 debug_print_u8(const char *file, int line, const char *thing, u8 x) {
+    log_info("%s = %" PRIu8, thing, x);
+    return x;
+}
+
+u16 debug_print_u16(const char *file, int line, const char *thing, u16 x) {
+    log_info("%s = %" PRIu16, thing, x);
+    return x;
+}
+
+u32 debug_print_u32(const char *file, int line, const char *thing, u32 x) {
+    log_info("%s = %" PRIu32, thing, x);
+    return x;
+}
+
+u64 debug_print_u64(const char *file, int line, const char *thing, u64 x) {
+    log_info("%s = %" PRIu64, thing, x);
+    return x;
+}
+
+Str debug_print_Str(const char *file, int line, const char *thing, Str x) {
+    log_info("%s = \"%.*s\"", thing, SF(x));
+    return x;
 }
 
 void arena_pool_init() {
@@ -309,6 +324,17 @@ Str str_from_c(const char *cstr) {
 
 bool str_is_valid_utf8(Str s) {
     return simdutf_validate_utf8((const char *)s.ptr, s.count);
+}
+
+Str path_basename(Str path) {
+    u64 pos = path.count;
+    while (true) {
+        if (pos == 0) break;
+        if (A(path, pos - 1) == C('/')) break;
+        if (A(path, pos - 1) == C('\\')) break;
+        pos--;
+    }
+    return str_slice(path, pos, path.count);
 }
 
 //
