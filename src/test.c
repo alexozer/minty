@@ -171,10 +171,37 @@ fn void test_hashmaps_big() {
     arena_release(scratch);
 }
 
+fn void benchmark_hashmaps() {
+    Arena *scratch = arena_acquire();
+
+    constexpr u64 ITERS = 10'000'000;
+    constexpr u64 UNIQUE_KEYS = 10000;
+
+    Arr_Str strs = arena_push_arr(scratch, Str, UNIQUE_KEYS);
+    for (u64 i = 0; i < strs.count; i++) {
+        A(strs, i) = str_format(scratch, "Str_%" PRIu64, i);
+    }
+
+    Instant start = get_current_monotonic_time();
+    Maps_u64 map = {};
+    for (u64 i = 0; i < ITERS; i++) {
+        maps_set(scratch, &map, A(strs, i % strs.count), i);
+    }
+    Instant end = get_current_monotonic_time();
+    f32 duration_sec = duration_as_seconds(instant_sub(end, start));
+    f32 rate = (f32)ITERS / duration_sec;
+    log_info("Iters = %" PRIu64 ", Unique Keys = %" PRIu64
+             ", Duration = %.2fs, Insertion rate = %.2f/sec",
+             ITERS, UNIQUE_KEYS, duration_sec, rate);
+
+    arena_release(scratch);
+}
+
 int main() {
     thread_init();
 
     test_hashmaps_basic();
     test_hashmaps_many_insertions();
     test_hashmaps_big();
+    benchmark_hashmaps();
 }

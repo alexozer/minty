@@ -257,16 +257,24 @@ StrPair str_split2(Str base, u8 delim) {
 }
 
 Str str_format_v(Arena *arena, const char *format, va_list args) {
+    // stb_sprintf seems to require 4-byte alignment
+    constexpr u64 SIZE = kilobytes(8);
+    constexpr u64 ALIGNMENT = 4;
+
+    // Align before allocating
+    arena_push_bytes(arena, 0, ALIGNMENT);
     u64 init_arena_offset = arena->offset;
-    Arr_u8 buf = arena_push_arr(arena, u8, kilobytes(8));
-    i32 n = stbsp_vsnprintf((char *)buf.ptr, (i32)buf.count, format, args);
+
+    void *ptr = arena_push_bytes(arena, SIZE, ALIGNMENT);
+    i32 n = stbsp_vsnprintf((char *)ptr, (i32)SIZE, format, args);
+
     if (n < 0) {
-        SDL_memset(buf.ptr, 0, buf.count);
+        SDL_memset(ptr, 0, SIZE);
         arena->offset = init_arena_offset;
         return S("<formatting error>");
     } else {
         arena->offset = init_arena_offset + (u64)n;
-        return (Str){.ptr = buf.ptr, .count = (u64)n};
+        return (Str){.ptr = ptr, .count = (u64)n};
     }
 }
 
@@ -423,6 +431,10 @@ Instant get_current_monotonic_time() {
 
 Instant instant_from_sdl_nanos(u64 nanos) {
     return (Instant){.time_nanoseconds = (i64)nanos};
+}
+
+f32 duration_as_seconds(Duration d) {
+    return (f32)((f64)d / (f64)1e9);
 }
 
 //
@@ -591,10 +603,6 @@ fn i64 maps__del_from_buckets(Maps_Any *map, Str key, u64 hash, u64 value_size) 
     u64 bucket_idx = hash % (map->buckets.count);
     i64 item_idx = A(map->buckets, bucket_idx);
     i64 prev_item_idx = -1;
-    if (item_idx >= (i64)map->items_count) {
-        while (true)
-            ;
-    }
     log_assert(item_idx < (i64)map->items_count);
     while (item_idx != -1) {
         MapsItem_Any *item = maps__get_item(map, (u64)item_idx, value_size);

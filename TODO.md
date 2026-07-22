@@ -400,6 +400,16 @@ Is this any better than Ryan's locking/refcount/pointer-based caching system?
 
 # Hashmaps V2
 
-Indices are i64
-    Initialized to -1 on grow (aka also on first insertion)
-Slots contain next idx + key + value
+<!-- Indices are i64 -->
+    <!-- Initialized to -1 on grow (aka also on first insertion) -->
+<!-- Slots contain next idx + key + value -->
+
+<!-- Impl V2 -->
+<!-- Testing -->
+
+TODO:
+
+Benchmark a little more?
+    Fix the stupid while loop!
+    Seems like there's a weird bug... changing string alignment can change results
+Implement shape cache

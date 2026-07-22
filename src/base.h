@@ -606,6 +606,7 @@ inline static Duration instant_sub(Instant a, Instant b) {
 
 Instant get_current_monotonic_time();
 Instant instant_from_sdl_nanos(u64 nanos);
+f32 duration_as_seconds(Duration d);
 
 //
 // Errors
