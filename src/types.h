@@ -311,9 +311,13 @@ struct FontInst {
 };
 derive_struct(FontInst);
 
+derive_maps(Arr_ShapedGlyph);
+
 struct FontSystem {
+    Arena *arena;
     FVec_FontInst fonts;
     FontHandle last_handle;
+    Maps_Arr_ShapedGlyph shape_cache;
 };
 derive_struct(FontSystem);
 

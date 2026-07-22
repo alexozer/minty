@@ -16,10 +16,11 @@ fn FontInst *add_font_inst(ErrorContext *err,
                            FontFile *font_file,
                            u32 face_size_px,
                            f32 outline_px);
-fn f32 compute_face_center_y(FontInst *inst);
+fn f32 compute_face_center_y(FontSystem *ctx, FontInst *inst);
 fn void destroy_font_inst(FontInst *inst);
 fn void rasterize_glyph(FontInst *inst, u32 glyph_id);
-fn Arr_ShapedGlyph shape_text(Arena *arena, FontInst *inst, Str text);
+fn Arr_ShapedGlyph shape_text(FontSystem *ctx, FontInst *inst, Str text);
+fn Arr_ShapedGlyph shape_text_uncached(Arena *arena, FontInst *inst, Str text);
 fn void font_prepare_to_render(FontSystem *ctx, UI_Box *box, FVec_QuadRequest *quad_reqs);
 fn void ensure_bitmap_set_rasterized(FontInst *inst, u32 glyph_id);
 fn Arr_ShapedGlyph align_text(FontSystem *ctx,

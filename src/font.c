@@ -6,6 +6,8 @@
 #include "base.h"
 
 constexpr u32 LOAD_GLYPH_FLAGS = FT_LOAD_NO_HINTING;
+// This shouldn't be necessary with proper cache eviction
+constexpr u64 MAX_FONTS = 128;
 
 bool fn font_handle_eq(FontHandle h1, FontHandle h2) {
     return h1.idx == h2.idx && h1.generation == h2.generation;
@@ -50,7 +52,8 @@ fn FontInst *get_or_create_font_inst(FontSystem *ctx,
 }
 
 fn void font_init(FontSystem *ctx, Arena *arena) {
-    ctx->fonts = fvec_alloc(arena, FontInst, (u64)1024);
+    ctx->arena = arena_acquire();
+    ctx->fonts = fvec_alloc(ctx->arena, FontInst, MAX_FONTS);
 }
 
 fn FontInst *add_font_inst(ErrorContext *err,
@@ -98,10 +101,10 @@ fn FontInst *add_font_inst(ErrorContext *err,
         kbts_ShapePushFontFromMemory(inst->kbts_ctx, inst->font_file->contents.ptr,
                                      (int)inst->font_file->contents.count, 0);
 
-        inst->center_y_px = compute_face_center_y(inst);
+        inst->center_y_px = compute_face_center_y(ctx, inst);
 
         // Prefetch the glyph ID of ellipsis, if the font has it
-        Arr_ShapedGlyph shaped_glyphs = shape_text(inst->arena, inst, S("…"));
+        Arr_ShapedGlyph shaped_glyphs = shape_text(ctx, inst, S("…"));
         u32 ellipsis_glyph_id = A(shaped_glyphs, 0).glyph_id;
         if (ellipsis_glyph_id != 0) {
             inst->ellipsis_glyph_id = some(ellipsis_glyph_id, u32);
@@ -114,7 +117,7 @@ fn FontInst *add_font_inst(ErrorContext *err,
     return inst;
 }
 
-fn f32 compute_face_center_y(FontInst *inst) {
+fn f32 compute_face_center_y(FontSystem *ctx, FontInst *inst) {
     // https://tonsky.me/blog/centering/
     //
     // This blog post argues that text should be centered by "cap height". Apparently,
@@ -131,7 +134,7 @@ fn f32 compute_face_center_y(FontInst *inst) {
     Arena *scratch = arena_acquire();
     f32 center_y_px = 0.f;
 
-    Arr_ShapedGlyph shaped_glyphs = shape_text(scratch, inst, S("A"));
+    Arr_ShapedGlyph shaped_glyphs = shape_text(ctx, inst, S("A"));
     u32 glyph_id = A(shaped_glyphs, 0).glyph_id;
     if (glyph_id != 0) {
         // 'A' glyph is in font
@@ -233,10 +236,23 @@ fn void rasterize_glyph(FontInst *inst, u32 glyph_id) {
     }
 }
 
+fn Arr_ShapedGlyph shape_text(FontSystem *ctx, FontInst *inst, Str text) {
+    // TODO avoid double hash
+    if (maps_has(&ctx->shape_cache, text)) {
+        return maps_get(&ctx->shape_cache, text);
+    }
+
+    // TODO may need to heap allocate to invalidate
+    Str stable_text = str_clone(ctx->arena, text);
+    Arr_ShapedGlyph stable_shape_result = shape_text_uncached(ctx->arena, inst, text);
+    maps_set(ctx->arena, &ctx->shape_cache, stable_text, stable_shape_result);
+    return stable_shape_result;
+}
+
 // TODO check font for errors on load, but afterwards assume it's good
 // TODO arena allocate kbts stuff
 // TODO handling style/direction/face runs etc.
-fn Arr_ShapedGlyph shape_text(Arena *arena, FontInst *inst, Str text) {
+fn Arr_ShapedGlyph shape_text_uncached(Arena *arena, FontInst *inst, Str text) {
     if (text.count == 0) return (Arr_ShapedGlyph){};
 
     Vec_ShapedGlyph output = {};
@@ -278,7 +294,7 @@ fn void font_prepare_to_render(FontSystem *ctx, UI_Box *box, FVec_QuadRequest *q
     FontInst *outline_inst =
         get_or_create_font_inst(ctx, box->font_file, box->font_size_px, box->font_outline_px);
 
-    Arr_ShapedGlyph shaped_glyphs = shape_text(scratch, non_outline_inst, box->text_content);
+    Arr_ShapedGlyph shaped_glyphs = shape_text(ctx, non_outline_inst, box->text_content);
     if (shaped_glyphs.count > 0) {
         // Rasterize glyphs. Must be done before alignment so glyph metrics are available
         for (u64 i = 0; i < shaped_glyphs.count; i++) {
