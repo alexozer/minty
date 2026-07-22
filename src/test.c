@@ -175,11 +175,11 @@ fn void benchmark_hashmaps() {
     Arena *scratch = arena_acquire();
 
     constexpr u64 ITERS = 10'000'000;
-    constexpr u64 UNIQUE_KEYS = 10000;
+    constexpr u64 UNIQUE_KEYS = 10'000;
 
     Arr_Str strs = arena_push_arr(scratch, Str, UNIQUE_KEYS);
     for (u64 i = 0; i < strs.count; i++) {
-        A(strs, i) = str_format(scratch, "Str_%" PRIu64, i);
+        A(strs, i) = str_format(scratch, "SlightlyLongerKey_%" PRIu64, i);
     }
 
     Instant start = get_current_monotonic_time();

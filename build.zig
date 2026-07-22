@@ -106,10 +106,10 @@ fn getSimdutfLibrary(
 fn getCodegenStep(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
-    sdl: *std.Build.Dependency,
-    simdutf: *std.Build.Step.Compile,
 ) !*std.Build.Step.Compile {
+    const sdl = b.dependency("sdl", .{ .target = target, .optimize = .ReleaseFast });
+    const simdutf = getSimdutfLibrary(b, target, .ReleaseFast);
+
     const codegen_sources = &.{ "src/tools/codegen.c", "src/base.c" };
     const platform_sources = getPlatformSources(target);
 
@@ -121,7 +121,7 @@ fn getCodegenStep(
         .name = "codegen",
         .root_module = b.createModule(.{
             .target = target,
-            .optimize = optimize,
+            .optimize = .ReleaseFast,
             .strip = false,
             .link_libc = true,
             .link_libcpp = false,
@@ -145,15 +145,14 @@ fn getCodegenStep(
 fn getXxdStep(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
 ) !*std.Build.Step.Compile {
     const xxd_sources = &.{"3rdparty/xxd.c"};
 
     const xxd = b.addExecutable(.{
-        .name = "codegen",
+        .name = "xxd",
         .root_module = b.createModule(.{
             .target = target,
-            .optimize = optimize,
+            .optimize = .ReleaseFast,
             .strip = false,
             .link_libc = true,
             .link_libcpp = false,
@@ -262,10 +261,8 @@ fn buildMainTarget(
     xxd: *std.Build.Step.Compile,
 ) !*std.Build.Step.Compile {
     const sdl = b.dependency("sdl", .{ .optimize = optimize, .target = target });
-    // try cdb_targets.append(b.allocator, sdl.artifact("SDL3"));
 
     const freetype = b.dependency("freetype", .{ .optimize = optimize, .target = target });
-    // try cdb_targets.append(b.allocator, freetype.artifact("freetype"));
 
     const simdutf = getSimdutfLibrary(b, target, optimize);
     var platform_sources: std.ArrayList([]const u8) = .empty;
@@ -322,29 +319,34 @@ fn buildMainTarget(
 }
 
 pub fn build(b: *std.Build) !void {
+    const host_target = b.resolveTargetQuery(.{ .cpu_model = .native });
+    const specified_target = b.standardTargetOptions(.{});
+    const specified_optimize = b.standardOptimizeOption(.{});
+
     //
     // codegen
     //
 
-    const native_target = b.resolveTargetQuery(.{ .cpu_model = .native });
-    const native_optimize_debug: std.builtin.OptimizeMode = .Debug;
-    const native_optimize_fast: std.builtin.OptimizeMode = .ReleaseFast;
-    const sdl_native = b.dependency("sdl", .{ .target = native_target, .optimize = native_optimize_fast });
-    const simdutf_native = getSimdutfLibrary(b, native_target, native_optimize_fast);
-
-    const codegen = try getCodegenStep(b, native_target, native_optimize_fast, sdl_native, simdutf_native);
+    const codegen = try getCodegenStep(b, host_target);
     b.installArtifact(codegen);
 
-    const xxd = try getXxdStep(b, native_target, native_optimize_fast);
+    const xxd = try getXxdStep(b, host_target);
+    b.installArtifact(xxd);
 
     //
     // blitter
     //
 
-    const blitter_target = b.standardTargetOptions(.{});
-    const blitter_optimize = b.standardOptimizeOption(.{});
     const blitter_sources = try getSourceFiles(b, "src", ".c", "test.c");
-    const blitter = try buildMainTarget(b, "blitter", blitter_sources, blitter_target, blitter_optimize, codegen, xxd);
+    const blitter = try buildMainTarget(
+        b,
+        "blitter",
+        blitter_sources,
+        specified_target,
+        specified_optimize,
+        codegen,
+        xxd,
+    );
     b.installArtifact(blitter);
 
     const run_blitter = b.addRunArtifact(blitter);
@@ -359,7 +361,15 @@ pub fn build(b: *std.Build) !void {
     //
 
     const test_sources = try getSourceFiles(b, "src", ".c", "main.c");
-    const test_exe = try buildMainTarget(b, "blitter-tests", test_sources, native_target, native_optimize_debug, codegen, xxd);
+    const test_exe = try buildMainTarget(
+        b,
+        "blitter-tests",
+        test_sources,
+        host_target,
+        specified_optimize,
+        codegen,
+        xxd,
+    );
     b.installArtifact(test_exe);
 
     const run_test = b.addRunArtifact(test_exe);

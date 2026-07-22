@@ -257,15 +257,10 @@ StrPair str_split2(Str base, u8 delim) {
 }
 
 Str str_format_v(Arena *arena, const char *format, va_list args) {
-    // stb_sprintf seems to require 4-byte alignment
     constexpr u64 SIZE = kilobytes(8);
-    constexpr u64 ALIGNMENT = 4;
 
-    // Align before allocating
-    arena_push_bytes(arena, 0, ALIGNMENT);
     u64 init_arena_offset = arena->offset;
-
-    void *ptr = arena_push_bytes(arena, SIZE, ALIGNMENT);
+    void *ptr = arena_push_bytes(arena, SIZE, 1);
     i32 n = stbsp_vsnprintf((char *)ptr, (i32)SIZE, format, args);
 
     if (n < 0) {
