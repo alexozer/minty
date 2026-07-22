@@ -126,20 +126,22 @@ fn void test_hashmaps_many_insertions() {
 fn void test_hashmaps_big() {
     Arena *scratch = arena_acquire();
 
+    constexpr u64 ITERS = 10000;
+
     Maps_u64 map = {};
-    for (u64 i = 0; i < 10000; i++) {
+    for (u64 i = 0; i < ITERS; i++) {
         Str key = str_format(scratch, "Key%" PRIu64, i);
         maps_set(scratch, &map, key, i);
     }
 
-    for (u64 i = 0; i < 10000; i += 3) {
+    for (u64 i = 0; i < ITERS; i += 3) {
         Str key = str_format(scratch, "Key%" PRIu64, i);
         maps_del(&map, key);
         maps_set(scratch, &map, key, i);
         maps_del(&map, key);
     }
 
-    for (u64 i = 0; i < 10000; i++) {
+    for (u64 i = 0; i < ITERS; i++) {
         Str key = str_format(scratch, "Key%" PRIu64, i);
         if (i % 3 == 0) {
             assert_true(!maps_has(&map, key));
@@ -148,6 +150,9 @@ fn void test_hashmaps_big() {
             assert_eq(maps_get(&map, key), i);
         }
     }
+
+    assert_eq(map.buckets.count, next_pow2(ITERS));
+    assert_eq(map.items.count, 6666);
 
     arena_release(scratch);
 }
