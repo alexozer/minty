@@ -8,6 +8,7 @@ const thirdparty_c_sources: []const []const u8 = &.{
     "3rdparty/stb_rect_pack.c",
     "3rdparty/stb_image.c",
     "3rdparty/xxhash.c",
+    "3rdparty/stb_sprintf.c",
 };
 
 // Build in separate library to (maybe?) avoid linking libcpp
@@ -32,10 +33,10 @@ const cxx_flags: []const []const u8 = &.{
     "-DSIMDUTF_NO_LIBCXX=1",
 };
 
-const c_flags: []const []const u8 = .{
+const c_flags_lenient: []const []const u8 = .{
     "-std=c23",
 } ++ cxx_flags;
-const blitter_flags = c_flags ++ .{"-Werror"};
+const c_flags_strict = c_flags_lenient ++ .{"-Werror"};
 
 const cpp_flags: []const []const u8 = .{
     "-std=c++20",
@@ -102,7 +103,7 @@ fn getSimdutfLibrary(
     return simdutf;
 }
 
-fn get_codegen_step(
+fn getCodegenStep(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
@@ -128,7 +129,12 @@ fn get_codegen_step(
     });
     codegen.root_module.addCSourceFiles(.{
         .files = try codegen_sources_plat.toOwnedSlice(b.allocator),
-        .flags = blitter_flags,
+        .flags = c_flags_strict,
+        .language = .c,
+    });
+    codegen.root_module.addCSourceFiles(.{
+        .files = &.{"3rdparty/stb_sprintf.c"},
+        .flags = c_flags_lenient,
         .language = .c,
     });
     codegen.root_module.linkLibrary(sdl.artifact("SDL3"));
@@ -155,7 +161,7 @@ fn getXxdStep(
     });
     xxd.root_module.addCSourceFiles(.{
         .files = xxd_sources,
-        .flags = blitter_flags,
+        .flags = c_flags_strict,
         .language = .c,
     });
     return xxd;
@@ -233,7 +239,7 @@ fn addXxdDep(
     blitter.root_module.addCSourceFile(.{
         .file = output,
         .language = .c,
-        .flags = blitter_flags,
+        .flags = c_flags_strict,
     });
 }
 
@@ -278,12 +284,12 @@ fn buildMainTarget(
     });
     main.root_module.addCSourceFiles(.{
         .files = try platform_sources.toOwnedSlice(b.allocator),
-        .flags = blitter_flags,
+        .flags = c_flags_strict,
         .language = .c,
     });
     main.root_module.addCSourceFiles(.{
         .files = thirdparty_c_sources,
-        .flags = c_flags,
+        .flags = c_flags_lenient,
         .language = .c,
     });
     main.root_module.linkLibrary(simdutf);
@@ -326,7 +332,7 @@ pub fn build(b: *std.Build) !void {
     const sdl_native = b.dependency("sdl", .{ .target = native_target, .optimize = native_optimize_fast });
     const simdutf_native = getSimdutfLibrary(b, native_target, native_optimize_fast);
 
-    const codegen = try get_codegen_step(b, native_target, native_optimize_fast, sdl_native, simdutf_native);
+    const codegen = try getCodegenStep(b, native_target, native_optimize_fast, sdl_native, simdutf_native);
     b.installArtifact(codegen);
 
     const xxd = try getXxdStep(b, native_target, native_optimize_fast);

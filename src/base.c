@@ -8,6 +8,8 @@
 
 #include <xxhash.h>
 
+#include <stb_sprintf.h>
+
 // Not sure why these defines are necessary, looks like the header ought to define them?
 #define char16_t uint16_t
 #define char32_t uint32_t
@@ -242,7 +244,7 @@ StrPair str_split2(Str base, u8 delim) {
 Str str_format_v(Arena *arena, const char *format, va_list args) {
     u64 init_arena_offset = arena->offset;
     Arr_u8 buf = arena_push_arr(arena, u8, kilobytes(8));
-    int n = SDL_vsnprintf((char *)buf.ptr, buf.count, format, args);
+    i32 n = stbsp_vsnprintf((char *)buf.ptr, (i32)buf.count, format, args);
     if (n < 0) {
         SDL_memset(buf.ptr, 0, buf.count);
         arena->offset = init_arena_offset;
