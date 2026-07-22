@@ -477,6 +477,10 @@ Arr_u8 decode_base64(ErrorContext *err, Arena *arena, Str s) {
 // Hashmaps
 //
 
+fn u64 hash_str(Str str) {
+    return XXH3_64bits(str.ptr, str.count);
+}
+
 fn MapsItem_Any *maps__get_item(Maps_Any *map, u64 idx, u64 value_size) {
     log_assert(idx < map->items_count);
     u64 item_size = align_to(sizeof(MapsItem_Any) + value_size, (u64)8);
@@ -488,7 +492,7 @@ fn i64 map__get_idx(Maps_Any *map, Str key, u64 value_size) {
     if (map->buckets.count == 0) {
         return -1;
     }
-    u64 hash = XXH3_64bits(key.ptr, key.count);
+    u64 hash = hash_str(key);
     u64 bucket_idx = hash % (map->buckets.count);
 
     i64 item_idx = A(map->buckets, bucket_idx);
@@ -523,7 +527,7 @@ fn void maps__set(Arena *arena, Maps_Any *map, Str key, void *value, u64 value_s
         maps__grow(arena, map, value_size);
     }
 
-    u64 hash = XXH3_64bits(key.ptr, key.count);
+    u64 hash = hash_str(key);
     u64 bucket_idx = hash % (map->buckets.count);
 
     // Try to replace existing value
@@ -550,13 +554,12 @@ fn void maps__set(Arena *arena, Maps_Any *map, Str key, void *value, u64 value_s
 }
 
 // Remove matching item from buckets and return its item index, if it existed.
-fn i64 maps__del_from_buckets(Maps_Any *map, Str key, u64 value_size) {
+fn i64 maps__del_from_buckets(Maps_Any *map, Str key, u64 hash, u64 value_size) {
     if (map->buckets.count == 0) {
         return -1;
     }
 
     // Find item
-    u64 hash = XXH3_64bits(key.ptr, key.count);
     u64 bucket_idx = hash % (map->buckets.count);
     i64 item_idx = A(map->buckets, bucket_idx);
     i64 prev_item_idx = -1;
@@ -596,9 +599,13 @@ fn void maps__del(Maps_Any *map, Str key, u64 value_size) {
         return;
     }
 
-    i64 del_idx = maps__del_from_buckets(map, key, value_size);
+    u64 del_hash = hash_str(key);
+    i64 del_idx = maps__del_from_buckets(map, key, del_hash, value_size);
+
     Str last_key = maps__get_item(map, map->items_count - 1, value_size)->key;
-    i64 last_idx = maps__del_from_buckets(map, last_key, value_size);
+    u64 last_hash = hash_str(last_key);
+    i64 last_idx = maps__del_from_buckets(map, last_key, last_hash, value_size);
+
     if (del_idx != -1) {
         // Iff last item isn't deleted item, move last item into deleted item's place
         if (last_idx != -1) {
@@ -606,9 +613,7 @@ fn void maps__del(Maps_Any *map, Str key, u64 value_size) {
             MapsItem_Any *last_item = maps__get_item(map, (u64)last_idx, value_size);
 
             // Insert deleted item into bucket for last item's key
-            // TODO avoid double hashing last key
-            u64 hash = XXH3_64bits(last_key.ptr, last_key.count);
-            u64 bucket_idx = hash % (map->buckets.count);
+            u64 bucket_idx = last_hash % (map->buckets.count);
             del_item->next = A(map->buckets, bucket_idx);
             A(map->buckets, bucket_idx) = del_idx;
 
