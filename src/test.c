@@ -105,7 +105,6 @@ fn void test_hashmaps_many_insertions() {
 
     Maps_i32 map = {};
     for (u64 i = 0; i < 100; i++) {
-        log_info("Loop idx: %" PRIu64, i);
         maps_set(scratch, &map, S("Key1"), 1);
         maps_set(scratch, &map, S("Key2"), 2);
         maps_set(scratch, &map, S("Key3"), 3);

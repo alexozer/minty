@@ -492,9 +492,6 @@ fn i64 map__get_idx(Maps_Any *map, Str key, u64 value_size) {
     u64 bucket_idx = hash % (map->buckets.count);
 
     i64 item_idx = A(map->buckets, bucket_idx);
-    if (item_idx > 1000 || item_idx < -1) {
-        log_fatal("wtf? bucket_idx = %" PRIu64 ", item_idx = %lldl", bucket_idx, item_idx);
-    }
     while (item_idx != -1) {
         MapsItem_Any *item = maps__get_item(map, (u64)item_idx, value_size);
         if (str_eq(item->key, key)) {
@@ -514,7 +511,8 @@ fn void maps__get(Maps_Any *map, Str key, void *value_out, u64 value_size) {
     if (item_idx == -1) {
         SDL_memset(value_out, 0, value_size);
     } else {
-        SDL_memcpy(value_out, maps__get_item(map, (u64)item_idx, value_size), value_size);
+        void *value_placeholder = maps__get_item(map, (u64)item_idx, value_size)->value_placeholder;
+        SDL_memcpy(value_out, value_placeholder, value_size);
     }
 }
 
@@ -530,21 +528,15 @@ fn void maps__set(Arena *arena, Maps_Any *map, Str key, void *value, u64 value_s
 
     // Try to replace existing value
     i64 item_idx = A(map->buckets, bucket_idx);
-    log_assert(item_idx < (i64)map->items_count);
-    i32 i = 0;
     while (item_idx != -1) {
         log_assert(item_idx < (i64)map->items_count);
         MapsItem_Any *item = maps__get_item(map, (u64)item_idx, value_size);
-
-        log_info("maps__set: i = %d, item_index = %" PRId64, i, item_idx);
-        log_info("maps__set: i = %d, item->next = %" PRId64, i, item->next);
 
         if (str_eq(item->key, key)) {
             SDL_memcpy(item->value_placeholder, value, value_size);
             return;
         }
         item_idx = item->next;
-        i++;
     }
 
     // Push new item
@@ -554,10 +546,7 @@ fn void maps__set(Arena *arena, Maps_Any *map, Str key, void *value, u64 value_s
     item->key = key;
     SDL_memcpy(item->value_placeholder, value, value_size);
     item->next = A(map->buckets, bucket_idx);
-    log_info("557: %" PRId64, item->next);
-
     A(map->buckets, bucket_idx) = item_idx;
-    log_info("bucket_idx = %" PRIu64 ", item_idx = %lldl", bucket_idx, item_idx);
 }
 
 // Remove matching item from buckets and return its item index, if it existed.
@@ -577,7 +566,6 @@ fn i64 maps__del_from_buckets(Maps_Any *map, Str key, u64 value_size) {
     }
     log_assert(item_idx < (i64)map->items_count);
     while (item_idx != -1) {
-        log_info("maps__del_from_buckets item index: %" PRId64, item_idx);
         MapsItem_Any *item = maps__get_item(map, (u64)item_idx, value_size);
         if (str_eq(item->key, key)) {
             break;
@@ -594,11 +582,9 @@ fn i64 maps__del_from_buckets(Maps_Any *map, Str key, u64 value_size) {
     MapsItem_Any *item = maps__get_item(map, (u64)item_idx, value_size);
     if (prev_item_idx == -1) {
         A(map->buckets, bucket_idx) = item->next;
-        log_info("597: item->next = %" PRId64, item->next);
     } else {
         MapsItem_Any *prev_item = maps__get_item(map, (u64)prev_item_idx, value_size);
         prev_item->next = item->next;
-        log_info("601: %" PRId64, prev_item->next);
     }
     item->next = -1;
 
@@ -624,7 +610,6 @@ fn void maps__del(Maps_Any *map, Str key, u64 value_size) {
             u64 hash = XXH3_64bits(last_key.ptr, last_key.count);
             u64 bucket_idx = hash % (map->buckets.count);
             del_item->next = A(map->buckets, bucket_idx);
-            log_info("625: %" PRId64, del_item->next);
             A(map->buckets, bucket_idx) = del_idx;
 
             // Move last item's contents into deleted item
