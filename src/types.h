@@ -12,7 +12,7 @@
 #include FT_FREETYPE_H
 
 //
-// ::Constants
+// Constants
 //
 
 // TODO toggle through build system or something
@@ -32,7 +32,7 @@ constexpr SDL_GPUTextureFormat ICON_TEXTURE_FORMAT = SDL_GPU_TEXTUREFORMAT_R8G8B
 constexpr SDL_GPUTextureFormat GLYPH_TEXTURE_FORMAT = SDL_GPU_TEXTUREFORMAT_R8_UNORM;
 
 //
-// ::Types
+// Types
 //
 
 derive_containers(Opt_Duration);

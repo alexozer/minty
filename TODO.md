@@ -1,5 +1,11 @@
 # TODO
 
+Next:
+
+Make timer actually do something to increase motivation
+    Load real splits
+    Run and display the timer state machine
+
 ## Prototyping
 
 <!-- Render Roboto font -->
@@ -409,7 +415,7 @@ Is this any better than Ryan's locking/refcount/pointer-based caching system?
 
 TODO:
 
-Benchmark a little more?
-    Fix the stupid while loop!
-    Seems like there's a weird bug... changing string alignment can change results
-Implement shape cache
+<!-- Benchmark a little more? -->
+<!--     Fix the stupid while loop! -->
+<!--     Seems like there's a weird bug... changing string alignment can change results -->
+<!-- Implement shape cache -->
