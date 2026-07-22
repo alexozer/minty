@@ -114,7 +114,7 @@ fn void test_hashmaps_many_insertions() {
 
     assert_true(maps_has(&map, S("Key1")));
     assert_true(!maps_has(&map, S("Key2")));
-    assert_true(maps_has(&map, S("Key2")));
+    assert_true(maps_has(&map, S("Key3")));
 
     assert_eq(maps_get(&map, S("Key1")), 1);
     assert_eq(maps_get(&map, S("Key2")), 0);

@@ -694,14 +694,17 @@ derive_struct(MapsItem_Any);
 struct Maps_Any {
     void *__typeid_str_map[0];
     Arr_i64 buckets;
-    FVec_MapsItem_Any items;
+
+    // Items fvec unsafe to index directly because we don't know the value size
+    u64 items_count;
+    void *items_ptr;
+    u64 items_capacity;
 };
 derive_struct(Maps_Any);
 
 fn bool maps__has(Maps_Any *map, Str key, u64 value_size);
 fn void maps__get(Maps_Any *map, Str key, void *value_out, u64 value_size);
 fn void maps__set(Arena *arena, Maps_Any *map, Str key, void *value, u64 value_size);
-fn i64 maps__del_from_buckets(Maps_Any *map, Str key, u64 value_size);
 fn void maps__del(Maps_Any *map, Str key, u64 value_size);
 fn void maps__grow(Arena *arena, Maps_Any *map, u64 value_size);
 
