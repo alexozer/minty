@@ -713,30 +713,30 @@ fn void maps__grow(Arena *arena, Maps_Any *map, u64 value_size);
         typeof(map) _map_ = (map);                             \
         [[maybe_unused]] auto dummy = _map_->__typeid_str_map; \
         Str _key_ = (key);                                     \
-        u64 value_size = sizeof(_map_->items.ptr[0].value);    \
-        maps__has((Maps_Any *)_map_, _key_, value_size);       \
+        u64 _value_size_ = sizeof(_map_->items.ptr[0].value);  \
+        maps__has((Maps_Any *)_map_, _key_, _value_size_);     \
     })
 
-#define maps_get(map, key)                                       \
-    ({                                                           \
-        typeof(map) _map_ = (map);                               \
-        [[maybe_unused]] auto dummy = _map_->__typeid_str_map;   \
-        Str _key_ = (key);                                       \
-        typeof(_map_->items.ptr[0].value) value = {};            \
-        u64 value_size = sizeof(value);                          \
-        maps__get((Maps_Any *)_map_, _key_, &value, value_size); \
-        value;                                                   \
+#define maps_get(map, key)                                           \
+    ({                                                               \
+        typeof(map) _map_ = (map);                                   \
+        [[maybe_unused]] auto _dummy_ = _map_->__typeid_str_map;     \
+        Str _key_ = (key);                                           \
+        typeof(_map_->items.ptr[0].value) _value_ = {};              \
+        u64 _value_size_ = sizeof(_value_);                          \
+        maps__get((Maps_Any *)_map_, _key_, &_value_, _value_size_); \
+        _value_;                                                     \
     })
 
-#define maps_set(arena, map, key, value_)                                   \
-    ({                                                                      \
-        Arena *_arena_ = (arena);                                           \
-        typeof(map) _map_ = (map);                                          \
-        [[maybe_unused]] auto dummy = _map_->__typeid_str_map;              \
-        Str _key_ = (key);                                                  \
-        typeof(_map_->items.ptr[0].value) _value_ = (value_);               \
-        u64 value_size = sizeof(_value_);                                   \
-        maps__set(_arena_, (Maps_Any *)_map_, _key_, &_value_, value_size); \
+#define maps_set(arena, map, key, value_)                                     \
+    ({                                                                        \
+        Arena *_arena_ = (arena);                                             \
+        typeof(map) _map_ = (map);                                            \
+        [[maybe_unused]] auto dummy = _map_->__typeid_str_map;                \
+        Str _key_ = (key);                                                    \
+        typeof(_map_->items.ptr[0].value) _value_ = (value_);                 \
+        u64 _value_size_ = sizeof(_value_);                                   \
+        maps__set(_arena_, (Maps_Any *)_map_, _key_, &_value_, _value_size_); \
     })
 
 #define maps_del(map, key)                                     \
@@ -744,6 +744,6 @@ fn void maps__grow(Arena *arena, Maps_Any *map, u64 value_size);
         typeof(map) _map_ = (map);                             \
         [[maybe_unused]] auto dummy = _map_->__typeid_str_map; \
         Str _key_ = (key);                                     \
-        u64 value_size = sizeof(_map_->items.ptr[0].value);    \
-        maps__del((Maps_Any *)_map_, _key_, value_size);       \
+        u64 _value_size_ = sizeof(_map_->items.ptr[0].value);  \
+        maps__del((Maps_Any *)_map_, _key_, _value_size_);     \
     })

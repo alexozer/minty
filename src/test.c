@@ -154,6 +154,20 @@ fn void test_hashmaps_big() {
     assert_eq(map.buckets.count, next_pow2(ITERS));
     assert_eq(map.items.count, 6666);
 
+    // Remove everything from map
+    while (map.items.count > 0) {
+        Str key = A(map.items, 0).key;
+        u64 value = A(map.items, 0).value;
+
+        assert_true(maps_has(&map, key));
+        assert_eq(maps_get(&map, key), value);
+
+        maps_del(&map, key);
+
+        assert_true(!maps_has(&map, key));
+        assert_eq(maps_get(&map, key), 0);
+    }
+
     arena_release(scratch);
 }
 
