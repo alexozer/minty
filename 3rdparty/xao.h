@@ -1,4 +1,4 @@
-// xao.h v0.2 - Alex Ozer
+// xao.h v0.3 - Alex Ozer
 // Public domain - no warranty implied, use at your own risk
 
 #ifndef XAO_H
@@ -154,7 +154,7 @@ top: {
         res.start = ++r->curr;
         while (true) {
             if (r->curr == r->end) { r->error = "unfinished tag name"; goto top; }
-            if (xao__is_whitespace(*r->curr) || *r->curr == '>') break;
+            if (xao__is_whitespace(*r->curr) || *r->curr == '/' || *r->curr == '>') break;
             r->curr++;
         }
         res.end = r->curr;
