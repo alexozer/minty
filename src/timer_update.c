@@ -155,6 +155,8 @@ fn Arr_SegSummary calc_seg_summary(Arena *arena, Session *session) {
     for (u64 i = 0; i < file->segments.count; i++) {
         A(summary, i).pb_split = A(file->segments, i).pb_split;
     }
+
+    // Calc PB segments
     for (u64 i = 0; i < summary.count; i++) {
         if (i == 0) {
             A(summary, i).pb_segment = A(summary, i).pb_split;

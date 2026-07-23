@@ -86,7 +86,7 @@ fn Arr_SegmentDef parse_livesplit_segments(ErrorContext *err,
             } else if (eq(attr_tag, S("Icon"))) {
                 seg->icon_texture = parse_image(err, arena, r, attr_tag);
 
-            } else if (eq(attr_tag, S("SplitTime"))) {
+            } else if (eq(attr_tag, S("SplitTimes"))) {
                 seg->pb_split = parse_pb(err, r, attr_tag);
             }
         }
