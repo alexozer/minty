@@ -1,5 +1,5 @@
 #include "timer_ui.h"
-#include "timer_update.h"
+#include "timer_utils.h"
 #include "ui.h"
 
 // TODO not a lot of principles behind these constants atm
@@ -57,12 +57,12 @@ fn void build_timer_ui_impl(Arena *arena, UI_Box *base, Session *session) {
     ui_flags(s, UI_Flag_ChildLayoutY | UI_Flag_ClipChilds);
     UI_Box *segments_container = ui_box(arena, s);
 
-    Arr_SegSummary summary = calc_seg_summary(arena, session);
+    Arr_SegSummary summaries = calc_seg_summary(arena, session);
     for (u64 i = 0; i < session->file.segments.count; i++) {
-        build_segment_ui(arena, segments_container, session, summary, i);
+        build_segment_ui(arena, segments_container, session, summaries, i);
     }
 
-    build_bottom_timer_ui(arena, session, base);
+    build_bottom_timer_ui(arena, session, summaries, base);
 }
 
 fn void build_game_info_ui(Arena *arena, UI_Box *base, Session *session) {
@@ -190,7 +190,10 @@ fn void build_segment_times(Arena *arena,
     ui_box(arena, s);
 }
 
-fn void build_bottom_timer_ui(Arena *arena, Session *session, UI_Box *parent) {
+fn void build_bottom_timer_ui(Arena *arena,
+                              Session *session,
+                              Arr_SegSummary summaries,
+                              UI_Box *parent) {
     UI_Style style = {};
     UI_Style *s = &style;
 
@@ -218,8 +221,9 @@ fn void build_bottom_timer_ui(Arena *arena, Session *session, UI_Box *parent) {
 
     build_bottom_stat(arena, parent, session, S("Previous Segment"),
                       format_duration(arena, -7238523332, 2, false));
-    build_bottom_stat(arena, parent, session, S("Best Possible Time"),
-                      format_duration(arena, 7234234238523, 2, false));
+
+    Str bpt = format_opt_duration(arena, calc_best_possible_time(session, summaries), 2, false);
+    build_bottom_stat(arena, parent, session, S("Best Possible Time"), bpt);
 }
 
 fn void build_bottom_stat(Arena *arena, UI_Box *parent, Session *session, Str label, Str value) {

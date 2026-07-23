@@ -102,6 +102,8 @@ struct SegSummary {
     Opt_Duration pb_split;
     Opt_Duration pb_segment;
 
+    Opt_Duration best_segment;
+
     bool is_new_gold;
 };
 derive_struct(SegSummary);
