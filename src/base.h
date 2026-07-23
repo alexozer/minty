@@ -194,21 +194,22 @@ constexpr u64 MIN_VEC_CAPACITY = 8;
 // Strings
 //
 
-[[noreturn]] void *oob();
+[[noreturn]] void *oob(const char *file, int line);
 
 // Sneaky array bounds checks in C
-#define A(arr, idx)                                                                       \
-    (*({                                                                                  \
-        typeof(arr) *_A_arr_ = &(arr);                                                    \
-        u64 _A_i_ = (u64)(idx);                                                           \
-        _A_i_ < _A_arr_->count ? &_A_arr_->ptr[_A_i_] : (typeof(_A_arr_->ptr[0]) *)oob(); \
+#define A(arr, idx)                                                                  \
+    (*({                                                                             \
+        typeof(arr) *_A_arr_ = &(arr);                                               \
+        u64 _A_i_ = (u64)(idx);                                                      \
+        _A_i_ < _A_arr_->count ? &_A_arr_->ptr[_A_i_]                                \
+                               : (typeof(_A_arr_->ptr[0]) *)oob(__FILE__, __LINE__); \
     }))
 
-#define arr_last(arr)                                                                     \
-    (*({                                                                                  \
-        typeof(arr) *_A_arr_ = &(arr);                                                    \
-        u64 _A_i_ = _A_arr_->count > 0 ? _A_arr_->count - 1 : (u64)oob();                 \
-        _A_i_ < _A_arr_->count ? &_A_arr_->ptr[_A_i_] : (typeof(_A_arr_->ptr[0]) *)oob(); \
+#define arr_last(arr)                                                                       \
+    (*({                                                                                    \
+        typeof(arr) *_A_arr_ = &(arr);                                                      \
+        u64 _A_i_ = _A_arr_->count > 0 ? _A_arr_->count - 1 : (u64)oob(__FILE__, __LINE__); \
+        &_A_arr_->ptr[_A_i_];                                                               \
     }))
 
 typedef Arr_u8 Str;
@@ -219,6 +220,7 @@ derive_type(Str);
 #define C(c) ((u8)(c))
 #define ARR(a) ((Arr_u8){.ptr = (a), .count = sizeof((a)) / sizeof((a)[0])})
 
+typedef struct ErrorContext ErrorContext;
 Str str_from_c(const char *cstr);
 char *str_to_c(Arena *arena, Str str);
 Str str_from_c_len(const char *cstr);
@@ -234,6 +236,7 @@ bool str_is_valid_utf8(Arr_u8 s);
 Opt_u64 str_find(Str haystack, Str needle);
 bool str_contains(Str haystack, Str needle);
 Str str_slice(Str s, u64 start, u64 end);
+Str str_slice_err(ErrorContext *err, Str s, u64 start, u64 end);
 Str path_basename(Str path);
 
 // Certainly possible to do this simply and w/o an iterator object, but just messin around
@@ -253,6 +256,7 @@ StrLineIter str_lines(Str s);
 bool str_lines_next(StrLineIter *iter, Str *line);
 u64 str_count_lines(Str s);
 StrPair str_split2(Str base, u8 delim);
+StrPair str_split2_err(ErrorContext *err, Str base, u8 delim);
 
 //
 // Arrays
@@ -593,6 +597,11 @@ void thread_init();
 // Monotonic nanoseconds
 typedef i64 Duration;
 derive_type(Duration);
+
+constexpr Duration DURATION_MILLISECOND = 1'000'000;
+constexpr Duration DURATION_SECOND = DURATION_MILLISECOND * 1000;
+constexpr Duration DURATION_MINUTE = DURATION_SECOND * 60;
+constexpr Duration DURATION_HOUR = DURATION_MINUTE * 60;
 
 struct Instant {
     // Monotonic nanoseconds starting at program start

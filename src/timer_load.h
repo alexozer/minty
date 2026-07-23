@@ -13,7 +13,10 @@ fn Arr_SegmentDef parse_livesplit_segments(ErrorContext *err,
                                            Arena *arena,
                                            xao_Reader *r,
                                            xao_Value segments_tag);
-fn bool eq(xao_Value v, const char *s);
+fn Opt_Duration parse_pb(ErrorContext *err, xao_Reader *r, xao_Value split_times_tag);
+fn bool has_attr(xao_Reader *r, xao_Value tag, Str key, Str value);
+fn Opt_Duration parse_opt_duration(ErrorContext *err, Str s);
+fn bool eq(xao_Value v, Str s);
 fn Str xml_str(xao_Value v);
 fn Str xml_inner(xao_Reader *r, xao_Value outer);
 fn Opt_Texture parse_image(ErrorContext *err, Arena *arena, xao_Reader *r, xao_Value elem);

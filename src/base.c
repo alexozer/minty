@@ -49,8 +49,8 @@ u64 next_pow2(u64 x) {
     }
 }
 
-[[noreturn]] void *oob() {
-    crash("", 0, "Array index out of bounds");
+[[noreturn]] void *oob(const char *file, int line) {
+    crash(file, line, "Array index out of bounds");
 }
 
 u8 debug_print_u8(const char *file, int line, const char *thing, u8 x) {
@@ -164,6 +164,15 @@ Str str_slice(Str s, u64 start, u64 end) {
     return (Str){.ptr = (u8 *)s.ptr + start, .count = end - start};
 }
 
+Str str_slice_err(ErrorContext *err, Str s, u64 start, u64 end) {
+    if (!(start <= s.count) && (end <= s.count) && (start <= end)) {
+        err_report(err, "Invalid slice");
+        return (Str){};
+    } else {
+        return (Str){.ptr = (u8 *)s.ptr + start, .count = end - start};
+    }
+}
+
 Str str_trim(Str s) {
     u64 start = 0;
     while (start < s.count && char_is_whitespace(A(s, start))) {
@@ -253,6 +262,18 @@ StrPair str_split2(Str base, u8 delim) {
     } else {
         pair.left = base;
     }
+    return pair;
+}
+
+StrPair str_split2_err(ErrorContext *err, Str base, u8 delim) {
+    Scope scope = scope_open(err);
+
+    StrPair pair = str_split2(base, delim);
+    if (pair.right.count == base.count) {
+        err_report(err, "Delimiter '%c' not found", delim);
+    }
+
+    scope_close(scope, "Split '%.*s' on '%c'", SF(base), delim);
     return pair;
 }
 

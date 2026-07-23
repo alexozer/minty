@@ -52,16 +52,13 @@ struct Texture {
 };
 derive_struct(Texture);
 
-struct SplitRecord {
-    u64 attempt_num;
-    Arr_Opt_Duration splits;
-};
-derive_struct(SplitRecord);
-
 struct SegmentDef {
     Str name;
-    Arr_u8 icon_png;  // Icon in PNG format
-    Opt_Texture icon_texture;
+    Arr_u8 icon_png;           // PNG/JPG/etc. encoded image
+    Opt_Texture icon_texture;  // Decoded image
+    Opt_Duration pb_split;
+    Opt_Duration best_segment;
+    Arr_Duration segment_history;
 };
 derive_struct(SegmentDef);
 
@@ -71,8 +68,6 @@ struct FileDef {
     u64 total_attempts;
     u64 completed_attempts;
     Arr_SegmentDef segments;
-    SplitRecord personal_best;
-    Arr_Opt_Duration golds;
 };
 derive_struct(FileDef);
 
@@ -96,7 +91,7 @@ derive_struct(Timer);
 
 struct SegSummary {
     Opt_Duration live_split;
-    Opt_Duration live_seg;
+    Opt_Duration live_segment;
 
     // How far ahead/behind this split is compared to PB
     Opt_Duration live_delta;
@@ -105,7 +100,7 @@ struct SegSummary {
     Opt_Duration gained;
 
     Opt_Duration pb_split;
-    Opt_Duration pb_seg;
+    Opt_Duration pb_segment;
 
     bool is_new_gold;
 };

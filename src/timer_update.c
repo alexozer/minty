@@ -149,43 +149,48 @@ fn Arr_SegSummary calc_seg_summary(Arena *arena, Session *session) {
     Timer *timer = &session->timer;
     FileDef *file = &session->file;
 
-    Arr_SegSummary summary = arena_push_arr(arena, SegSummary, timer->live_splits.count);
+    Arr_SegSummary summary = arena_push_arr(arena, SegSummary, session->file.segments.count);
 
     // Calc PB splits
-    Arr_Opt_Duration pb_splits = file->personal_best.splits;
-    for (u64 i = 0; i < pb_splits.count; i++) {
-        A(summary, i).pb_split = A(pb_splits, i);
+    for (u64 i = 0; i < file->segments.count; i++) {
+        A(summary, i).pb_split = A(file->segments, i).pb_split;
     }
-    for (u64 i = 0; i < pb_splits.count; i++) {
+    for (u64 i = 0; i < summary.count; i++) {
         if (i == 0) {
-            A(summary, i).pb_seg = A(summary, i).pb_split;
+            A(summary, i).pb_segment = A(summary, i).pb_split;
         } else {
             Opt_Duration curr = A(summary, i).pb_split;
             Opt_Duration prev = A(summary, i - 1).pb_split;
-            A(summary, i).pb_seg = dur_sub(curr, prev);
+            A(summary, i).pb_segment = dur_sub(curr, prev);
         }
     }
 
     // Calc live splits
-    for (u64 i = 0; i < summary.count; i++) {
+    for (u64 i = 0; i < timer->live_splits.count; i++) {
         A(summary, i).live_split = A(timer->live_splits, i);
     }
     for (u64 i = 0; i < summary.count; i++) {
         if (i == 0) {
-            A(summary, i).live_seg = A(summary, i).live_split;
+            A(summary, i).live_segment = A(summary, i).live_split;
         } else {
             Opt_Duration curr = A(summary, i).live_split;
             Opt_Duration prev = A(summary, i - 1).live_split;
-            A(summary, i).live_seg = dur_sub(curr, prev);
+            A(summary, i).live_segment = dur_sub(curr, prev);
         }
     }
 
     // Calc live deltas
     for (u64 i = 0; i < summary.count; i++) {
-        Opt_Duration curr = A(summary, i).live_split;
-        Opt_Duration prev = A(summary, i - 1).live_split;
-        A(summary, i).live_delta = dur_sub(curr, prev);
+        if (i == 0) {
+            A(summary, i).live_delta = A(summary, i).live_split;
+        } else {
+            Opt_Duration curr = A(summary, i).live_split;
+            Opt_Duration prev = A(summary, i - 1).live_split;
+            A(summary, i).live_delta = dur_sub(curr, prev);
+        }
     }
+
+    // Calc live gained/lost
     for (u64 i = 0; i < summary.count; i++) {
         if (i == 0) {
             A(summary, i).gained = A(summary, i).live_delta;
@@ -198,13 +203,24 @@ fn Arr_SegSummary calc_seg_summary(Arena *arena, Session *session) {
 
     // Calc golds
     for (u64 i = 0; i < summary.count; i++) {
-        Opt_Duration prev_gold = A(file->golds, i);
-        Opt_Duration live_seg = A(summary, i).live_seg;
+        Opt_Duration prev_gold = A(file->segments, i).best_segment;
+        Opt_Duration live_seg = A(summary, i).live_segment;
         A(summary, i).is_new_gold =
             prev_gold.present && live_seg.present && live_seg.opt < prev_gold.opt;
     }
 
     return summary;
+}
+
+fn Str format_opt_duration(Arena *arena,
+                           Opt_Duration duration,
+                           u32 ms_digits,
+                           bool show_plus_prefix) {
+    if (duration.present) {
+        return format_duration(arena, duration.opt, ms_digits, show_plus_prefix);
+    } else {
+        return S("-");
+    }
 }
 
 fn Str format_duration(Arena *arena, Duration duration, u32 ms_digits, bool show_plus_prefix) {

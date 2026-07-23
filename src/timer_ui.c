@@ -57,8 +57,9 @@ fn void build_timer_ui_impl(Arena *arena, UI_Box *base, Session *session) {
     ui_flags(s, UI_Flag_ChildLayoutY | UI_Flag_ClipChilds);
     UI_Box *segments_container = ui_box(arena, s);
 
+    Arr_SegSummary summary = calc_seg_summary(arena, session);
     for (u64 i = 0; i < session->file.segments.count; i++) {
-        build_segment_ui(arena, segments_container, session, i);
+        build_segment_ui(arena, segments_container, session, summary, i);
     }
 
     build_bottom_timer_ui(arena, session, base);
@@ -89,7 +90,11 @@ fn void build_game_info_ui(Arena *arena, UI_Box *base, Session *session) {
     ui_box(arena, s);
 }
 
-fn void build_segment_ui(Arena *arena, UI_Box *parent, Session *session, u64 segment_idx) {
+fn void build_segment_ui(Arena *arena,
+                         UI_Box *parent,
+                         Session *session,
+                         Arr_SegSummary summaries,
+                         u64 segment_idx) {
     UI_Style style = {};
     UI_Style *s = &style;
 
@@ -130,41 +135,59 @@ fn void build_segment_ui(Arena *arena, UI_Box *parent, Session *session, u64 seg
     ui_text(s, segment->name);
     ui_box(arena, s);
 
-    // A couple fake times
+    build_segment_times(arena, session, summaries, segment_idx, row);
+}
 
-    {
-        UI_Style b3 = {};
-        UI_Style *s_time = &b3;
+fn void build_segment_times(Arena *arena,
+                            Session *session,
+                            Arr_SegSummary summaries,
+                            u64 segment_idx,
+                            UI_Box *row) {
+    UI_Style style = {};
+    UI_Style *s = &style;
 
-        ui_parent(s_time, row);
-        ui_width_px(s_time, SMALL_TIME_WIDTH_PX);
-        ui_height_flex(s_time);
-        ui_flags(s_time, UI_Flag_TextAlignRight);
-        ui_font(s_time, &session->layout.nunito_sans_bold, 27);
-        ui_text_outline(s_time, SMALL_TEXT_OUTLINE_PX);
-
-        Str duration_str = format_duration(arena, (Duration)(segment_idx * 78273472834), 2, false);
-
-        ui_style(s, s_time);
-        ui_text(s, duration_str);
-        ui_box(arena, s);
-
-        // Pad
-        ui_parent(s, row);
-        ui_width_px(s, TEXT_PAD);
-        ui_height_flex(s);
-        ui_box(arena, s);
-
-        ui_style(s, s_time);
-        ui_text(s, duration_str);
-        ui_box(arena, s);
-
-        // Pad
-        ui_parent(s, row);
-        ui_width_px(s, TEXT_PAD);
-        ui_height_flex(s);
-        ui_box(arena, s);
+    Str pb_seg = {};
+    Str pb_split = {};
+    if (segment_idx < summaries.count) {
+        SegSummary *summary = &A(summaries, segment_idx);
+        pb_seg = format_opt_duration(arena, summary->pb_segment, 2, false);
+        pb_split = format_opt_duration(arena, summary->pb_split, 2, false);
+    } else {
+        // TODO parse PB splits and stuff
+        // SegmentDef *segment = &A(session->file.segments, segment_idx);
+        pb_seg = S("??");
+        pb_split = S("??");
     }
+
+    // Common time style
+    UI_Style b3 = {};
+    UI_Style *s_time = &b3;
+    ui_parent(s_time, row);
+    ui_width_px(s_time, SMALL_TIME_WIDTH_PX);
+    ui_height_flex(s_time);
+    ui_flags(s_time, UI_Flag_TextAlignRight);
+    ui_font(s_time, &session->layout.nunito_sans_bold, 27);
+    ui_text_outline(s_time, SMALL_TEXT_OUTLINE_PX);
+
+    // First time
+    ui_style(s, s_time);
+    ui_text(s, pb_seg);
+    ui_box(arena, s);
+    // Pad
+    ui_parent(s, row);
+    ui_width_px(s, TEXT_PAD);
+    ui_height_flex(s);
+    ui_box(arena, s);
+
+    // Second time
+    ui_style(s, s_time);
+    ui_text(s, pb_split);
+    ui_box(arena, s);
+    // Pad
+    ui_parent(s, row);
+    ui_width_px(s, TEXT_PAD);
+    ui_height_flex(s);
+    ui_box(arena, s);
 }
 
 fn void build_bottom_timer_ui(Arena *arena, Session *session, UI_Box *parent) {
@@ -183,7 +206,7 @@ fn void build_bottom_timer_ui(Arena *arena, Session *session, UI_Box *parent) {
     ui_height_flex(s);
     ui_flags(s, UI_Flag_TextAlignRight);
     ui_font(s, &session->layout.nunito_sans_bold, BIG_TIME_FONT_SIZE_PX);
-    ui_text(s, format_duration(arena, 7758289389452, 2, false));
+    ui_text(s, format_duration(arena, (Duration)0, 2, false));
     ui_text_outline(s, BIG_TEXT_OUTLINE_PX);
     ui_box(arena, s);
 

@@ -34,22 +34,22 @@ fn void parse_livesplit_lss(ErrorContext *err, Arena *arena, Arr_u8 xml, FileDef
     xao_Value root = {};
     xao_Value root_tag = {};
     while (xao_iter_tags(&r, root, &root_tag)) {
-        if (eq(root_tag, "Run")) {
+        if (eq(root_tag, S("Run"))) {
             xao_Value run_tag = {};
             while (xao_iter_tags(&r, root_tag, &run_tag)) {
-                if (eq(run_tag, "GameName")) {
+                if (eq(run_tag, S("GameName"))) {
                     file->game_name = str_clone(arena, xml_inner(&r, run_tag));
 
-                } else if (eq(run_tag, "CategoryName")) {
+                } else if (eq(run_tag, S("CategoryName"))) {
                     file->category_name = str_clone(arena, xml_inner(&r, run_tag));
 
-                } else if (eq(run_tag, "AttemptCount")) {
+                } else if (eq(run_tag, S("AttemptCount"))) {
                     Scope attempt_count_scope = scope_open(err);
                     Str attempts_str = str_clone(arena, xml_inner(&r, run_tag));
                     file->total_attempts = parse_u64(err, attempts_str);
                     scope_close(attempt_count_scope, "Parse AttemptCount");
 
-                } else if (eq(run_tag, "Segments")) {
+                } else if (eq(run_tag, S("Segments"))) {
                     file->segments = parse_livesplit_segments(err, arena, &r, run_tag);
                 }
             }
@@ -80,11 +80,14 @@ fn Arr_SegmentDef parse_livesplit_segments(ErrorContext *err,
         SegmentDef *seg = vec_push_zero(arena, &segments);
         xao_Value attr_tag = {};
         while (xao_iter_tags(r, seg_tag, &attr_tag)) {
-            if (eq(attr_tag, "Name")) {
+            if (eq(attr_tag, S("Name"))) {
                 seg->name = str_clone(arena, xml_inner(r, attr_tag));
 
-            } else if (eq(attr_tag, "Icon")) {
+            } else if (eq(attr_tag, S("Icon"))) {
                 seg->icon_texture = parse_image(err, arena, r, attr_tag);
+
+            } else if (eq(attr_tag, S("SplitTime"))) {
+                seg->pb_split = parse_pb(err, r, attr_tag);
             }
         }
     }
@@ -93,9 +96,69 @@ fn Arr_SegmentDef parse_livesplit_segments(ErrorContext *err,
     return vec_arr(&segments);
 }
 
-fn bool eq(xao_Value v, const char *s) {
-    u64 size = (u64)v.end - (u64)v.start;
-    return size == SDL_strlen(s) && SDL_memcmp(v.start, s, size) == 0;
+fn Opt_Duration parse_pb(ErrorContext *err, xao_Reader *r, xao_Value split_times_tag) {
+    xao_Value split_time_tag = {};
+    while (xao_iter_tags(r, split_times_tag, &split_time_tag)) {
+        bool is_split_time = eq(split_time_tag, S("SplitTime"));
+        bool has_pb = has_attr(r, split_time_tag, S("name"), S("Personal Best"));
+        if (is_split_time && has_pb) {
+            xao_Value real_time_tag = {};
+            while (xao_iter_tags(r, split_time_tag, &real_time_tag)) {
+                if (eq(real_time_tag, S("RealTime"))) {
+                    Str pb_duration_str = xml_inner(r, real_time_tag);
+                    return parse_opt_duration(err, pb_duration_str);
+                }
+            }
+        }
+    }
+    return none(Duration);
+}
+
+fn bool has_attr(xao_Reader *r, xao_Value tag, Str key, Str value) {
+    xao_Value curr_key = {};
+    xao_Value curr_value = {};
+    while (xao_iter_attrs(r, tag, &curr_key, &curr_value)) {
+        if (eq(curr_key, key) && eq(curr_value, value)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn Opt_Duration parse_opt_duration(ErrorContext *err, Str s) {
+    Scope scope = scope_open(err);
+
+    Opt_Duration duration = {};
+
+    if (s.count > 0) {
+        StrPair pair = str_split2_err(err, s, ':');
+        Str hours_str = pair.left;
+
+        pair = str_split2_err(err, pair.right, ':');
+        Str minutes_str = pair.left;
+
+        pair = str_split2_err(err, pair.right, '.');
+        Str seconds_str = pair.left;
+        Str milliseconds_str = str_slice_err(err, pair.right, 0, 3);
+
+        u64 hours = parse_u64(err, hours_str);
+        u64 minutes = parse_u64(err, minutes_str);
+        u64 seconds = parse_u64(err, seconds_str);
+        u64 milliseconds = parse_u64(err, milliseconds_str);
+
+        Duration total = ((i64)hours * DURATION_HOUR) + ((i64)minutes * DURATION_MINUTE) +
+                         ((i64)seconds * DURATION_SECOND) +
+                         ((i64)milliseconds * DURATION_MILLISECOND);
+        duration = some(total, Duration);
+    }
+
+    scope_close(scope, "Parse duration '%.*s'", SF(s));
+    return duration;
+}
+
+fn bool eq(xao_Value v, Str s) {
+    Str xml_str = {.ptr = (u8 *)v.start, .count = (u64)(v.end - v.start)};
+    return str_eq(xml_str, s);
 }
 
 fn Str xml_str(xao_Value v) {
@@ -172,10 +235,10 @@ fn void parse_livesplit_lsl(ErrorContext *err, Arena *arena, Arr_u8 xml, Layout 
     xao_Value root = {};
     xao_Value root_tag = {};
     while (xao_iter_tags(&r, root, &root_tag)) {
-        if (eq(root_tag, "Layout")) {
+        if (eq(root_tag, S("Layout"))) {
             xao_Value layout_child = {};
             while (xao_iter_tags(&r, root_tag, &layout_child)) {
-                if (eq(layout_child, "Settings")) {
+                if (eq(layout_child, S("Settings"))) {
                     parse_lsl_settings(err, arena, &r, layout_child, layout);
                 }
             }
@@ -197,41 +260,41 @@ fn void parse_lsl_settings(ErrorContext *err,
     xao_Value settings_child = {};
     while (xao_iter_tags(r, settings_tag, &settings_child)) {
         // Colors
-        if (eq(settings_child, "TextColor")) {
+        if (eq(settings_child, S("TextColor"))) {
             layout->text_color = parse_livesplit_color(err, r, settings_child);
-        } else if (eq(settings_child, "BackgroundColor")) {
+        } else if (eq(settings_child, S("BackgroundColor"))) {
             layout->background_color = parse_livesplit_color(err, r, settings_child);
-        } else if (eq(settings_child, "PersonalBestColor")) {
+        } else if (eq(settings_child, S("PersonalBestColor"))) {
             layout->personal_best_color = parse_livesplit_color(err, r, settings_child);
-        } else if (eq(settings_child, "AheadGainingTimeColor")) {
+        } else if (eq(settings_child, S("AheadGainingTimeColor"))) {
             layout->ahead_gaining_time_color = parse_livesplit_color(err, r, settings_child);
-        } else if (eq(settings_child, "AheadLosingTimeColor")) {
+        } else if (eq(settings_child, S("AheadLosingTimeColor"))) {
             layout->ahead_losing_time_color = parse_livesplit_color(err, r, settings_child);
-        } else if (eq(settings_child, "BehindGainingTimeColor")) {
+        } else if (eq(settings_child, S("BehindGainingTimeColor"))) {
             layout->behind_gaining_time_color = parse_livesplit_color(err, r, settings_child);
-        } else if (eq(settings_child, "BehindLosingTimeColor")) {
+        } else if (eq(settings_child, S("BehindLosingTimeColor"))) {
             layout->behind_losing_time_color = parse_livesplit_color(err, r, settings_child);
-        } else if (eq(settings_child, "BestSegmentColor")) {
+        } else if (eq(settings_child, S("BestSegmentColor"))) {
             layout->best_segment_color = parse_livesplit_color(err, r, settings_child);
-        } else if (eq(settings_child, "NotRunningColor")) {
+        } else if (eq(settings_child, S("NotRunningColor"))) {
             layout->not_running_color = parse_livesplit_color(err, r, settings_child);
-        } else if (eq(settings_child, "PausedColor")) {
+        } else if (eq(settings_child, S("PausedColor"))) {
             layout->paused_color = parse_livesplit_color(err, r, settings_child);
-        } else if (eq(settings_child, "TextOutlineColor")) {
+        } else if (eq(settings_child, S("TextOutlineColor"))) {
             layout->text_outline_color = parse_livesplit_color(err, r, settings_child);
-        } else if (eq(settings_child, "ShadowsColor")) {
+        } else if (eq(settings_child, S("ShadowsColor"))) {
             layout->shadows_color = parse_livesplit_color(err, r, settings_child);
 
             // Fonts
-        } else if (eq(settings_child, "TimesFont")) {
+        } else if (eq(settings_child, S("TimesFont"))) {
             layout->times_font = parse_livesplit_font(err, arena, r, settings_child);
-        } else if (eq(settings_child, "TimerFont")) {
+        } else if (eq(settings_child, S("TimerFont"))) {
             layout->timer_font = parse_livesplit_font(err, arena, r, settings_child);
-        } else if (eq(settings_child, "TextFont")) {
+        } else if (eq(settings_child, S("TextFont"))) {
             layout->text_font = parse_livesplit_font(err, arena, r, settings_child);
 
             // Background
-        } else if (eq(settings_child, "BackgroundImage")) {
+        } else if (eq(settings_child, S("BackgroundImage"))) {
             layout->background_image = parse_image(err, arena, r, settings_child);
         }
     }
