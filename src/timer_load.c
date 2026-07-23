@@ -57,20 +57,12 @@ fn void parse_livesplit_lss(ErrorContext *err, Arena *arena, Arr_u8 xml, FileDef
     }
 
     if (r.error != nullptr) {
-        err_report(err, "Failed to parse LSS XML: %s", r.error);
+        err_report(err, "Failed to parse LiveSplit splits: %s", r.error);
     }
 
     // Basic validation
     if (is_empty(file->segments)) {
         err_report(err, "No segments found");
-    }
-    for (u64 i = 0; i < file->segments.count; i++) {
-        if (is_empty(A(file->segments, i).name)) {
-            err_report(err, "Segment %" PRIu64 " has no name", i + 1);
-        }
-    }
-    if (is_empty(file->game_name)) {
-        err_report(err, "Empty game name");
     }
 
     scope_close(scope, "Parse LiveSplit LSS");
@@ -191,7 +183,7 @@ fn void parse_livesplit_lsl(ErrorContext *err, Arena *arena, Arr_u8 xml, Layout 
     }
 
     if (r.error != nullptr) {
-        err_report(err, "Failed to parse LSS XML: %s", r.error);
+        err_report(err, "Failed to parse LiveSplit layout: %s", r.error);
     }
 
     scope_close(scope, "Parse LiveSplit LSL");
