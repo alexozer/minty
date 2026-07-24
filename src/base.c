@@ -136,6 +136,10 @@ bool char_is_whitespace(u8 c) {
     return c == C(' ') || c == C('\r') || c == C('\n') || c == C('\t');
 }
 
+bool str_is_empty(Str str) {
+    return str.count == 0;
+}
+
 bool str_eq(Str a, Str b) {
     if (a.count != b.count) {
         return false;

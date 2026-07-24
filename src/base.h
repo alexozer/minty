@@ -221,6 +221,7 @@ derive_type(Str);
 #define ARR(a) ((Arr_u8){.ptr = (a), .count = sizeof((a)) / sizeof((a)[0])})
 
 typedef struct ErrorContext ErrorContext;
+bool str_is_empty(Str str);
 Str str_from_c(const char *cstr);
 char *str_to_c(Arena *arena, Str str);
 Str str_from_c_len(const char *cstr);

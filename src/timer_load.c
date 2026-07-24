@@ -32,25 +32,36 @@ fn void parse_livesplit_lss(ErrorContext *err, Arena *arena, Arr_u8 xml, FileDef
 
     xao_Reader r = xao_reader((char *)xml.ptr, xml.count);
     xao_Value root = {};
-    xao_Value root_tag = {};
-    while (xao_iter_tags(&r, root, &root_tag)) {
-        if (eq(root_tag, S("Run"))) {
-            xao_Value run_tag = {};
-            while (xao_iter_tags(&r, root_tag, &run_tag)) {
-                if (eq(run_tag, S("GameName"))) {
-                    file->game_name = str_clone(arena, xml_inner(&r, run_tag));
+    xao_Value run_tag = {};
+    while (xao_iter_tags(&r, root, &run_tag)) {
+        if (eq(run_tag, S("Run"))) {
+            xao_Value run_child_tag = {};
+            while (xao_iter_tags(&r, run_tag, &run_child_tag)) {
+                if (eq(run_child_tag, S("GameIcon"))) {
+                    file->game_icon = parse_image(err, arena, &r, run_child_tag);
 
-                } else if (eq(run_tag, S("CategoryName"))) {
-                    file->category_name = str_clone(arena, xml_inner(&r, run_tag));
+                } else if (eq(run_child_tag, S("GameName"))) {
+                    file->game_name = str_clone(arena, xml_inner(&r, run_child_tag));
 
-                } else if (eq(run_tag, S("AttemptCount"))) {
+                } else if (eq(run_child_tag, S("CategoryName"))) {
+                    file->category_name = str_clone(arena, xml_inner(&r, run_child_tag));
+
+                } else if (eq(run_child_tag, S("Offset"))) {
+                    Str offset_str = xml_inner(&r, run_child_tag);
+                    Opt_Duration offset = parse_opt_duration(err, offset_str);
+                    if (!offset.present) {
+                        err_report(err, "Failed to parse offset");
+                    }
+                    file->offset = offset.opt;
+
+                } else if (eq(run_child_tag, S("AttemptCount"))) {
                     Scope attempt_count_scope = scope_open(err);
-                    Str attempts_str = str_clone(arena, xml_inner(&r, run_tag));
+                    Str attempts_str = str_clone(arena, xml_inner(&r, run_child_tag));
                     file->total_attempts = parse_u64(err, attempts_str);
                     scope_close(attempt_count_scope, "Parse AttemptCount");
 
-                } else if (eq(run_tag, S("Segments"))) {
-                    file->segments = parse_livesplit_segments(err, arena, &r, run_tag);
+                } else if (eq(run_child_tag, S("Segments"))) {
+                    file->segments = parse_livesplit_segments(err, arena, &r, run_child_tag);
                 }
             }
         }
@@ -78,16 +89,23 @@ fn Arr_SegmentDef parse_livesplit_segments(ErrorContext *err,
     xao_Value seg_tag = {};
     while (xao_iter_tags(r, segments_tag, &seg_tag)) {
         SegmentDef *seg = vec_push_zero(arena, &segments);
-        xao_Value attr_tag = {};
-        while (xao_iter_tags(r, seg_tag, &attr_tag)) {
-            if (eq(attr_tag, S("Name"))) {
-                seg->name = str_clone(arena, xml_inner(r, attr_tag));
 
-            } else if (eq(attr_tag, S("Icon"))) {
-                seg->icon_texture = parse_image(err, arena, r, attr_tag);
+        xao_Value seg_child_tag = {};
+        while (xao_iter_tags(r, seg_tag, &seg_child_tag)) {
+            if (eq(seg_child_tag, S("Name"))) {
+                seg->name = str_clone(arena, xml_inner(r, seg_child_tag));
 
-            } else if (eq(attr_tag, S("SplitTimes"))) {
-                seg->pb_split = parse_pb(err, r, attr_tag);
+            } else if (eq(seg_child_tag, S("Icon"))) {
+                seg->icon_texture = parse_image(err, arena, r, seg_child_tag);
+
+            } else if (eq(seg_child_tag, S("SplitTimes"))) {
+                seg->pb_split = parse_pb(err, r, seg_child_tag);
+
+            } else if (eq(seg_child_tag, S("BestSegmentTime"))) {
+                seg->best_segment = parse_realtime(err, r, seg_child_tag);
+
+            } else if (eq(seg_child_tag, S("SegmentHistory"))) {
+                seg->segment_history = parse_segment_history(err, arena, r, seg_child_tag);
             }
         }
     }
@@ -96,22 +114,50 @@ fn Arr_SegmentDef parse_livesplit_segments(ErrorContext *err,
     return vec_arr(&segments);
 }
 
+fn Arr_Duration parse_segment_history(ErrorContext *err,
+                                      Arena *arena,
+                                      xao_Reader *r,
+                                      xao_Value history_tag) {
+    Vec_Duration segment_history = {};
+    xao_Value time_tag = {};
+    while (xao_iter_tags(r, history_tag, &time_tag)) {
+        Opt_Duration historical_time = parse_realtime(err, r, time_tag);
+        if (historical_time.present) {
+            vec_push(arena, &segment_history, historical_time.opt);
+        }
+    }
+    return vec_arr(&segment_history);
+}
+
 fn Opt_Duration parse_pb(ErrorContext *err, xao_Reader *r, xao_Value split_times_tag) {
+    Scope scope = scope_open(err);
+
+    Opt_Duration duration = {};
     xao_Value split_time_tag = {};
     while (xao_iter_tags(r, split_times_tag, &split_time_tag)) {
         bool is_split_time = eq(split_time_tag, S("SplitTime"));
         bool has_pb = has_attr(r, split_time_tag, S("name"), S("Personal Best"));
         if (is_split_time && has_pb) {
-            xao_Value real_time_tag = {};
-            while (xao_iter_tags(r, split_time_tag, &real_time_tag)) {
-                if (eq(real_time_tag, S("RealTime"))) {
-                    Str pb_duration_str = xml_inner(r, real_time_tag);
-                    return parse_opt_duration(err, pb_duration_str);
-                }
-            }
+            duration = parse_realtime(err, r, split_time_tag);
         }
     }
-    return none(Duration);
+
+    scope_close(scope, "Parse PB time");
+    return duration;
+}
+
+fn Opt_Duration parse_realtime(ErrorContext *err, xao_Reader *r, xao_Value outer_tag) {
+    Opt_Duration duration = {};
+
+    xao_Value real_time_tag = {};
+    while (xao_iter_tags(r, outer_tag, &real_time_tag)) {
+        if (eq(real_time_tag, S("RealTime"))) {
+            Str pb_duration_str = xml_inner(r, real_time_tag);
+            duration = parse_opt_duration(err, pb_duration_str);
+        }
+    }
+
+    return duration;
 }
 
 fn bool has_attr(xao_Reader *r, xao_Value tag, Str key, Str value) {
@@ -131,20 +177,27 @@ fn Opt_Duration parse_opt_duration(ErrorContext *err, Str s) {
     Opt_Duration duration = {};
 
     if (s.count > 0) {
+        // Hours
         StrPair pair = str_split2_err(err, s, ':');
         Str hours_str = pair.left;
+        u64 hours = parse_u64(err, hours_str);
 
+        // Minutes
         pair = str_split2_err(err, pair.right, ':');
         Str minutes_str = pair.left;
-
-        pair = str_split2_err(err, pair.right, '.');
-        Str seconds_str = pair.left;
-        Str milliseconds_str = str_slice_err(err, pair.right, 0, 3);
-
-        u64 hours = parse_u64(err, hours_str);
         u64 minutes = parse_u64(err, minutes_str);
+
+        // Seconds
+        pair = str_split2(pair.right, '.');
+        Str seconds_str = pair.left;
         u64 seconds = parse_u64(err, seconds_str);
-        u64 milliseconds = parse_u64(err, milliseconds_str);
+
+        // Milliseconds
+        u64 milliseconds = 0;
+        if (!str_is_empty(pair.right)) {
+            Str milliseconds_str = str_slice_err(err, pair.right, 0, 3);
+            milliseconds = parse_u64(err, milliseconds_str);
+        }
 
         Duration total = ((i64)hours * DURATION_HOUR) + ((i64)minutes * DURATION_MINUTE) +
                          ((i64)seconds * DURATION_SECOND) +

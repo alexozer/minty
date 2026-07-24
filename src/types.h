@@ -63,11 +63,13 @@ struct SegmentDef {
 derive_struct(SegmentDef);
 
 struct FileDef {
+    Opt_Texture game_icon;
     Str game_name;
     Str category_name;
     u64 total_attempts;
     u64 completed_attempts;
     Arr_SegmentDef segments;
+    Duration offset;
 };
 derive_struct(FileDef);
 
