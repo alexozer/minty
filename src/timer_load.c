@@ -287,15 +287,11 @@ fn Opt_Texture parse_image(ErrorContext *err, Arena *arena, xao_Reader *r, xao_V
     if (base64.count > 0) {
         Arr_u8 full_buf = decode_base64(err, scratch, base64);
 
-        // Just based on my empirical observations... I don't want
+        // Offset just based on my empirical observations... I don't want
         // to parse the crusty Microsoft object serializer wire format
         constexpr u64 IMAGE_OFFSET = 161;
-        if (full_buf.count < IMAGE_OFFSET) {
-            err_report(err, "Image buffer too short");
-        } else {
-            Arr_u8 png_buf = arr_slice(full_buf, IMAGE_OFFSET, full_buf.count);
-            texture = some(load_texture_from_image(err, arena, png_buf), Texture);
-        }
+        Arr_u8 png_buf = arr_slice_err(err, full_buf, IMAGE_OFFSET, full_buf.count);
+        texture = some(load_texture_from_image(err, arena, png_buf), Texture);
     }
 
     scope_close(scope, "Parse image: %.*s", SF(xml_str_view(elem)));

@@ -288,6 +288,24 @@ StrPair str_split2_err(ErrorContext *err, Str base, u8 delim);
         });                                 \
     })
 
+#define arr_slice_err(err, arr, start, end)                                              \
+    ({                                                                                   \
+        ErrorContext *_err_ = (err);                                                     \
+        typeof(arr) _arr_ = (arr);                                                       \
+        u64 _start_ = (start);                                                           \
+        u64 _end_ = (end);                                                               \
+        typeof(arr) _ret_ = {};                                                          \
+        if (!(_start_ <= _arr_.count) && (_end_ <= _arr_.count) && (_start_ <= _end_)) { \
+            err_report(_err_, "Invalid slice");                                          \
+        } else {                                                                         \
+            _ret_ = ((typeof(_arr_)){                                                    \
+                .ptr = _arr_.ptr + _start_,                                              \
+                .count = _end_ - _start_,                                                \
+            });                                                                          \
+        }                                                                                \
+        _ret_;                                                                           \
+    })
+
 // For non-overlapping arrays
 #define arr_copy(dest, source)                                                          \
     ({                                                                                  \
@@ -713,11 +731,11 @@ struct Maps_Any {
 };
 derive_struct(Maps_Any);
 
-fn bool maps__has(Maps_Any *map, Str key, u64 value_size);
-fn void maps__get(Maps_Any *map, Str key, void *value_out, u64 value_size);
-fn void maps__set(Arena *arena, Maps_Any *map, Str key, void *value, u64 value_size);
-fn void maps__del(Maps_Any *map, Str key, u64 value_size);
-fn void maps__grow(Arena *arena, Maps_Any *map, u64 value_size);
+bool maps__has(Maps_Any *map, Str key, u64 value_size);
+void maps__get(Maps_Any *map, Str key, void *value_out, u64 value_size);
+void maps__set(Arena *arena, Maps_Any *map, Str key, void *value, u64 value_size);
+void maps__del(Maps_Any *map, Str key, u64 value_size);
+void maps__grow(Arena *arena, Maps_Any *map, u64 value_size);
 
 #define maps_has(map, key)                                     \
     ({                                                         \

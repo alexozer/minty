@@ -1,10 +1,10 @@
 # TODO
 
-Next:
+<!-- Next: -->
 
-Make timer actually do something to increase motivation
-    Load real splits
-    Run and display the timer state machine
+<!-- Make timer actually do something to increase motivation -->
+<!--     Load real splits -->
+<!--     Run and display the timer state machine -->
 
 ## Prototyping
 
@@ -434,5 +434,5 @@ Render full LSS
 LSS colors / ahead / behind colors
 
 BUGS:
-    - Shape cache not accounting for font size
+    <!-- - Shape cache not accounting for font size -->
     - Right-aligned numbers jitter
