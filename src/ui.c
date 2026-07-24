@@ -11,7 +11,8 @@ fn UI_Box *ui_box(Arena *frame_arena, UI_Style *s) {
     box->input_size = s->input_size;
     box->text_content = s->text_content;
     box->texture = s->texture;
-    box->color = s->color;
+    box->fg_color = s->fg_color;
+    box->bg_color = s->bg_color;
     box->font_file = s->font_file;
     box->font_size_px = s->font_size_px;
     box->font_outline_px = s->font_outline_px;
@@ -113,7 +114,15 @@ fn void ui_depth(UI_Style *s, i16 depth) {
 
 fn void ui_color_bg(UI_Style *s, Color color) {
     s->flags |= UI_Flag_DrawColoredBG;
-    s->color = color;
+    s->bg_color = color;
+}
+
+fn void ui_fg_color(UI_Style *s, Color color) {
+    s->fg_color = color;
+}
+
+fn void ui_bg_color(UI_Style *s, Color color) {
+    s->bg_color = color;
 }
 
 fn void layout_ui(FontSystem *font_system,
@@ -338,7 +347,7 @@ fn void render_ui_impl(Arena *frame_arena,
 
         Color color = COLOR_WHITE;
         if (box->flags & UI_Flag_TextureBlendColor) {
-            color = box->color;
+            color = box->fg_color;
         }
 
         f32 texture_aspect_ratio = (f32)box->texture->dims.w / box->texture->dims.h;
@@ -360,10 +369,10 @@ fn void render_ui_impl(Arena *frame_arena,
     if (box->flags & UI_Flag_DrawColoredBG) {
         QuadRequest *quad_req = fvec_push_zero(quad_reqs);
         quad_req->transform = box->bbox;
-        quad_req->top_left_color = box->color;
-        quad_req->top_right_color = box->color;
-        quad_req->bottom_left_color = box->color;
-        quad_req->bottom_right_color = box->color;
+        quad_req->top_left_color = box->bg_color;
+        quad_req->top_right_color = box->bg_color;
+        quad_req->bottom_left_color = box->bg_color;
+        quad_req->bottom_right_color = box->bg_color;
         quad_req->depth = (u16)(box->depth);
     }
 

@@ -98,7 +98,6 @@ derive_enum(TimerMode);
 struct Timer {
     TimerMode mode;
     Vec_Opt_Duration live_splits;
-    Texture Texture;
     Instant start_time;
     Instant paused_time;
     Duration total_paused_duration;
@@ -451,7 +450,8 @@ struct UI_Box {
     UI_Flag flags;
     UI_Size input_size;
     Texture *texture;
-    Color color;
+    Color fg_color;
+    Color bg_color;
     Str text_content;
     FontFile *font_file;
     u16 font_size_px;
@@ -471,7 +471,8 @@ struct UI_Style {
     UI_Box *parent;
     UI_Flag flags;
     Texture *texture;
-    Color color;
+    Color fg_color;
+    Color bg_color;
     u16 child_idx;
     FontFile *font_file;
     u16 font_size_px;

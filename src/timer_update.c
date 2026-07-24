@@ -134,8 +134,7 @@ fn void timer_apply_action_finished(Arena *arena, Session *session, TimerAction 
 }
 
 fn void timer_reset(Timer *timer) {
-    timer->mode = TimerMode_Init;
-    vec_reset(&timer->live_splits);
+    *timer = (Timer){};
 }
 
 fn Duration timer_get_elapsed(Timer *timer, Instant event_time) {

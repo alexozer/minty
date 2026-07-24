@@ -28,6 +28,12 @@ fn void build_bottom_timer_ui(Arena *arena,
                               Session *session,
                               Arr_SegSummary summaries,
                               UI_Box *parent);
-fn void build_bottom_stat(Arena *arena, UI_Box *parent, Session *session, Str label, Str value);
+fn Color get_delta_color(Session *session, bool ahead, bool gained);
+fn void build_bottom_stat(Arena *arena,
+                          UI_Box *parent,
+                          Session *session,
+                          Str label,
+                          Str value,
+                          Color value_color);
 fn void build_padding(Arena *arena, UI_Style *s, UI_Box *parent, f32 pad_px, UI_Flag flags);
 fn void build_text_test_ui(Arena *arena, UI_Box *base, Session *session);

@@ -24,6 +24,8 @@ fn void ui_texture(UI_Style *s, Texture *texture);
 fn void ui_style(UI_Style *s, UI_Style *ref);
 fn void ui_depth(UI_Style *s, i16 depth);
 fn void ui_color_bg(UI_Style *s, Color color);
+fn void ui_fg_color(UI_Style *s, Color color);
+fn void ui_bg_color(UI_Style *s, Color color);
 fn void layout_ui(FontSystem *font_system,
                   UI_Box *root,
                   SizePX device_size,

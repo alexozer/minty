@@ -28,7 +28,7 @@ fn UI_Box *build_timer_ui(Arena *arena,
     if (session->layout.background_image.present) {
         ui_texture(s, &session->layout.background_image.opt);
         ui_flags(s, UI_Flag_TextureBlendColor);
-        s->color = (Color){.r = 255, .g = 255, .b = 255, .a = 70};
+        ui_fg_color(s, (Color){.r = 255, .g = 255, .b = 255, .a = 70});
     }
     ui_flags(s, UI_Flag_TextureZoom);
     ui_depth(s, -4);
@@ -80,6 +80,7 @@ fn void build_game_info_ui(Arena *arena, UI_Box *base, Session *session) {
     ui_font(s_header, &session->layout.nunito_sans_bold, 32);
     ui_text_outline(s_header, SMALL_TEXT_OUTLINE_PX);
     ui_flags(s_header, UI_Flag_TextAlignXCenter | UI_Flag_TextClipEllipsis);
+    ui_fg_color(s_header, session->layout.text_color);
 
     // Game name
     ui_style(s, s_header);
@@ -138,6 +139,7 @@ fn void build_segment_ui(Arena *arena,
     ui_font(s, &session->layout.nunito_sans_bold, 27);
     ui_text_outline(s, SMALL_TEXT_OUTLINE_PX);
     ui_text(s, segment->name);
+    ui_fg_color(s, session->layout.text_color);
     ui_box(arena, s);
 
     build_segment_times(arena, session, summaries, segment_idx, row);
@@ -177,6 +179,7 @@ fn void build_segment_times(Arena *arena,
     // First time
     ui_style(s, s_time);
     ui_text(s, pb_seg);
+    ui_fg_color(s, session->layout.text_color);
     ui_box(arena, s);
     // Pad
     ui_parent(s, row);
@@ -187,6 +190,7 @@ fn void build_segment_times(Arena *arena,
     // Second time
     ui_style(s, s_time);
     ui_text(s, pb_split);
+    ui_fg_color(s, session->layout.text_color);
     ui_box(arena, s);
     // Pad
     ui_parent(s, row);
@@ -222,6 +226,7 @@ fn void build_bottom_timer_ui(Arena *arena,
     ui_font(s, &session->layout.nunito_sans_bold, BIG_TIME_FONT_SIZE_PX);
     ui_text(s, elapsed_part1);
     ui_text_outline(s, BIG_TEXT_OUTLINE_PX);
+    ui_fg_color(s, session->layout.text_color);
     ui_box(arena, s);
 
     // Big timer part 2
@@ -232,6 +237,7 @@ fn void build_bottom_timer_ui(Arena *arena,
     ui_font(s, &session->layout.nunito_sans_bold, BIG_TIME_FONT_SIZE_PX * 3 / 4);
     ui_text(s, elapsed_part2);
     ui_text_outline(s, BIG_TEXT_OUTLINE_PX);
+    ui_fg_color(s, session->layout.text_color);
     ui_box(arena, s);
 
     // Right Pad
@@ -251,16 +257,38 @@ fn void build_bottom_timer_ui(Arena *arena,
         gained_duration = A(summaries, session->timer.live_splits.count - 1).gained;
     }
     Str gained = format_opt_duration(arena, gained_duration, 2, true);
-    build_bottom_stat(arena, parent, session, S("Previous Segment"), gained);
+    Color gained_color = session->layout.text_color;
+    if (gained_duration.present) {
+        gained_color = get_delta_color(session, gained_duration.opt >= 0, gained_duration.opt >= 0);
+    }
+    build_bottom_stat(arena, parent, session, S("Previous Segment"), gained, gained_color);
 
     Str bpt = format_opt_duration(arena, calc_best_possible_time(session, summaries), 2, false);
-    build_bottom_stat(arena, parent, session, S("Best Possible Time"), bpt);
+    build_bottom_stat(arena, parent, session, S("Best Possible Time"), bpt, COLOR_WHITE);
 
     Str sob = format_opt_duration(arena, calc_sum_of_best_segments(summaries), 2, false);
-    build_bottom_stat(arena, parent, session, S("Sum of Best Segments"), sob);
+    build_bottom_stat(arena, parent, session, S("Sum of Best Segments"), sob, COLOR_WHITE);
 }
 
-fn void build_bottom_stat(Arena *arena, UI_Box *parent, Session *session, Str label, Str value) {
+fn Color get_delta_color(Session *session, bool ahead, bool gained) {
+    if (ahead && gained) {
+        return session->layout.ahead_gaining_time_color;
+    }
+    if (ahead && !gained) {
+        return session->layout.ahead_losing_time_color;
+    }
+    if (!ahead && gained) {
+        return session->layout.behind_gaining_time_color;
+    }
+    return session->layout.behind_losing_time_color;
+}
+
+fn void build_bottom_stat(Arena *arena,
+                          UI_Box *parent,
+                          Session *session,
+                          Str label,
+                          Str value,
+                          Color value_color) {
     UI_Style style = {};
     UI_Style *s = &style;
 
@@ -285,6 +313,7 @@ fn void build_bottom_stat(Arena *arena, UI_Box *parent, Session *session, Str la
     ui_text(s, label);
     ui_flags(s, UI_Flag_TextClipEllipsis);
     ui_text_outline(s, SMALL_TEXT_OUTLINE_PX);
+    ui_fg_color(s, session->layout.text_color);
     ui_box(arena, s);
 
     // Value
@@ -295,6 +324,7 @@ fn void build_bottom_stat(Arena *arena, UI_Box *parent, Session *session, Str la
     ui_flags(s, UI_Flag_TextAlignXRight);
     ui_text(s, value);
     ui_text_outline(s, SMALL_TEXT_OUTLINE_PX);
+    ui_fg_color(s, value_color);
     ui_box(arena, s);
 
     // Right Pad
