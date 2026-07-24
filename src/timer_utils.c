@@ -79,8 +79,13 @@ fn Arr_SegSummary calc_seg_summary(Arena *arena, Session *session) {
     for (u64 i = 0; i < summary.count; i++) {
         Opt_Duration prev_gold = A(file->segments, i).best_segment;
         Opt_Duration live_seg = A(summary, i).live_segment;
-        A(summary, i).is_new_gold =
-            prev_gold.present && live_seg.present && live_seg.opt < prev_gold.opt;
+        if (prev_gold.present) {
+            A(summary, i).is_new_gold =
+                prev_gold.present && live_seg.present && live_seg.opt < prev_gold.opt;
+        } else {
+            A(summary, i).is_new_gold = live_seg.present;
+        }
+
         A(summary, i).best_segment = A(summary, i).is_new_gold ? live_seg : prev_gold;
     }
 
