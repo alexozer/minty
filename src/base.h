@@ -787,9 +787,17 @@ void maps__grow(Arena *arena, Maps_Any *map, u64 value_size);
         u16: debug_print_u16, \
         u32: debug_print_u32, \
         u64: debug_print_u64, \
+        i8: debug_print_i8,   \
+        i16: debug_print_i16, \
+        i32: debug_print_i32, \
+        i64: debug_print_i64, \
         Str: debug_print_Str)(__FILE__, __LINE__, #x, x)
-u8 debug_print_u8(const char *file, int line, const char *thing, u8 x);
-u16 debug_print_u16(const char *file, int line, const char *thing, u16 x);
-u32 debug_print_u32(const char *file, int line, const char *thing, u32 x);
-u64 debug_print_u64(const char *file, int line, const char *thing, u64 x);
-Str debug_print_Str(const char *file, int line, const char *thing, Str x);
+u8 debug_print_u8(const char *file, i32 line, const char *thing, u8 x);
+u16 debug_print_u16(const char *file, i32 line, const char *thing, u16 x);
+u32 debug_print_u32(const char *file, i32 line, const char *thing, u32 x);
+u64 debug_print_u64(const char *file, i32 line, const char *thing, u64 x);
+i8 debug_print_i8(const char *file, i32 line, const char *thing, i8 x);
+i16 debug_print_i16(const char *file, i32 line, const char *thing, i16 x);
+i32 debug_print_i32(const char *file, i32 line, const char *thing, i32 x);
+i64 debug_print_i64(const char *file, i32 line, const char *thing, i64 x);
+Str debug_print_Str(const char *file, i32 line, const char *thing, Str x);

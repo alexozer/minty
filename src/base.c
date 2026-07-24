@@ -49,31 +49,51 @@ u64 next_pow2(u64 x) {
     }
 }
 
-[[noreturn]] void *oob(const char *file, int line) {
+[[noreturn]] void *oob(const char *file, i32 line) {
     crash(file, line, "Array index out of bounds");
 }
 
-u8 debug_print_u8(const char *file, int line, const char *thing, u8 x) {
+u8 debug_print_u8(const char *file, i32 line, const char *thing, u8 x) {
     log_info("%s = %" PRIu8, thing, x);
     return x;
 }
 
-u16 debug_print_u16(const char *file, int line, const char *thing, u16 x) {
+u16 debug_print_u16(const char *file, i32 line, const char *thing, u16 x) {
     log_info("%s = %" PRIu16, thing, x);
     return x;
 }
 
-u32 debug_print_u32(const char *file, int line, const char *thing, u32 x) {
+u32 debug_print_u32(const char *file, i32 line, const char *thing, u32 x) {
     log_info("%s = %" PRIu32, thing, x);
     return x;
 }
 
-u64 debug_print_u64(const char *file, int line, const char *thing, u64 x) {
+u64 debug_print_u64(const char *file, i32 line, const char *thing, u64 x) {
     log_info("%s = %" PRIu64, thing, x);
     return x;
 }
 
-Str debug_print_Str(const char *file, int line, const char *thing, Str x) {
+i8 debug_print_i8(const char *file, i32 line, const char *thing, i8 x) {
+    log_info("%s = %" PRIi8, thing, x);
+    return x;
+}
+
+i16 debug_print_i16(const char *file, i32 line, const char *thing, i16 x) {
+    log_info("%s = %" PRIi16, thing, x);
+    return x;
+}
+
+i32 debug_print_i32(const char *file, i32 line, const char *thing, i32 x) {
+    log_info("%s = %" PRIi32, thing, x);
+    return x;
+}
+
+i64 debug_print_i64(const char *file, i32 line, const char *thing, i64 x) {
+    log_info("%s = %" PRIi64, thing, x);
+    return x;
+}
+
+Str debug_print_Str(const char *file, i32 line, const char *thing, Str x) {
     log_info("%s = \"%.*s\"", thing, SF(x));
     return x;
 }

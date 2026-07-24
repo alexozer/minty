@@ -240,6 +240,7 @@ struct ShapedGlyph {
     // Glyph offsets in font units
     i32 x_fu;
     i32 y_fu;
+    i32 x_advance_fu;
 };
 derive_struct(ShapedGlyph);
 derive_type(Arr_ShapedGlyph);
@@ -247,6 +248,7 @@ derive_type(Arr_ShapedGlyph);
 struct ShapedGlyphPX {
     u32 glyph_id;
     PosF pos_px;
+    f32 x_advance_px;
 };
 derive_struct(ShapedGlyphPX);
 derive_type(Arr_ShapedGlyphPX);
@@ -278,6 +280,12 @@ struct FontFile {
     Arr_u8 contents;
 };
 derive_struct(FontFile);
+
+enum TextBBoxType {
+    TextBBoxType_Glyph,
+    TextBBoxType_Pen,
+};
+derive_enum(TextBBoxType);
 
 struct Layout {
     Color text_color;
@@ -409,7 +417,7 @@ union UI_Size {
 };
 derive_union(UI_Size);
 
-enum UI_Flag : u16 {
+enum UI_Flag : u32 {
     UI_Flag_None = 0,
     UI_Flag_ChildLayoutX = bit(0),
     UI_Flag_ChildLayoutY = bit(1),
@@ -427,6 +435,8 @@ enum UI_Flag : u16 {
     UI_Flag_TextClipEllipsis = bit(13),
     UI_Flag_IgnoreUserScale = bit(14),
     UI_Flag_DrawColoredBG = bit(15),
+    // Useful for placing two text blocks next to each other
+    UI_Flag_TextBBoxPen = bit(16),
 };
 derive_enum(UI_Flag);
 
