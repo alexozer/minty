@@ -232,7 +232,7 @@ fn Opt_Duration parse_opt_duration(ErrorContext *err, Str s) {
 
         // Milliseconds
         u64 milliseconds = 0;
-        if (!str_is_empty(pair.right)) {
+        if (!is_empty(pair.right)) {
             Str milliseconds_str = str_slice_err(err, pair.right, 0, 3);
             milliseconds = parse_u64(err, milliseconds_str);
         }
@@ -317,13 +317,13 @@ fn void load_livesplit_layout(ErrorContext *err, Arena *arena, Str lsl_path, Lay
 
     // Fallback fonts
     // (TODO bundle fallback font)
-    if (layout->text_font.contents.count == 0) {
+    if (is_empty(layout->text_font.contents)) {
         layout->text_font = layout->nunito_sans_bold;
     }
-    if (layout->timer_font.contents.count == 0) {
+    if (is_empty(layout->timer_font.contents)) {
         layout->timer_font = layout->nunito_sans_bold;
     }
-    if (layout->times_font.contents.count == 0) {
+    if (is_empty(layout->times_font.contents)) {
         layout->times_font = layout->nunito_sans_bold;
     }
 

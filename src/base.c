@@ -136,10 +136,6 @@ bool char_is_whitespace(u8 c) {
     return c == C(' ') || c == C('\r') || c == C('\n') || c == C('\t');
 }
 
-bool str_is_empty(Str str) {
-    return str.count == 0;
-}
-
 bool str_eq(Str a, Str b) {
     if (a.count != b.count) {
         return false;
@@ -470,7 +466,7 @@ Scope scope_open(ErrorContext *err) {
 
 __attribute__((format(printf, 2, 3))) void err_report(ErrorContext *err, const char *format, ...) {
     log_assert(err != nullptr);
-    if (err->ctx_stack.count == 0) {
+    if (is_empty(err->ctx_stack)) {
         va_list args;
         va_start(args, format);
         Str msg = str_format_v(err->arena, format, args);
@@ -549,7 +545,7 @@ fn MapsItem_Any *maps__get_item(Maps_Any *map, u64 idx, u64 value_size) {
 }
 
 fn i64 map__get_idx(Maps_Any *map, Str key, u64 value_size) {
-    if (map->buckets.count == 0) {
+    if (is_empty(map->buckets)) {
         return -1;
     }
     u64 hash = hash_str(key);
@@ -615,7 +611,7 @@ fn void maps__set(Arena *arena, Maps_Any *map, Str key, void *value, u64 value_s
 
 // Remove matching item from buckets and return its item index, if it existed.
 fn i64 maps__del_from_buckets(Maps_Any *map, Str key, u64 hash, u64 value_size) {
-    if (map->buckets.count == 0) {
+    if (is_empty(map->buckets)) {
         return -1;
     }
 

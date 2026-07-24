@@ -261,7 +261,7 @@ fn Arr_ShapedGlyphPX shape_text(Arena *arena, FontSystem *ctx, FontInst *inst, S
 // TODO arena allocate kbts stuff
 // TODO handling style/direction/face runs etc.
 fn Arr_ShapedGlyph shape_text_uncached(Arena *arena, FontInst *inst, Str text) {
-    if (text.count == 0) return (Arr_ShapedGlyph){};
+    if (is_empty(text)) return (Arr_ShapedGlyph){};
 
     Vec_ShapedGlyph output = {};
 
@@ -351,7 +351,7 @@ fn Arr_ShapedGlyphPX align_text(FontSystem *ctx,
     f32 x_left_rt_line = 0;
     f32 x_right_rt_line = 0;
     while (true) {
-        if (shaped_glyphs.count == 0) {
+        if (is_empty(shaped_glyphs)) {
             break;
         }
 

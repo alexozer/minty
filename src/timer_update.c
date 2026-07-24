@@ -48,7 +48,7 @@ fn void timer_apply_action_running(Arena *arena, Session *session, TimerAction a
         break;
     }
     case TimerAction_UndoSplit: {
-        if (timer->live_splits.count == 0) {
+        if (is_empty(timer->live_splits)) {
             timer_reset(timer);
         } else {
             vec_pop(&timer->live_splits);
