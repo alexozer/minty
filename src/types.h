@@ -400,12 +400,15 @@ derive_enum(FilterType);
 enum UI_DimType : u8 {
     UI_DimType_FixedPX,
     UI_DimType_Flex,
+    UI_DimType_TextContent,
 };
 derive_enum(UI_DimType);
 
 struct UI_Dim {
     UI_DimType type;
-    f32 value;  // Might be absolute size in pixels, flex ratio, etc.
+    // Varies based on dim type.
+    // Either scaled pixel size, unscaled flex ratio, or scale itself (for text size)
+    f32 value;
 };
 derive_struct(UI_Dim);
 

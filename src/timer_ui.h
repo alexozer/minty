@@ -7,6 +7,7 @@
 #include "types.h"
 
 fn UI_Box *build_timer_ui(Arena *arena,
+                          FontSystem *font_system,
                           Session *session,
                           SizePX device_size,
                           f32 os_scale,

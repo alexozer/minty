@@ -114,7 +114,8 @@ fn void render(App *app) {
         // 0.5f is just remnant of originally building the UI at 1X scale
         f32 os_scale = SDL_GetWindowDisplayScale(app->window) * 0.5f;
         f32 user_scale = SDL_powf(1.1f, (f32)app->zoom);
-        UI_Box *root = build_timer_ui(frame_arena, app->session, window_size, os_scale, user_scale);
+        UI_Box *root = build_timer_ui(frame_arena, &app->font_system, app->session, window_size,
+                                      os_scale, user_scale);
 
         render_ui(frame_arena, root, &app->font_system, quad_requests);
 

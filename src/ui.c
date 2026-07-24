@@ -67,6 +67,10 @@ fn void ui_height_flex_ratio(UI_Style *s, f32 ratio) {
     };
 }
 
+fn void ui_width_text_content(UI_Style *s) {
+    s->input_size.w.type = UI_DimType_TextContent;
+}
+
 fn void ui_flags(UI_Style *style, UI_Flag flags) {
     style->flags |= flags;
 }
@@ -112,7 +116,11 @@ fn void ui_color_bg(UI_Style *s, Color color) {
     s->color = color;
 }
 
-fn void layout_ui(UI_Box *root, SizePX device_size, f32 os_scale, f32 user_scale) {
+fn void layout_ui(FontSystem *font_system,
+                  UI_Box *root,
+                  SizePX device_size,
+                  f32 os_scale,
+                  f32 user_scale) {
     root->input_size.w.type = UI_DimType_FixedPX;
     root->input_size.w.value = device_size.w;
     root->input_size.h.type = UI_DimType_FixedPX;
@@ -127,17 +135,30 @@ fn void layout_ui(UI_Box *root, SizePX device_size, f32 os_scale, f32 user_scale
         scale_ui(child, os_scale, user_scale);
     }
 
-    layout_ui_impl(root);
+    layout_ui_impl(font_system, root);
+}
+
+fn void scale_dim(UI_Dim *dim, f32 scale) {
+    switch (dim->type) {
+    case UI_DimType_FixedPX: {
+        dim->value *= scale;
+        break;
+    }
+    case UI_DimType_Flex: {
+        // Don't scale flex ratio
+        break;
+    }
+    case UI_DimType_TextContent: {
+        // Text content size is scaled by font size
+        break;
+    }
+    }
 }
 
 fn void scale_ui(UI_Box *box, f32 os_scale, f32 user_scale) {
     f32 scale = (box->flags & UI_Flag_IgnoreUserScale) ? os_scale : os_scale * user_scale;
-    if (box->input_size.w.type == UI_DimType_FixedPX) {
-        box->input_size.w.value *= scale;
-    }
-    if (box->input_size.h.type == UI_DimType_FixedPX) {
-        box->input_size.h.value *= scale;
-    }
+    scale_dim(&box->input_size.w, scale);
+    scale_dim(&box->input_size.h, scale);
     box->font_size_px = (u16)SDL_lroundf(box->font_size_px * scale);
     box->font_outline_px *= scale;
 
@@ -147,9 +168,26 @@ fn void scale_ui(UI_Box *box, f32 os_scale, f32 user_scale) {
     }
 }
 
-fn void layout_ui_main_axis(UI_Box *parent, Axis axis) {
+fn void convert_text_content_dims_to_fixed_px(FontSystem *font_system, UI_Box *parent, Axis axis) {
+    // Convert text content size constraints to fixed pixel size constraints
+    for (u64 i = 0; i < parent->childs.count; i++) {
+        UI_Box *child = A(parent->childs, i);
+        UI_Dim *child_input = &child->input_size.dims[axis];
+
+        if (child_input->type == UI_DimType_TextContent) {
+            RectF text_bbox = get_text_bbox(font_system, child->font_file, child->font_size_px,
+                                            TextBBoxType_Pen, child->text_content);
+            child_input->type = UI_DimType_FixedPX;
+            child_input->value = text_bbox.w;
+        }
+    }
+}
+
+fn void layout_ui_main_axis(FontSystem *font_system, UI_Box *parent, Axis axis) {
     // Uh oh, unbounded array access?!? Call the safety police
     log_assert(axis < c_arr_count(parent->bbox.size.dims));
+
+    convert_text_content_dims_to_fixed_px(font_system, parent, axis);
 
     f32 parent_pos = parent->bbox.pos.dims[axis];
     f32 parent_size = parent->bbox.size.dims[axis];
@@ -176,9 +214,10 @@ fn void layout_ui_main_axis(UI_Box *parent, Axis axis) {
     f32 total_flex_px = max(0.f, parent_size - total_fixed_px);
     f32 current_pos_px = 0;
     for (u64 i = 0; i < parent->childs.count; i++) {
-        UI_Dim *in_size = &A(parent->childs, i)->input_size.dims[axis];
-        f32 *out_size = &A(parent->childs, i)->bbox.size.dims[axis];
-        f32 *out_pos = &A(parent->childs, i)->bbox.pos.dims[axis];
+        UI_Box *child = A(parent->childs, i);
+        UI_Dim *in_size = &child->input_size.dims[axis];
+        f32 *out_size = &child->bbox.size.dims[axis];
+        f32 *out_pos = &child->bbox.pos.dims[axis];
 
         *out_pos = current_pos_px + parent_pos;
 
@@ -191,22 +230,29 @@ fn void layout_ui_main_axis(UI_Box *parent, Axis axis) {
             *out_size = in_size->value / total_flex_units * total_flex_px;
             break;
         }
+        case UI_DimType_TextContent: {
+            // Converted these to FixedPX
+            log_unreachable();
+        }
         }
 
         current_pos_px += *out_size;
     }
 }
 
-fn void layout_ui_cross_axis(UI_Box *parent, Axis axis) {
+fn void layout_ui_cross_axis(FontSystem *font_system, UI_Box *parent, Axis axis) {
     // Uh oh, unbounded array access?!? Call the safety police
     log_assert(axis < c_arr_count(parent->bbox.size.dims));
+
+    convert_text_content_dims_to_fixed_px(font_system, parent, axis);
 
     f32 parent_size = parent->bbox.size.dims[axis];
 
     for (u64 i = 0; i < parent->childs.count; i++) {
-        UI_Dim *in_size = &A(parent->childs, i)->input_size.dims[axis];
-        f32 *out_size = &A(parent->childs, i)->bbox.size.dims[axis];
-        f32 *out_pos = &A(parent->childs, i)->bbox.pos.dims[axis];
+        UI_Box *child = A(parent->childs, i);
+        UI_Dim *in_size = &child->input_size.dims[axis];
+        f32 *out_size = &child->bbox.size.dims[axis];
+        f32 *out_pos = &child->bbox.pos.dims[axis];
 
         *out_pos = parent->bbox.pos.dims[axis];
 
@@ -219,24 +265,32 @@ fn void layout_ui_cross_axis(UI_Box *parent, Axis axis) {
             *out_size = parent_size;
             break;
         }
+        case UI_DimType_TextContent: {
+            // Converted these to FixedPX
+            log_unreachable();
+        }
         }
     }
 }
 
 // Compute layout of children, assuming root pos/size is computed
-fn void layout_ui_impl(UI_Box *box) {
-    log_assert(box->input_size.dims[Axis_X].value > 0);
-    log_assert(box->input_size.dims[Axis_Y].value > 0);
+fn void layout_ui_impl(FontSystem *font_system, UI_Box *box) {
+    if (box->input_size.w.type != UI_DimType_TextContent) {
+        log_assert(box->input_size.w.value > 0);
+    }
+    if (box->input_size.h.type != UI_DimType_TextContent) {
+        log_assert(box->input_size.h.value > 0);
+    }
 
     log_assert(box->depth >= MIN_DEPTH);
     box->depth -= MIN_DEPTH;
 
     if (box->flags & UI_Flag_ChildLayoutX) {
-        layout_ui_main_axis(box, Axis_X);
-        layout_ui_cross_axis(box, Axis_Y);
+        layout_ui_main_axis(font_system, box, Axis_X);
+        layout_ui_cross_axis(font_system, box, Axis_Y);
     } else if (box->flags & UI_Flag_ChildLayoutY) {
-        layout_ui_main_axis(box, Axis_Y);
-        layout_ui_cross_axis(box, Axis_X);
+        layout_ui_main_axis(font_system, box, Axis_Y);
+        layout_ui_cross_axis(font_system, box, Axis_X);
     } else if (box->flags & UI_Flag_ChildLayoutZ) {
         // Simple stack
         for (u64 i = 0; i < box->childs.count; i++) {
@@ -250,7 +304,7 @@ fn void layout_ui_impl(UI_Box *box) {
     // Recursively compute child layouts
     for (u64 i = 0; i < box->childs.count; i++) {
         UI_Box *child = A(box->childs, i);
-        layout_ui_impl(child);
+        layout_ui_impl(font_system, child);
     }
 }
 

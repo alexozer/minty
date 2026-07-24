@@ -93,6 +93,16 @@ i64 debug_print_i64(const char *file, i32 line, const char *thing, i64 x) {
     return x;
 }
 
+f32 debug_print_f32(const char *file, i32 line, const char *thing, f32 x) {
+    log_info("%s = %.3f", thing, x);
+    return x;
+}
+
+f64 debug_print_f64(const char *file, i32 line, const char *thing, f64 x) {
+    log_info("%s = %.6f", thing, x);
+    return x;
+}
+
 Str debug_print_Str(const char *file, i32 line, const char *thing, Str x) {
     log_info("%s = \"%.*s\"", thing, SF(x));
     return x;

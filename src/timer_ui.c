@@ -14,6 +14,7 @@ constexpr f32 BIG_TEXT_OUTLINE_PX = 3;
 constexpr f32 TEXT_PAD = 10.f;  // ??
 
 fn UI_Box *build_timer_ui(Arena *arena,
+                          FontSystem *font_system,
                           Session *session,
                           SizePX device_size,
                           f32 os_scale,
@@ -41,7 +42,7 @@ fn UI_Box *build_timer_ui(Arena *arena,
     build_timer_ui_impl(arena, base, session);
     // build_text_test_ui(arena, base, session);
 
-    layout_ui(root, device_size, os_scale, user_scale);
+    layout_ui(font_system, root, device_size, os_scale, user_scale);
     return root;
 }
 
@@ -207,15 +208,29 @@ fn void build_bottom_timer_ui(Arena *arena,
     ui_flags(s, UI_Flag_ChildLayoutX);
     UI_Box *big_timer_row = ui_box(arena, s);
 
-    // Big timer
+    Instant now = get_current_monotonic_time();
+    Duration elapsed = timer_get_elapsed(&session->timer, now);
+    Str elapsed_str = format_duration(arena, elapsed, 2, false);
+    Str elapsed_part1 = str_slice(elapsed_str, 0, elapsed_str.count - 3);
+    Str elapsed_part2 = str_slice(elapsed_str, elapsed_str.count - 3, elapsed_str.count);
+
+    // Big timer part 1
     ui_parent(s, big_timer_row);
     ui_width_flex(s);
     ui_height_flex(s);
     ui_flags(s, UI_Flag_TextAlignRight);
     ui_font(s, &session->layout.nunito_sans_bold, BIG_TIME_FONT_SIZE_PX);
-    Instant now = get_current_monotonic_time();
-    Duration elapsed = timer_get_elapsed(&session->timer, now);
-    ui_text(s, format_duration(arena, elapsed, 2, false));
+    ui_text(s, elapsed_part1);
+    ui_text_outline(s, BIG_TEXT_OUTLINE_PX);
+    ui_box(arena, s);
+
+    // Big timer part 2
+    ui_parent(s, big_timer_row);
+    ui_width_text_content(s);
+    ui_height_flex(s);
+    ui_flags(s, UI_Flag_TextAlignLeft);
+    ui_font(s, &session->layout.nunito_sans_bold, BIG_TIME_FONT_SIZE_PX * 3 / 4);
+    ui_text(s, elapsed_part2);
     ui_text_outline(s, BIG_TEXT_OUTLINE_PX);
     ui_box(arena, s);
 

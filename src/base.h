@@ -791,6 +791,8 @@ void maps__grow(Arena *arena, Maps_Any *map, u64 value_size);
         i16: debug_print_i16, \
         i32: debug_print_i32, \
         i64: debug_print_i64, \
+        f32: debug_print_f32, \
+        f64: debug_print_f64, \
         Str: debug_print_Str)(__FILE__, __LINE__, #x, x)
 u8 debug_print_u8(const char *file, i32 line, const char *thing, u8 x);
 u16 debug_print_u16(const char *file, i32 line, const char *thing, u16 x);
@@ -800,4 +802,6 @@ i8 debug_print_i8(const char *file, i32 line, const char *thing, i8 x);
 i16 debug_print_i16(const char *file, i32 line, const char *thing, i16 x);
 i32 debug_print_i32(const char *file, i32 line, const char *thing, i32 x);
 i64 debug_print_i64(const char *file, i32 line, const char *thing, i64 x);
+f32 debug_print_f32(const char *file, i32 line, const char *thing, f32 x);
+f64 debug_print_f64(const char *file, i32 line, const char *thing, f64 x);
 Str debug_print_Str(const char *file, i32 line, const char *thing, Str x);
