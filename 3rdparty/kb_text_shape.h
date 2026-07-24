@@ -1,4 +1,4 @@
-/*  kb_text_shape - v2.23 - text segmentation and shaping
+/*  kb_text_shape - v2.24 - text segmentation and shaping
     by Jimmy Lefevre
 
     SECURITY
@@ -1320,6 +1320,7 @@
      See https://unicode.org/reports/tr9 for more information.
 
    VERSION HISTORY
+     2.24  - Improve cmap4 compatibility with old fonts.
      2.23  - Improve direction inference at the end of paragraphs and for short paragraphs.
      2.22  - Fix a segmentation bug where a line with an unknown script would inherit the next
              line's script.
@@ -25926,12 +25927,22 @@ KBTS_EXPORT kbts_load_font_error kbts_PlaceBlob(kbts_font *Font, kbts_load_font_
                   KBTS__FOR(SegmentIndex, 0, SegmentCount)
                   {
                     kbts_u16 Offset = IdRangeOffsets[SegmentIndex];
+                    kbts_u16 StartCode = StartCodes[SegmentIndex];
+                    kbts_u16 EndCode = EndCodes[SegmentIndex];
+
+                    if((StartCode == 0xFFFF) && (EndCode == 0xFFFF))
+                    {
+                      IdRangeOffsets[SegmentIndex] = 0;
+                      IdDeltas[SegmentIndex] = 1;
+
+                      Offset = 0;
+                    }
 
                     if(Offset)
                     {
-                      kbts_u16 *IdLookup = &IdRangeOffsets[SegmentIndex] + (EndCodes[SegmentIndex] - StartCodes[SegmentIndex] + 1) + Offset / 2;
+                      kbts_u16 *OnePastIdLookup = &IdRangeOffsets[SegmentIndex] + (EndCode - StartCode + 1) + Offset / 2;
 
-                      GlyphIdCount = KBTS__MAX(GlyphIdCount, (IdLookup - GlyphIds));
+                      GlyphIdCount = KBTS__MAX(GlyphIdCount, (kbts_sn)(OnePastIdLookup - GlyphIds));
                     }
                   }
 
