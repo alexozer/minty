@@ -64,7 +64,8 @@ fn void build_timer_ui_impl(Arena *arena, UI_Box *base, Session *session) {
         build_segment_ui(arena, segments_container, session, summaries, i);
     }
 
-    build_bottom_timer_ui(arena, session, summaries, base);
+    build_big_timer(arena, session, summaries, base);
+    build_bottom_stats(arena, session, summaries, base);
 }
 
 fn void build_game_info_ui(Arena *arena, UI_Box *base, Session *session) {
@@ -187,11 +188,8 @@ fn void build_segment_seg_time(Arena *arena,
     ui_text(s, text);
     ui_fg_color(s, session->layout.text_color);
     ui_box(arena, s);
-    // Pad
-    ui_parent(s, row);
-    ui_width_px(s, TEXT_PAD);
-    ui_height_flex(s);
-    ui_box(arena, s);
+
+    pad_box(arena, row, TEXT_PAD);
 }
 
 fn void build_segment_split_time(Arena *arena,
@@ -216,11 +214,8 @@ fn void build_segment_split_time(Arena *arena,
     ui_text(s, text);
     ui_fg_color(s, session->layout.text_color);
     ui_box(arena, s);
-    // Pad
-    ui_parent(s, row);
-    ui_width_px(s, TEXT_PAD);
-    ui_height_flex(s);
-    ui_box(arena, s);
+
+    pad_box(arena, row, TEXT_PAD);
 }
 
 fn void build_segment_delta_time(Arena *arena,
@@ -248,27 +243,48 @@ fn void build_segment_delta_time(Arena *arena,
     } else {
         show = segment_idx > session->timer.live_splits.count;
     }
+    show = true;
 
-    // Second time
+    Color text_color = get_delta_color(session, summaries, segment_idx);
+
+    pad_box(arena, row, TEXT_PAD);
+
     ui_style(s, style_template);
-    ui_fg_color(s, session->layout.text_color);
+    ui_width_text_content(s);  // Leave as much room for split name as possible
+    ui_fg_color(s, text_color);
     Str delta = format_opt_duration(arena, none(Duration), 1, true);
     if (show && live_delta.present) {
         delta = format_opt_duration(arena, live_delta, 1, true);
     }
     ui_text(s, delta);
     ui_box(arena, s);
-    // Pad
-    ui_parent(s, row);
-    ui_width_px(s, TEXT_PAD);
-    ui_height_flex(s);
+
+    pad_box(arena, row, TEXT_PAD);
+}
+
+fn void pad_box(Arena *arena, UI_Box *parent, f32 pad_px) {
+    UI_Style style = {};
+    UI_Style *s = &style;
+
+    ui_parent(s, parent);
+    if (parent->flags & UI_Flag_ChildLayoutX) {
+        ui_width_px(s, pad_px);
+        ui_height_flex(s);
+    } else {
+        ui_width_flex(s);
+        ui_height_px(s, pad_px);
+    }
     ui_box(arena, s);
 }
 
-fn void build_bottom_timer_ui(Arena *arena,
-                              Session *session,
-                              Arr_SegSummary summaries,
-                              UI_Box *parent) {
+fn void build_big_timer(Arena *arena, Session *session, Arr_SegSummary summaries, UI_Box *parent) {
+    Instant now = get_current_monotonic_time();
+    Duration elapsed = timer_get_elapsed(&session->timer, now);
+    Str elapsed_str = format_duration(arena, elapsed, 2, false);
+    Str elapsed_part1 = str_slice(elapsed_str, 0, elapsed_str.count - 3);
+    Str elapsed_part2 = str_slice(elapsed_str, elapsed_str.count - 3, elapsed_str.count);
+    // Color = get_delta_color(session, summaries,
+
     UI_Style style = {};
     UI_Style *s = &style;
 
@@ -277,12 +293,6 @@ fn void build_bottom_timer_ui(Arena *arena,
     ui_height_px(s, (f32)BIG_TIME_FONT_SIZE_PX);
     ui_flags(s, UI_Flag_ChildLayoutX);
     UI_Box *big_timer_row = ui_box(arena, s);
-
-    Instant now = get_current_monotonic_time();
-    Duration elapsed = timer_get_elapsed(&session->timer, now);
-    Str elapsed_str = format_duration(arena, elapsed, 2, false);
-    Str elapsed_part1 = str_slice(elapsed_str, 0, elapsed_str.count - 3);
-    Str elapsed_part2 = str_slice(elapsed_str, elapsed_str.count - 3, elapsed_str.count);
 
     // Big timer part 1
     ui_parent(s, big_timer_row);
@@ -307,17 +317,16 @@ fn void build_bottom_timer_ui(Arena *arena,
     ui_box(arena, s);
 
     // Right Pad
-    ui_parent(s, big_timer_row);
-    ui_width_px(s, TEXT_PAD);
-    ui_height_flex(s);
-    ui_box(arena, s);
+    pad_box(arena, big_timer_row, TEXT_PAD);
 
     // Vertical after big timer
-    ui_parent(s, parent);
-    ui_width_flex(s);
-    ui_height_px(s, TEXT_PAD);
-    ui_box(arena, s);
+    pad_box(arena, parent, TEXT_PAD);
+}
 
+fn void build_bottom_stats(Arena *arena,
+                           Session *session,
+                           Arr_SegSummary summaries,
+                           UI_Box *parent) {
     Opt_Duration gained_duration = {};
     if (session->timer.live_splits.count > 0) {
         gained_duration = A(summaries, session->timer.live_splits.count - 1).gained;
@@ -325,18 +334,36 @@ fn void build_bottom_timer_ui(Arena *arena,
     Str gained = format_opt_duration(arena, gained_duration, 2, true);
     Color gained_color = session->layout.text_color;
     if (gained_duration.present) {
-        gained_color = get_delta_color(session, gained_duration.opt >= 0, gained_duration.opt >= 0);
+        gained_color =
+            get_gained_color(session, gained_duration.opt <= 0, gained_duration.opt <= 0);
     }
-    build_bottom_stat(arena, parent, session, S("Previous Segment"), gained, gained_color);
 
     Str bpt = format_opt_duration(arena, calc_best_possible_time(session, summaries), 2, false);
-    build_bottom_stat(arena, parent, session, S("Best Possible Time"), bpt, COLOR_WHITE);
-
     Str sob = format_opt_duration(arena, calc_sum_of_best_segments(summaries), 2, false);
+
+    build_bottom_stat(arena, parent, session, S("Previous Segment"), gained, gained_color);
+    build_bottom_stat(arena, parent, session, S("Best Possible Time"), bpt, COLOR_WHITE);
     build_bottom_stat(arena, parent, session, S("Sum of Best Segments"), sob, COLOR_WHITE);
 }
 
-fn Color get_delta_color(Session *session, bool ahead, bool gained) {
+fn Color get_delta_color(Session *session, Arr_SegSummary summaries, u64 idx) {
+    Color color = session->layout.text_color;
+
+    SegSummary *summary = &A(summaries, idx);
+    if (summary->gained.present && summary->live_delta.present) {
+        bool ahead = summary->live_delta.opt <= 0;
+        bool gained = summary->gained.opt <= 0;
+        color = get_gained_color(session, ahead, gained);
+
+    } else if (summary->live_delta.present) {
+        bool green = summary->live_delta.opt <= 0;
+        color = get_gained_color(session, green, green);
+    }
+
+    return color;
+}
+
+fn Color get_gained_color(Session *session, bool ahead, bool gained) {
     if (ahead && gained) {
         return session->layout.ahead_gaining_time_color;
     }
@@ -366,10 +393,7 @@ fn void build_bottom_stat(Arena *arena,
     UI_Box *row = ui_box(arena, s);
 
     // Left Pad
-    ui_parent(s, row);
-    ui_width_px(s, TEXT_PAD);
-    ui_height_flex(s);
-    ui_box(arena, s);
+    pad_box(arena, row, TEXT_PAD);
 
     // Label
     ui_parent(s, row);
@@ -394,10 +418,7 @@ fn void build_bottom_stat(Arena *arena,
     ui_box(arena, s);
 
     // Right Pad
-    ui_parent(s, row);
-    ui_width_px(s, TEXT_PAD);
-    ui_height_flex(s);
-    ui_box(arena, s);
+    pad_box(arena, row, TEXT_PAD);
 }
 
 fn void build_padding(Arena *arena, UI_Style *s, UI_Box *parent, f32 pad_px, UI_Flag flags) {

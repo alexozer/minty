@@ -27,9 +27,12 @@ fn Arr_SegSummary calc_seg_summary(Arena *arena, Session *session) {
 
     Arr_SegSummary summary = arena_push_arr(arena, SegSummary, session->file.segments.count);
 
-    // Calc PB splits
+    // Copy PB splits and live splits
     for (u64 i = 0; i < file->segments.count; i++) {
         A(summary, i).pb_split = A(file->segments, i).pb_split;
+    }
+    for (u64 i = 0; i < timer->live_splits.count; i++) {
+        A(summary, i).live_split = A(timer->live_splits, i);
     }
 
     // Calc PB segments
@@ -44,9 +47,6 @@ fn Arr_SegSummary calc_seg_summary(Arena *arena, Session *session) {
     }
 
     // Calc live splits
-    for (u64 i = 0; i < timer->live_splits.count; i++) {
-        A(summary, i).live_split = A(timer->live_splits, i);
-    }
     for (u64 i = 0; i < summary.count; i++) {
         if (i == 0) {
             A(summary, i).live_segment = A(summary, i).live_split;
@@ -59,13 +59,9 @@ fn Arr_SegSummary calc_seg_summary(Arena *arena, Session *session) {
 
     // Calc live deltas
     for (u64 i = 0; i < summary.count; i++) {
-        if (i == 0) {
-            A(summary, i).live_delta = A(summary, i).live_split;
-        } else {
-            Opt_Duration curr = A(summary, i).live_split;
-            Opt_Duration prev = A(summary, i - 1).live_split;
-            A(summary, i).live_delta = dur_sub(curr, prev);
-        }
+        Opt_Duration live_split = A(summary, i).live_split;
+        Opt_Duration pb_split = A(summary, i).pb_split;
+        A(summary, i).live_delta = dur_sub(live_split, pb_split);
     }
 
     // Calc live gained/lost

@@ -33,9 +33,12 @@
 
 New ellipsis bug
     Probably related to new text bbox calculation
-Deltas not showing up
-Gained/loss time incorrect
+Deltas not showing up at correct time
+<!-- Must color deltas -->
+<!-- Gained/loss time incorrect -->
 Time jitter when pausing
+    Can we get "event time" of render call?
+BPT/SOB not showing after completing first run on blank splits
 
 ## Research
 

@@ -42,11 +42,14 @@ fn void build_segment_delta_time(Arena *arena,
                                  u64 segment_idx,
                                  UI_Box *row,
                                  UI_Style *style_template);
-fn void build_bottom_timer_ui(Arena *arena,
-                              Session *session,
-                              Arr_SegSummary summaries,
-                              UI_Box *parent);
-fn Color get_delta_color(Session *session, bool ahead, bool gained);
+fn void pad_box(Arena *arena, UI_Box *parent, f32 pad_px);
+fn void build_big_timer(Arena *arena, Session *session, Arr_SegSummary summaries, UI_Box *parent);
+fn void build_bottom_stats(Arena *arena,
+                           Session *session,
+                           Arr_SegSummary summaries,
+                           UI_Box *parent);
+fn Color get_delta_color(Session *session, Arr_SegSummary summaries, u64 idx);
+fn Color get_gained_color(Session *session, bool ahead, bool gained);
 fn void build_bottom_stat(Arena *arena,
                           UI_Box *parent,
                           Session *session,
