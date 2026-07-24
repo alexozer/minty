@@ -41,13 +41,13 @@ fn void parse_livesplit_lss(ErrorContext *err, Arena *arena, Arr_u8 xml, FileDef
                     file->game_icon = parse_image(err, arena, &r, run_child_tag);
 
                 } else if (eq(run_child_tag, S("GameName"))) {
-                    file->game_name = str_clone(arena, xml_inner(&r, run_child_tag));
+                    file->game_name = xml_inner(arena, &r, run_child_tag);
 
                 } else if (eq(run_child_tag, S("CategoryName"))) {
-                    file->category_name = str_clone(arena, xml_inner(&r, run_child_tag));
+                    file->category_name = xml_inner(arena, &r, run_child_tag);
 
                 } else if (eq(run_child_tag, S("Offset"))) {
-                    Str offset_str = xml_inner(&r, run_child_tag);
+                    Str offset_str = xml_inner_view(&r, run_child_tag);
                     Opt_Duration offset = parse_opt_duration(err, offset_str);
                     if (!offset.present) {
                         err_report(err, "Failed to parse offset");
@@ -56,9 +56,12 @@ fn void parse_livesplit_lss(ErrorContext *err, Arena *arena, Arr_u8 xml, FileDef
 
                 } else if (eq(run_child_tag, S("AttemptCount"))) {
                     Scope attempt_count_scope = scope_open(err);
-                    Str attempts_str = str_clone(arena, xml_inner(&r, run_child_tag));
+                    Str attempts_str = xml_inner_view(&r, run_child_tag);
                     file->total_attempts = parse_u64(err, attempts_str);
                     scope_close(attempt_count_scope, "Parse AttemptCount");
+
+                } else if (eq(run_child_tag, S("AttemptHistory"))) {
+                    file->attempt_history = parse_attempt_history(err, arena, &r, run_child_tag);
 
                 } else if (eq(run_child_tag, S("Segments"))) {
                     file->segments = parse_livesplit_segments(err, arena, &r, run_child_tag);
@@ -93,7 +96,7 @@ fn Arr_SegmentDef parse_livesplit_segments(ErrorContext *err,
         xao_Value seg_child_tag = {};
         while (xao_iter_tags(r, seg_tag, &seg_child_tag)) {
             if (eq(seg_child_tag, S("Name"))) {
-                seg->name = str_clone(arena, xml_inner(r, seg_child_tag));
+                seg->name = xml_inner(arena, r, seg_child_tag);
 
             } else if (eq(seg_child_tag, S("Icon"))) {
                 seg->icon_texture = parse_image(err, arena, r, seg_child_tag);
@@ -129,6 +132,41 @@ fn Arr_Duration parse_segment_history(ErrorContext *err,
     return vec_arr(&segment_history);
 }
 
+fn Arr_Attempt parse_attempt_history(ErrorContext *err,
+                                     Arena *arena,
+                                     xao_Reader *r,
+                                     xao_Value attempt_history_tag) {
+    Vec_Attempt attempts = {};
+
+    xao_Value attempt_tag = {};
+    while (xao_iter_tags(r, attempt_history_tag, &attempt_tag)) {
+        if (eq(attempt_tag, S("Attempt"))) {
+            Attempt *attempt = vec_push_zero(arena, &attempts);
+
+            xao_Value key = {};
+            xao_Value value = {};
+            while (xao_iter_attrs(r, attempt_tag, &key, &value)) {
+                if (eq(key, S("started"))) {
+                    attempt->start_time.time = xml_str(arena, value);
+                }
+                if (eq(key, S("isStartedSynced"))) {
+                    attempt->start_time.ntp_synced = xml_bool(value);
+                }
+                if (eq(key, S("ended"))) {
+                    attempt->end_time.time = xml_str(arena, value);
+                }
+                if (eq(key, S("isEndedSynced"))) {
+                    attempt->end_time.ntp_synced = xml_bool(value);
+                }
+            }
+
+            attempt->run_duration = parse_realtime(err, r, attempt_tag);
+        }
+    }
+
+    return vec_arr(&attempts);
+}
+
 fn Opt_Duration parse_pb(ErrorContext *err, xao_Reader *r, xao_Value split_times_tag) {
     Scope scope = scope_open(err);
 
@@ -152,7 +190,7 @@ fn Opt_Duration parse_realtime(ErrorContext *err, xao_Reader *r, xao_Value outer
     xao_Value real_time_tag = {};
     while (xao_iter_tags(r, outer_tag, &real_time_tag)) {
         if (eq(real_time_tag, S("RealTime"))) {
-            Str pb_duration_str = xml_inner(r, real_time_tag);
+            Str pb_duration_str = xml_inner_view(r, real_time_tag);
             duration = parse_opt_duration(err, pb_duration_str);
         }
     }
@@ -214,14 +252,29 @@ fn bool eq(xao_Value v, Str s) {
     return str_eq(xml_str, s);
 }
 
-fn Str xml_str(xao_Value v) {
+fn Str xml_str(Arena *arena, xao_Value v) {
+    Str s = xml_str_view(v);
+    return str_clone(arena, s);
+}
+
+fn bool xml_bool(xao_Value v) {
+    Str s = xml_str_view(v);
+    return (str_eq(s, S("True")));
+}
+
+fn Str xml_str_view(xao_Value v) {
     return (Str){.ptr = (u8 *)v.start, .count = (u64)v.end - (u64)v.start};
 }
 
-fn Str xml_inner(xao_Reader *r, xao_Value outer) {
+fn Str xml_inner(Arena *arena, xao_Reader *r, xao_Value outer) {
+    Str inner = xml_inner_view(r, outer);
+    return str_clone(arena, inner);
+}
+
+fn Str xml_inner_view(xao_Reader *r, xao_Value outer) {
     xao_Value inner = {};
     xao_iter_content(r, outer, &inner);
-    return xml_str(inner);
+    return xml_str_view(inner);
 }
 
 fn Opt_Texture parse_image(ErrorContext *err, Arena *arena, xao_Reader *r, xao_Value elem) {
@@ -230,7 +283,7 @@ fn Opt_Texture parse_image(ErrorContext *err, Arena *arena, xao_Reader *r, xao_V
 
     Opt_Texture texture = {};
 
-    Str base64 = xml_inner(r, elem);
+    Str base64 = xml_inner_view(r, elem);
     if (base64.count > 0) {
         Arr_u8 full_buf = decode_base64(err, scratch, base64);
 
@@ -245,7 +298,7 @@ fn Opt_Texture parse_image(ErrorContext *err, Arena *arena, xao_Reader *r, xao_V
         }
     }
 
-    scope_close(scope, "Parse image: %.*s", SF(xml_str(elem)));
+    scope_close(scope, "Parse image: %.*s", SF(xml_str_view(elem)));
     arena_release(scratch);
     return texture;
 }
@@ -357,7 +410,7 @@ fn Color parse_livesplit_color(ErrorContext *err, xao_Reader *r, xao_Value elem)
     Scope scope = scope_open(err);
     Color color = {};
 
-    Str color_str = xml_inner(r, elem);
+    Str color_str = xml_inner_view(r, elem);
     if (color_str.count != 8) {
         err_report(err, "Invalid color length");
 
@@ -374,7 +427,7 @@ fn Color parse_livesplit_color(ErrorContext *err, xao_Reader *r, xao_Value elem)
         color.a = (v >> 24) & 0xff;
     }
 
-    scope_close(scope, "Parse color: '%.*s'", SF(xml_str(elem)));
+    scope_close(scope, "Parse color: '%.*s'", SF(xml_str_view(elem)));
     return color;
 }
 
@@ -383,9 +436,9 @@ fn FontFile parse_livesplit_font(ErrorContext *err, Arena *arena, xao_Reader *r,
 
     FontFile font_file = {};
 
-    Str base64 = xml_inner(r, elem);
+    Str base64 = xml_inner_view(r, elem);
     font_file.contents = decode_base64(err, arena, base64);
 
-    scope_close(scope, "Parse font for %.*s", SF(xml_str(elem)));
+    scope_close(scope, "Parse font for %.*s", SF(xml_str_view(elem)));
     return font_file;
 }

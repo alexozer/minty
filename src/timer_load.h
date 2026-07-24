@@ -17,13 +17,20 @@ fn Arr_Duration parse_segment_history(ErrorContext *err,
                                       Arena *arena,
                                       xao_Reader *r,
                                       xao_Value history_tag);
+fn Arr_Attempt parse_attempt_history(ErrorContext *err,
+                                     Arena *arena,
+                                     xao_Reader *r,
+                                     xao_Value attempt_history_tag);
 fn Opt_Duration parse_pb(ErrorContext *err, xao_Reader *r, xao_Value split_times_tag);
 fn Opt_Duration parse_realtime(ErrorContext *err, xao_Reader *r, xao_Value outer_tag);
 fn bool has_attr(xao_Reader *r, xao_Value tag, Str key, Str value);
 fn Opt_Duration parse_opt_duration(ErrorContext *err, Str s);
 fn bool eq(xao_Value v, Str s);
-fn Str xml_str(xao_Value v);
-fn Str xml_inner(xao_Reader *r, xao_Value outer);
+fn Str xml_str(Arena *arena, xao_Value v);
+fn bool xml_bool(xao_Value v);
+fn Str xml_str_view(xao_Value v);
+fn Str xml_inner(Arena *arena, xao_Reader *r, xao_Value outer);
+fn Str xml_inner_view(xao_Reader *r, xao_Value outer);
 fn Opt_Texture parse_image(ErrorContext *err, Arena *arena, xao_Reader *r, xao_Value elem);
 fn void load_livesplit_layout(ErrorContext *err, Arena *arena, Str lsl_path, Layout *layout);
 fn void parse_livesplit_lsl(ErrorContext *err, Arena *arena, Arr_u8 xml, Layout *layout);

@@ -62,14 +62,28 @@ struct SegmentDef {
 };
 derive_struct(SegmentDef);
 
+struct WallTime {
+    Str time;
+    bool ntp_synced;
+};
+derive_struct(WallTime);
+
+struct Attempt {
+    WallTime start_time;
+    WallTime end_time;
+    Opt_Duration run_duration;
+};
+derive_struct(Attempt);
+
 struct FileDef {
     Opt_Texture game_icon;
     Str game_name;
     Str category_name;
     u64 total_attempts;
     u64 completed_attempts;
-    Arr_SegmentDef segments;
     Duration offset;
+    Arr_SegmentDef segments;
+    Arr_Attempt attempt_history;
 };
 derive_struct(FileDef);
 
