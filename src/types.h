@@ -437,6 +437,7 @@ enum UI_Flag : u32 {
     UI_Flag_DrawColoredBG = bit(15),
     // Useful for placing two text blocks next to each other
     UI_Flag_TextBBoxPen = bit(16),
+    UI_Flag_TextBBoxGlyph = bit(17),
 };
 derive_enum(UI_Flag);
 

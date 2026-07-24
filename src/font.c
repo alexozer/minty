@@ -390,7 +390,7 @@ fn Arr_ShapedGlyphPX align_text(FontSystem *ctx,
         }
 
         TextBBoxType bbox_type =
-            (box->flags & UI_Flag_TextBBoxPen) ? TextBBoxType_Pen : TextBBoxType_Glyph;
+            (box->flags & UI_Flag_TextBBoxGlyph) ? TextBBoxType_Glyph : TextBBoxType_Pen;
         text_bbox = get_shaped_text_bbox(inst, shaped_glyphs, bbox_type);
 
         f32 width = text_bbox.w;
