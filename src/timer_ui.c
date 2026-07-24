@@ -219,8 +219,12 @@ fn void build_bottom_timer_ui(Arena *arena,
     ui_height_flex(s);
     ui_box(arena, s);
 
-    build_bottom_stat(arena, parent, session, S("Previous Segment"),
-                      format_duration(arena, -7238523332, 2, false));
+    Opt_Duration gained = {};
+    if (session->timer.live_splits.count > 0) {
+        gained = A(summaries, session->timer.live_splits.count - 1).gained;
+    }
+    Str gained_str = format_opt_duration(arena, gained, 2, true);
+    build_bottom_stat(arena, parent, session, S("Previous Segment"), gained_str);
 
     Str bpt = format_opt_duration(arena, calc_best_possible_time(session, summaries), 2, false);
     build_bottom_stat(arena, parent, session, S("Best Possible Time"), bpt);
