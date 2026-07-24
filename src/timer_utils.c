@@ -82,11 +82,11 @@ fn Arr_SegSummary calc_seg_summary(Arena *arena, Session *session) {
         if (prev_gold.present) {
             A(summary, i).is_new_gold =
                 prev_gold.present && live_seg.present && live_seg.opt < prev_gold.opt;
+            A(summary, i).best_segment = A(summary, i).is_new_gold ? live_seg : prev_gold;
         } else {
-            A(summary, i).is_new_gold = live_seg.present;
+            A(summary, i).is_new_gold = false;  // Don't change time color to gold color
+            A(summary, i).best_segment = live_seg;
         }
-
-        A(summary, i).best_segment = A(summary, i).is_new_gold ? live_seg : prev_gold;
     }
 
     return summary;
