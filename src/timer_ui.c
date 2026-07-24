@@ -8,7 +8,7 @@ constexpr f32 INFO_HEIGHT_PX = 80.f;
 constexpr f32 SEGMENT_HEIGHT_PX = 100.f;
 constexpr f32 ICON_PADDING_PX = 8.f;
 constexpr f32 SMALL_TIME_WIDTH_PX = 150.f;
-constexpr u32 BIG_TIME_FONT_SIZE_PX = 90;
+constexpr u32 BIG_TIME_FONT_SIZE_PX = 100;
 constexpr f32 SMALL_TEXT_OUTLINE_PX = 1.5;
 constexpr f32 BIG_TEXT_OUTLINE_PX = 3;
 constexpr f32 TEXT_PAD = 10.f;  // ??
@@ -79,7 +79,7 @@ fn void build_game_info_ui(Arena *arena, UI_Box *base, Session *session) {
     ui_height_px(s_header, 40);
     ui_font(s_header, &session->layout.nunito_sans_bold, 32);
     ui_text_outline(s_header, SMALL_TEXT_OUTLINE_PX);
-    ui_flags(s_header, UI_Flag_TextAlignCenter | UI_Flag_TextClipEllipsis);
+    ui_flags(s_header, UI_Flag_TextAlignXCenter | UI_Flag_TextClipEllipsis);
 
     // Game name
     ui_style(s, s_header);
@@ -134,7 +134,7 @@ fn void build_segment_ui(Arena *arena,
     ui_parent(s, row);
     ui_width_flex(s);
     ui_height_flex(s);
-    ui_flags(s, UI_Flag_TextAlignLeft | UI_Flag_TextClipEllipsis);
+    ui_flags(s, UI_Flag_TextAlignXLeft | UI_Flag_TextClipEllipsis);
     ui_font(s, &session->layout.nunito_sans_bold, 27);
     ui_text_outline(s, SMALL_TEXT_OUTLINE_PX);
     ui_text(s, segment->name);
@@ -170,7 +170,7 @@ fn void build_segment_times(Arena *arena,
     ui_parent(s_time, row);
     ui_width_px(s_time, SMALL_TIME_WIDTH_PX);
     ui_height_flex(s_time);
-    ui_flags(s_time, UI_Flag_TextAlignRight);
+    ui_flags(s_time, UI_Flag_TextAlignXRight);
     ui_font(s_time, &session->layout.nunito_sans_bold, 27);
     ui_text_outline(s_time, SMALL_TEXT_OUTLINE_PX);
 
@@ -218,7 +218,7 @@ fn void build_bottom_timer_ui(Arena *arena,
     ui_parent(s, big_timer_row);
     ui_width_flex(s);
     ui_height_flex(s);
-    ui_flags(s, UI_Flag_TextAlignRight);
+    ui_flags(s, UI_Flag_TextAlignXRight | UI_Flag_TextAlignYBottom);
     ui_font(s, &session->layout.nunito_sans_bold, BIG_TIME_FONT_SIZE_PX);
     ui_text(s, elapsed_part1);
     ui_text_outline(s, BIG_TEXT_OUTLINE_PX);
@@ -228,7 +228,7 @@ fn void build_bottom_timer_ui(Arena *arena,
     ui_parent(s, big_timer_row);
     ui_width_text_content(s);
     ui_height_flex(s);
-    ui_flags(s, UI_Flag_TextAlignLeft);
+    ui_flags(s, UI_Flag_TextAlignXLeft | UI_Flag_TextAlignYBottom);
     ui_font(s, &session->layout.nunito_sans_bold, BIG_TIME_FONT_SIZE_PX * 3 / 4);
     ui_text(s, elapsed_part2);
     ui_text_outline(s, BIG_TEXT_OUTLINE_PX);
@@ -286,7 +286,7 @@ fn void build_bottom_stat(Arena *arena, UI_Box *parent, Session *session, Str la
     ui_width_px(s, SMALL_TIME_WIDTH_PX);
     ui_height_flex(s);
     ui_font(s, &session->layout.nunito_sans_bold, 27);
-    ui_flags(s, UI_Flag_TextAlignRight);
+    ui_flags(s, UI_Flag_TextAlignXRight);
     ui_text(s, value);
     ui_text_outline(s, SMALL_TEXT_OUTLINE_PX);
     ui_box(arena, s);
@@ -355,24 +355,24 @@ fn void build_text_test_ui(Arena *arena, UI_Box *base, Session *session) {
     ui_parent(s_row, base);
     ui_width_flex(s_row);
     ui_height_px(s_row, 40);
-    ui_flags(s_row, UI_Flag_TextAlignLeft | UI_Flag_TextClipEllipsis);
+    ui_flags(s_row, UI_Flag_TextAlignXLeft | UI_Flag_TextClipEllipsis);
 
     ui_style(s, s_row);
     ui_font(s, &session->layout.nunito_sans_bold, 30);
     ui_text(s, S("The Legend of Zelda: Tears of the Kingdom"));
-    ui_flags(s, UI_Flag_TextAlignCenter);
+    ui_flags(s, UI_Flag_TextAlignXCenter);
     ui_box(arena, s);
 
     ui_style(s, s_row);
     ui_font(s, &session->layout.nunito_sans_bold, 30);
     ui_text(s, S("All Main Quests 1.0.0"));
-    ui_flags(s, UI_Flag_TextAlignCenter);
+    ui_flags(s, UI_Flag_TextAlignXCenter);
     ui_box(arena, s);
 
     ui_style(s, s_row);
     ui_font(s, &session->layout.nunito_sans_bold, 20);
     ui_text(s, S("iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii"));
-    ui_flags(s, UI_Flag_TextAlignCenter);
+    ui_flags(s, UI_Flag_TextAlignXCenter);
     ui_box(arena, s);
 
     ui_style(s, s_row);
@@ -383,7 +383,7 @@ fn void build_text_test_ui(Arena *arena, UI_Box *base, Session *session) {
     ui_style(s, s_row);
     ui_font(s, &session->layout.departure_mono_regular, 22);
     ui_text(s, S("Flight 0x9428 is departing (NOW)."));
-    ui_flags(s, UI_Flag_TextAlignRight);
+    ui_flags(s, UI_Flag_TextAlignXRight);
     ui_box(arena, s);
 
     ui_style(s, s_row);

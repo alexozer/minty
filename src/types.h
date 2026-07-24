@@ -427,9 +427,9 @@ enum UI_Flag : u32 {
     UI_Flag_ChildLayoutZ = bit(2),
     UI_Flag_DrawText = bit(3),
     UI_Flag_DrawTexture = bit(4),
-    UI_Flag_TextAlignLeft = bit(5),
-    UI_Flag_TextAlignRight = bit(6),
-    UI_Flag_TextAlignCenter = bit(7),
+    UI_Flag_TextAlignXLeft = bit(5),
+    UI_Flag_TextAlignXRight = bit(6),
+    UI_Flag_TextAlignXCenter = bit(7),
     UI_Flag_InsertChildAtIndex = bit(8),
     UI_Flag_ClipChilds = bit(9),
     UI_Flag_TextureContain = bit(10),
@@ -441,6 +441,8 @@ enum UI_Flag : u32 {
     // Useful for placing two text blocks next to each other
     UI_Flag_TextBBoxPen = bit(16),
     UI_Flag_TextBBoxGlyph = bit(17),
+    UI_Flag_TextAlignYBottom = bit(18),
+    UI_Flag_TextAlignYCenter = bit(19),
 };
 derive_enum(UI_Flag);
 

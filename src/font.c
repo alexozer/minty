@@ -400,8 +400,8 @@ fn Arr_ShapedGlyphPX align_text(FontSystem *ctx,
         }
 
         // If we're going to clip, force left-alignment to prevent jittering
-        box->flags &= ~(UI_Flag_TextAlignCenter | UI_Flag_TextAlignRight);
-        box->flags |= UI_Flag_TextAlignLeft;
+        box->flags &= ~(UI_Flag_TextAlignXCenter | UI_Flag_TextAlignXRight);
+        box->flags |= UI_Flag_TextAlignXLeft;
 
         if (inst->ellipsis_glyph_id.present) {
             u32 ellipsis_id = inst->ellipsis_glyph_id.opt;
@@ -425,11 +425,11 @@ fn Arr_ShapedGlyphPX align_text(FontSystem *ctx,
 
     f32 x_ref_rt_line = 0;    // Alignment point (left/center/right) relative to start of line
     f32 x_ref_rt_window = 0;  // Alignment point in window coordinates
-    if (box->flags & UI_Flag_TextAlignRight) {
+    if (box->flags & UI_Flag_TextAlignXRight) {
         // TODO debug why right align can overflow right boundary by 1-2px
         x_ref_rt_line = text_bbox.x + text_bbox.w;
         x_ref_rt_window = box->bbox.x + box->bbox.w;
-    } else if (box->flags & UI_Flag_TextAlignCenter) {
+    } else if (box->flags & UI_Flag_TextAlignXCenter) {
         x_ref_rt_line = text_bbox.x + (text_bbox.w / 2.f);
         x_ref_rt_window = box->bbox.x + (box->bbox.w / 2.f);
     } else {
@@ -484,13 +484,22 @@ fn void emit_glyph_quad(UI_Box *box,
         quad_req->bottom_right_color = color;
         quad_req->depth = depth;
 
+        f32 ref_y_rt_line = 0;
+        f32 ref_y_rt_window = 0;
+        if (box->flags & UI_Flag_TextAlignYBottom) {
+            ref_y_rt_line = 0;
+            ref_y_rt_window = box->bbox.y + box->bbox.h;
+        } else {
+            ref_y_rt_line = center_y_px;
+            ref_y_rt_window = box->bbox.y + (box->bbox.h / 2);
+        }
+
         // Position of glyph bitmap
         // TODO we should probably group this positioning with the previous positioning during
         // shaping?
         f32 window_px_x = shaped_glyph.pos_px.x + (f32)bitmap->offset_x;
-        f32 center_y_rt_window = box->bbox.y + (box->bbox.h / 2);
         f32 baseline_y_rt_line = (shaped_glyph.pos_px.y + (f32)bitmap->offset_y);
-        f32 window_px_y = center_y_rt_window - baseline_y_rt_line + center_y_px;
+        f32 window_px_y = ref_y_rt_window - baseline_y_rt_line + ref_y_rt_line;
 
         // Snap position nearest pixel to render glyph pixel-perfect
         // (maybe we shouldn't snap during animations?)
