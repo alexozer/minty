@@ -237,10 +237,19 @@ derive_struct(MeshBuilder);
 
 struct ShapedGlyph {
     u32 glyph_id;
-    PosF pos_px;
+    // Glyph offsets in font units
+    i32 x_fu;
+    i32 y_fu;
 };
 derive_struct(ShapedGlyph);
 derive_type(Arr_ShapedGlyph);
+
+struct ShapedGlyphPX {
+    u32 glyph_id;
+    PosF pos_px;
+};
+derive_struct(ShapedGlyphPX);
+derive_type(Arr_ShapedGlyphPX);
 
 struct GlyphBitmap {
     Texture texture;

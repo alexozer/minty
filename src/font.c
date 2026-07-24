@@ -105,7 +105,7 @@ fn FontInst *add_font_inst(ErrorContext *err,
         inst->center_y_px = compute_face_center_y(ctx, inst);
 
         // Prefetch the glyph ID of ellipsis, if the font has it
-        Arr_ShapedGlyph shaped_glyphs = shape_text(scratch, ctx, inst, S("…"));
+        Arr_ShapedGlyphPX shaped_glyphs = shape_text(scratch, ctx, inst, S("…"));
         u32 ellipsis_glyph_id = A(shaped_glyphs, 0).glyph_id;
         if (ellipsis_glyph_id != 0) {
             inst->ellipsis_glyph_id = some(ellipsis_glyph_id, u32);
@@ -136,7 +136,7 @@ fn f32 compute_face_center_y(FontSystem *ctx, FontInst *inst) {
     Arena *scratch = arena_acquire();
     f32 center_y_px = 0.f;
 
-    Arr_ShapedGlyph shaped_glyphs = shape_text(scratch, ctx, inst, S("A"));
+    Arr_ShapedGlyphPX shaped_glyphs = shape_text(scratch, ctx, inst, S("A"));
     u32 glyph_id = A(shaped_glyphs, 0).glyph_id;
     if (glyph_id != 0) {
         // 'A' glyph is in font
@@ -238,7 +238,7 @@ fn void rasterize_glyph(FontInst *inst, u32 glyph_id) {
     }
 }
 
-fn Arr_ShapedGlyph shape_text(Arena *arena, FontSystem *ctx, FontInst *inst, Str text) {
+fn Arr_ShapedGlyphPX shape_text(Arena *arena, FontSystem *ctx, FontInst *inst, Str text) {
     Arr_ShapedGlyph shape_result = {};
 
     if (maps_has(&ctx->shape_cache, text)) {
@@ -251,7 +251,7 @@ fn Arr_ShapedGlyph shape_text(Arena *arena, FontSystem *ctx, FontInst *inst, Str
         maps_set(ctx->arena, &ctx->shape_cache, stable_text, shape_result);
     }
 
-    return arr_clone(arena, shape_result);
+    return convert_shape_result_to_px(arena, inst, shape_result);
 }
 
 // TODO check font for errors on load, but afterwards assume it's good
@@ -280,8 +280,8 @@ fn Arr_ShapedGlyph shape_text_uncached(Arena *arena, FontInst *inst, Str text) {
 
             ShapedGlyph *g = vec_push_zero(arena, &output);
             g->glyph_id = glyph->Id;
-            g->pos_px.x = (f32)glyph_x * (f32)inst->px_per_em / (f32)inst->ft_face->units_per_EM;
-            g->pos_px.y = (f32)glyph_y * (f32)inst->px_per_em / (f32)inst->ft_face->units_per_EM;
+            g->x_fu = glyph_x;
+            g->y_fu = glyph_y;
 
             cursor_x += glyph->AdvanceX;
             cursor_y += glyph->AdvanceY;
@@ -292,6 +292,22 @@ fn Arr_ShapedGlyph shape_text_uncached(Arena *arena, FontInst *inst, Str text) {
     return vec_arr(&output);
 }
 
+fn Arr_ShapedGlyphPX convert_shape_result_to_px(Arena *arena,
+                                                FontInst *inst,
+                                                Arr_ShapedGlyph shape_result) {
+    Arr_ShapedGlyphPX shape_result_px = arena_push_arr(arena, ShapedGlyphPX, shape_result.count);
+    for (u64 i = 0; i < shape_result_px.count; i++) {
+        ShapedGlyph glyph = A(shape_result, i);
+        ShapedGlyphPX *glyph_px = &A(shape_result_px, i);
+        glyph_px->glyph_id = glyph.glyph_id;
+        glyph_px->pos_px.x =
+            (f32)glyph.x_fu * (f32)inst->px_per_em / (f32)inst->ft_face->units_per_EM;
+        glyph_px->pos_px.y =
+            (f32)glyph.y_fu * (f32)inst->px_per_em / (f32)inst->ft_face->units_per_EM;
+    }
+    return shape_result_px;
+}
+
 fn void font_prepare_to_render(FontSystem *ctx, UI_Box *box, FVec_QuadRequest *quad_reqs) {
     Arena *scratch = arena_acquire();
 
@@ -300,7 +316,7 @@ fn void font_prepare_to_render(FontSystem *ctx, UI_Box *box, FVec_QuadRequest *q
         get_or_create_font_inst(ctx, box->font_file, box->font_size_px, box->font_outline_px);
 
     // Clone because we may mutate when clipping with `…`
-    Arr_ShapedGlyph shaped_glyphs = shape_text(scratch, ctx, non_outline_inst, box->text_content);
+    Arr_ShapedGlyphPX shaped_glyphs = shape_text(scratch, ctx, non_outline_inst, box->text_content);
 
     if (shaped_glyphs.count > 0) {
         // Rasterize glyphs. Must be done before alignment so glyph metrics are available
@@ -324,10 +340,10 @@ fn void ensure_bitmap_set_rasterized(FontInst *inst, u32 glyph_id) {
     }
 }
 
-fn Arr_ShapedGlyph align_text(FontSystem *ctx,
-                              UI_Box *box,
-                              FontInst *inst,
-                              Arr_ShapedGlyph shaped_glyphs) {
+fn Arr_ShapedGlyphPX align_text(FontSystem *ctx,
+                                UI_Box *box,
+                                FontInst *inst,
+                                Arr_ShapedGlyphPX shaped_glyphs) {
     // Calculate left and right bound, and clip if necessary
     f32 x_left_rt_line = 0;
     f32 x_right_rt_line = 0;
@@ -357,7 +373,7 @@ fn Arr_ShapedGlyph align_text(FontSystem *ctx,
             // Add ellipsis and try again
             if (shaped_glyphs.count == 1) {
                 // Chop off final glyph :(
-                shaped_glyphs = (Arr_ShapedGlyph){};
+                shaped_glyphs = (Arr_ShapedGlyphPX){};
             } else if (arr_last(shaped_glyphs).glyph_id == ellipsis_id) {
                 // We already have an ellipsis, so chop off two glyphs
                 shaped_glyphs = arr_slice(shaped_glyphs, 0, shaped_glyphs.count - 1);
@@ -389,7 +405,7 @@ fn Arr_ShapedGlyph align_text(FontSystem *ctx,
 
     // Reposition shape result so that subpixel bitmap selection respects center transform
     for (u64 i = 0; i < shaped_glyphs.count; i++) {
-        ShapedGlyph *g = &A(shaped_glyphs, i);
+        ShapedGlyphPX *g = &A(shaped_glyphs, i);
         g->pos_px.x = g->pos_px.x + x_ref_rt_window - x_ref_rt_line;
     }
 
@@ -400,10 +416,10 @@ fn void emit_glyph_quads(FontSystem *ctx,
                          UI_Box *box,
                          FontInst *non_outline_inst,
                          FontInst *outline_inst,
-                         Arr_ShapedGlyph shaped_glyphs,
+                         Arr_ShapedGlyphPX shaped_glyphs,
                          FVec_QuadRequest *quad_reqs) {
     for (u64 i = 0; i < shaped_glyphs.count; i++) {
-        ShapedGlyph shaped_glyph = A(shaped_glyphs, i);
+        ShapedGlyphPX shaped_glyph = A(shaped_glyphs, i);
 
         if (box->font_outline_px > 0) {
             // Draw outline glyphs at same positions as non-outline glyphs
@@ -419,7 +435,7 @@ fn void emit_glyph_quads(FontSystem *ctx,
 
 fn void emit_glyph_quad(UI_Box *box,
                         GlyphBitmap *bitmap,
-                        ShapedGlyph shaped_glyph,
+                        ShapedGlyphPX shaped_glyph,
                         Color color,
                         u16 depth,
                         f32 center_y_px,
@@ -454,7 +470,7 @@ fn void emit_glyph_quad(UI_Box *box,
     }
 }
 
-fn GlyphBitmap *get_glyph_bitmap(FontInst *inst, ShapedGlyph shaped_glyph) {
+fn GlyphBitmap *get_glyph_bitmap(FontInst *inst, ShapedGlyphPX shaped_glyph) {
     GlyphBitmapSet *bitmap_set = &A(inst->bitmap_sets, shaped_glyph.glyph_id);
     // Calculate X subpixel position without bitmap X offset because
     // 1) We can't know bitmap X offset until we compute subpixel position -> bitmap step
