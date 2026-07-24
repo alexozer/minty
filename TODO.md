@@ -29,6 +29,14 @@
 <!-- Evaluate using plain C -->
 <!--     No practical advantage, it's mostly just a flex -->
 
+## BUGS
+
+New ellipsis bug
+    Probably related to new text bbox calculation
+Deltas not showing up
+Gained/loss time incorrect
+Time jitter when pausing
+
 ## Research
 
 GUI elements

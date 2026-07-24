@@ -150,35 +150,41 @@ fn void build_segment_times(Arena *arena,
                             Arr_SegSummary summaries,
                             u64 segment_idx,
                             UI_Box *row) {
+    // Common time style
+    UI_Style b3 = {};
+    UI_Style *style_template = &b3;
+    ui_parent(style_template, row);
+    ui_width_px(style_template, SMALL_TIME_WIDTH_PX);
+    ui_height_flex(style_template);
+    ui_flags(style_template, UI_Flag_TextAlignXRight);
+    ui_font(style_template, &session->layout.nunito_sans_bold, 27);
+    ui_text_outline(style_template, SMALL_TEXT_OUTLINE_PX);
+
+    build_segment_delta_time(arena, session, summaries, segment_idx, row, style_template);
+    build_segment_seg_time(arena, session, summaries, segment_idx, row, style_template);
+    build_segment_split_time(arena, session, summaries, segment_idx, row, style_template);
+}
+
+fn void build_segment_seg_time(Arena *arena,
+                               Session *session,
+                               Arr_SegSummary summaries,
+                               u64 segment_idx,
+                               UI_Box *row,
+                               UI_Style *style_template) {
     UI_Style style = {};
     UI_Style *s = &style;
 
-    Str pb_seg = {};
-    Str pb_split = {};
-    if (segment_idx < summaries.count) {
-        SegSummary *summary = &A(summaries, segment_idx);
-        pb_seg = format_opt_duration(arena, summary->pb_segment, 2, false);
-        pb_split = format_opt_duration(arena, summary->pb_split, 2, false);
+    SegSummary *summary = &A(summaries, segment_idx);
+    Opt_Duration t = {};
+    if (segment_idx < session->timer.live_splits.count) {
+        t = summary->live_segment;
     } else {
-        // TODO parse PB splits and stuff
-        // SegmentDef *segment = &A(session->file.segments, segment_idx);
-        pb_seg = S("??");
-        pb_split = S("??");
+        t = summary->pb_segment;
     }
+    Str text = format_opt_duration(arena, t, 2, false);
 
-    // Common time style
-    UI_Style b3 = {};
-    UI_Style *s_time = &b3;
-    ui_parent(s_time, row);
-    ui_width_px(s_time, SMALL_TIME_WIDTH_PX);
-    ui_height_flex(s_time);
-    ui_flags(s_time, UI_Flag_TextAlignXRight);
-    ui_font(s_time, &session->layout.nunito_sans_bold, 27);
-    ui_text_outline(s_time, SMALL_TEXT_OUTLINE_PX);
-
-    // First time
-    ui_style(s, s_time);
-    ui_text(s, pb_seg);
+    ui_style(s, style_template);
+    ui_text(s, text);
     ui_fg_color(s, session->layout.text_color);
     ui_box(arena, s);
     // Pad
@@ -186,11 +192,71 @@ fn void build_segment_times(Arena *arena,
     ui_width_px(s, TEXT_PAD);
     ui_height_flex(s);
     ui_box(arena, s);
+}
+
+fn void build_segment_split_time(Arena *arena,
+                                 Session *session,
+                                 Arr_SegSummary summaries,
+                                 u64 segment_idx,
+                                 UI_Box *row,
+                                 UI_Style *style_template) {
+    UI_Style style = {};
+    UI_Style *s = &style;
+
+    SegSummary *summary = &A(summaries, segment_idx);
+    Opt_Duration t = {};
+    if (segment_idx < session->timer.live_splits.count) {
+        t = summary->live_split;
+    } else {
+        t = summary->pb_split;
+    }
+    Str text = format_opt_duration(arena, t, 2, false);
+
+    ui_style(s, style_template);
+    ui_text(s, text);
+    ui_fg_color(s, session->layout.text_color);
+    ui_box(arena, s);
+    // Pad
+    ui_parent(s, row);
+    ui_width_px(s, TEXT_PAD);
+    ui_height_flex(s);
+    ui_box(arena, s);
+}
+
+fn void build_segment_delta_time(Arena *arena,
+                                 Session *session,
+                                 Arr_SegSummary summaries,
+                                 u64 segment_idx,
+                                 UI_Box *row,
+                                 UI_Style *style_template) {
+    UI_Style style = {};
+    UI_Style *s = &style;
+
+    SegSummary *summary = &A(summaries, segment_idx);
+    Opt_Duration live_split = summary->live_split;
+    Opt_Duration live_segment = summary->live_segment;
+    Opt_Duration pb_split = summary->pb_split;
+    Opt_Duration pb_segment = summary->pb_segment;
+    Opt_Duration live_delta = summary->live_delta;
+
+    // TODO this logic seems very stupid and wrong
+    bool show = false;
+    if (live_segment.present && pb_segment.present) {
+        show = live_segment.opt > pb_segment.opt;
+    } else if (live_split.present && pb_split.present) {
+        show = live_split.opt > pb_split.opt;
+    } else {
+        show = segment_idx > session->timer.live_splits.count;
+    }
 
     // Second time
-    ui_style(s, s_time);
-    ui_text(s, pb_split);
+    ui_style(s, style_template);
     ui_fg_color(s, session->layout.text_color);
+    Str delta = format_opt_duration(arena, none(Duration), 1, true);
+    if (show && live_delta.present) {
+        delta = format_opt_duration(arena, live_delta, 1, true);
+    }
+    ui_text(s, delta);
     ui_box(arena, s);
     // Pad
     ui_parent(s, row);
