@@ -204,7 +204,7 @@ fn void build_bottom_timer_ui(Arena *arena,
 
     ui_parent(s, parent);
     ui_width_flex(s);
-    ui_height_px(s, (f32)BIG_TIME_FONT_SIZE_PX * 1.05f);
+    ui_height_px(s, (f32)BIG_TIME_FONT_SIZE_PX);
     ui_flags(s, UI_Flag_ChildLayoutX);
     UI_Box *big_timer_row = ui_box(arena, s);
 
@@ -238,6 +238,12 @@ fn void build_bottom_timer_ui(Arena *arena,
     ui_parent(s, big_timer_row);
     ui_width_px(s, TEXT_PAD);
     ui_height_flex(s);
+    ui_box(arena, s);
+
+    // Vertical after big timer
+    ui_parent(s, parent);
+    ui_width_flex(s);
+    ui_height_px(s, TEXT_PAD);
     ui_box(arena, s);
 
     Opt_Duration gained_duration = {};
