@@ -99,21 +99,24 @@ fn FontInst *add_font_inst(ErrorContext *err,
             arena_push_arr(inst->arena, GlyphBitmapSet, (u64)inst->ft_face->num_glyphs);
 
         inst->kbts_ctx = kbts_CreateShapeContext(0, 0);
-        kbts_ShapePushFontFromMemory(inst->kbts_ctx, inst->font_file->contents.ptr,
-                                     (int)inst->font_file->contents.count, 0);
+        kbts_font *font = kbts_ShapePushFontFromMemory(
+            inst->kbts_ctx, inst->font_file->contents.ptr, (int)inst->font_file->contents.count, 0);
+        if (font == nullptr) {
+            err_report(err, "Failed to parse font");
+        } else {
+            inst->center_y_px = compute_face_center_y(ctx, inst);
 
-        inst->center_y_px = compute_face_center_y(ctx, inst);
-
-        // Prefetch the glyph ID of ellipsis, if the font has it
-        Arr_ShapedGlyphPX shaped_glyphs = shape_text(scratch, ctx, inst, S("…"));
-        u32 ellipsis_glyph_id = A(shaped_glyphs, 0).glyph_id;
-        if (ellipsis_glyph_id != 0) {
-            inst->ellipsis_glyph_id = some(ellipsis_glyph_id, u32);
-            rasterize_glyph(inst, ellipsis_glyph_id);
+            // Prefetch the glyph ID of ellipsis, if the font has it
+            Arr_ShapedGlyphPX shaped_glyphs = shape_text(scratch, ctx, inst, S("…"));
+            u32 ellipsis_glyph_id = A(shaped_glyphs, 0).glyph_id;
+            if (ellipsis_glyph_id != 0) {
+                inst->ellipsis_glyph_id = some(ellipsis_glyph_id, u32);
+                rasterize_glyph(inst, ellipsis_glyph_id);
+            }
         }
     }
 
-    scope_close(scope, "Load font: family = '%.*s', style = '%.*s'", SF(inst->family_name),
+    scope_close(scope, "Load font: family = \"%.*s\", style = \"%.*s\"", SF(inst->family_name),
                 SF(inst->style_name));
     arena_release(scratch);
     return inst;
