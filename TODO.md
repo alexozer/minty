@@ -419,3 +419,20 @@ TODO:
 <!--     Fix the stupid while loop! -->
 <!--     Seems like there's a weird bug... changing string alignment can change results -->
 <!-- Implement shape cache -->
+
+# Basic actual timer functionality
+
+<!-- Parse full LSS -->
+    <!-- Segment history -->
+    <!-- Attempt history -->
+    <!-- Game icon -->
+Render full LSS
+    <!-- Big timer -->
+    <!-- Segments -->
+    <!-- Splits -->
+    +/- diff
+LSS colors / ahead / behind colors
+
+BUGS:
+    - Shape cache not accounting for font size
+    - Right-aligned numbers jitter

@@ -1,4 +1,5 @@
 #include "timer_ui.h"
+#include "timer_update.h"
 #include "timer_utils.h"
 #include "ui.h"
 
@@ -105,7 +106,10 @@ fn void build_segment_ui(Arena *arena,
     ui_width_flex(s);
     ui_height_px(s, INFO_HEIGHT_PX);
     ui_flags(s, UI_Flag_ChildLayoutX);
-    if (segment_idx == 3) {
+    bool show_bg =
+        session->timer.mode == TimerMode_Running || session->timer.mode == TimerMode_Paused;
+    bool is_live_segment = segment_idx == session->timer.live_splits.count;
+    if (show_bg && is_live_segment) {
         ui_color_bg(s, (Color){.r = 23, .g = 40, .b = 200, .a = 127});
     }
     ui_depth(s, -3);
@@ -209,7 +213,9 @@ fn void build_bottom_timer_ui(Arena *arena,
     ui_height_flex(s);
     ui_flags(s, UI_Flag_TextAlignRight);
     ui_font(s, &session->layout.nunito_sans_bold, BIG_TIME_FONT_SIZE_PX);
-    ui_text(s, format_duration(arena, (Duration)0, 2, false));
+    Instant now = get_current_monotonic_time();
+    Duration elapsed = timer_get_elapsed(&session->timer, now);
+    ui_text(s, format_duration(arena, elapsed, 2, false));
     ui_text_outline(s, BIG_TEXT_OUTLINE_PX);
     ui_box(arena, s);
 
