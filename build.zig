@@ -179,7 +179,7 @@ const ShaderTarget = enum {
 
 fn addShadercrossDep(
     b: *std.Build,
-    mintybreeze: *std.Build.Step.Compile,
+    minty: *std.Build.Step.Compile,
     xxd: *std.Build.Step.Compile,
     shader_source_path: []const u8,
     stage: ShaderStage,
@@ -215,17 +215,17 @@ fn addShadercrossDep(
         "os_shader_{s}",
         .{std.fs.path.stem(shader_source_path)},
     );
-    addXxdDep(b, mintybreeze, xxd, compiled_shader_path, embed_var_name);
+    addXxdDep(b, minty, xxd, compiled_shader_path, embed_var_name);
 
     // Output compiled shader for inspection
     const shader_install = b.addInstallFile(compiled_shader_path, out_path);
-    mintybreeze.step.dependOn(&shader_install.step);
+    minty.step.dependOn(&shader_install.step);
 }
 
 // TODO avoid system xxd dependency
 fn addXxdDep(
     b: *std.Build,
-    mintybreeze: *std.Build.Step.Compile,
+    minty: *std.Build.Step.Compile,
     xxd: *std.Build.Step.Compile,
     source: std.Build.LazyPath,
     var_name: []const u8,
@@ -235,7 +235,7 @@ fn addXxdDep(
     run_xxd.addFileArg(source);
     const output = run_xxd.captureStdOut(.{});
 
-    mintybreeze.root_module.addCSourceFile(.{
+    minty.root_module.addCSourceFile(.{
         .file = output,
         .language = .c,
         .flags = c_flags_strict,
@@ -293,7 +293,7 @@ fn buildMainTarget(
     main.root_module.linkLibrary(sdl.artifact("SDL3"));
     main.root_module.linkLibrary(freetype.artifact("freetype"));
 
-    // Make mintybreeze depend on codegen
+    // Make minty depend on codegen
     const codegen_step = b.addRunArtifact(codegen);
     for (sources) |source| {
         if (std.mem.endsWith(u8, source, "base.c")) continue;
@@ -334,27 +334,27 @@ pub fn build(b: *std.Build) !void {
     b.installArtifact(xxd);
 
     //
-    // mintybreeze
+    // minty
     //
 
-    const mintybreeze_sources = try getSourceFiles(b, "src", ".c", "test.c");
-    const mintybreeze = try buildMainTarget(
+    const minty_sources = try getSourceFiles(b, "src", ".c", "test.c");
+    const minty = try buildMainTarget(
         b,
-        "mintybreeze",
-        mintybreeze_sources,
+        "minty",
+        minty_sources,
         specified_target,
         specified_optimize,
         codegen,
         xxd,
     );
-    b.installArtifact(mintybreeze);
+    b.installArtifact(minty);
 
-    const run_mintybreeze = b.addRunArtifact(mintybreeze);
+    const run_minty = b.addRunArtifact(minty);
     if (b.args) |args| {
-        run_mintybreeze.addArgs(args);
+        run_minty.addArgs(args);
     }
-    const run_mintybreeze_step = b.step("run", "Run the application");
-    run_mintybreeze_step.dependOn(&run_mintybreeze.step);
+    const run_minty_step = b.step("run", "Run the application");
+    run_minty_step.dependOn(&run_minty.step);
 
     //
     // Tests
@@ -363,7 +363,7 @@ pub fn build(b: *std.Build) !void {
     const test_sources = try getSourceFiles(b, "src", ".c", "main.c");
     const test_exe = try buildMainTarget(
         b,
-        "mintybreeze-tests",
+        "minty-tests",
         test_sources,
         host_target,
         specified_optimize,
@@ -381,10 +381,10 @@ pub fn build(b: *std.Build) !void {
     //
 
     var cdb_targets: std.ArrayList(*std.Build.Step.Compile) = .empty;
-    try cdb_targets.append(b.allocator, mintybreeze);
+    try cdb_targets.append(b.allocator, minty);
     try cdb_targets.append(b.allocator, codegen);
     try cdb_targets.append(b.allocator, xxd);
     const cdb_step = zcc.createStep(b, "cdb", try cdb_targets.toOwnedSlice(b.allocator));
     // Ideally this should depend on every target it's generating the cdb for I suppose
-    cdb_step.dependOn(&mintybreeze.step);
+    cdb_step.dependOn(&minty.step);
 }

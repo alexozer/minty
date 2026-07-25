@@ -1,5 +1,5 @@
 .{
-    .name = .mintybreeze,
+    .name = .minty,
     .version = "0.0.1",
     .dependencies = .{
         .compile_commands = .{
@@ -13,5 +13,5 @@
         },
     },
     .paths = .{""},
-    .fingerprint = 0x74bc02627ff6c0b0,
+    .fingerprint = 0xc16d6f2819ec4890,
 }
