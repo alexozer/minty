@@ -8,5 +8,5 @@
 /.cache
 /zig-pkg
 /test-images
-/blitter.xcodeproj
+/minty.xcodeproj
 profile.json.gz

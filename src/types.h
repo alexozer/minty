@@ -280,12 +280,6 @@ struct FontFile {
 };
 derive_struct(FontFile);
 
-enum TextBBoxType {
-    TextBBoxType_Glyph,
-    TextBBoxType_Pen,
-};
-derive_enum(TextBBoxType);
-
 struct Layout {
     Color text_color;
     Color background_color;
@@ -438,15 +432,16 @@ enum UI_Flag : u32 {
     UI_Flag_IgnoreUserScale = bit(14),
     UI_Flag_DrawColoredBG = bit(15),
     // Useful for placing two text blocks next to each other
-    UI_Flag_TextBBoxPen = bit(16),
-    UI_Flag_TextBBoxGlyph = bit(17),
-    UI_Flag_TextAlignYBottom = bit(18),
-    UI_Flag_TextAlignYCenter = bit(19),
+    UI_Flag_TextAlignYBottom = bit(16),
+    UI_Flag_TextAlignYCenter = bit(17),
+    UI_Flag_FloatX = bit(18),
+    UI_Flag_FloatY = bit(19),
 };
 derive_enum(UI_Flag);
 
 derive_struct_pre(UI_Box);
 struct UI_Box {
+    Str id;
     UI_Flag flags;
     UI_Size input_size;
     Texture *texture;
@@ -457,6 +452,7 @@ struct UI_Box {
     u16 font_size_px;
     f32 font_outline_px;
     i16 depth;
+    PosF float_pos;
 
     UI_Box *parent;
     Vec_P_UI_Box childs;
@@ -478,6 +474,7 @@ struct UI_Style {
     u16 font_size_px;
     f32 font_outline_px;
     i16 depth;
+    PosF float_pos;
 };
 derive_struct(UI_Style);
 
@@ -573,5 +570,6 @@ struct App {
     RenderState *render_state;
     TextureSystem *texture_system;
     FontSystem font_system;
+    UI_View main_view;
 };
 derive_struct(App);

@@ -144,6 +144,8 @@ static inline u64 pos_mod(i64 v, u64 m) {
         b = _a_;             \
     })
 
+fn f32 lerp(f32 a, f32 b, f32 t);
+
 //
 // Arenas
 //

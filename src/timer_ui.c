@@ -13,12 +13,7 @@ constexpr f32 SMALL_TEXT_OUTLINE_PX = 1.5;
 constexpr f32 BIG_TEXT_OUTLINE_PX = 3;
 constexpr f32 TEXT_PAD = 10.f;  // ??
 
-fn UI_Box *build_timer_ui(Arena *arena,
-                          FontSystem *font_system,
-                          Session *session,
-                          SizePX device_size,
-                          f32 os_scale,
-                          f32 user_scale) {
+fn void build_timer_ui(UI_View *view, Session *session) {
     constexpr f32 OUTER_PADDING = 12.f;
 
     UI_Style style = {};
@@ -32,43 +27,42 @@ fn UI_Box *build_timer_ui(Arena *arena,
     }
     ui_flags(s, UI_Flag_TextureZoom);
     ui_depth(s, -4);
-    UI_Box *root = ui_box(arena, s);
+    UI_Box *root = ui_box(view, s);
 
     // Inner root
-    build_padding(arena, s, root, OUTER_PADDING, UI_Flag_IgnoreUserScale);
+    build_padding(view, s, root, OUTER_PADDING, UI_Flag_IgnoreUserScale);
     ui_flags(s, UI_Flag_ChildLayoutY);
-    UI_Box *base = ui_box(arena, s);
+    UI_Box *base = ui_box(view, s);
 
-    build_timer_ui_impl(arena, base, session);
-    // build_text_test_ui(arena, base, session);
+    build_timer_ui_impl(view, base, session);
+    // build_text_test_ui(view, base, session);
 
-    layout_ui(font_system, root, device_size, os_scale, user_scale);
-    return root;
+    view->curr_frame.root = root;
 }
 
-fn void build_timer_ui_impl(Arena *arena, UI_Box *base, Session *session) {
+fn void build_timer_ui_impl(UI_View *view, UI_Box *base, Session *session) {
     UI_Style style = {};
     UI_Style *s = &style;
 
-    build_game_info_ui(arena, base, session);
+    build_game_info_ui(view, base, session);
 
     // Segments container
     ui_parent(s, base);
     ui_width_flex(s);
     ui_height_flex(s);
     ui_flags(s, UI_Flag_ChildLayoutY | UI_Flag_ClipChilds);
-    UI_Box *segments_container = ui_box(arena, s);
+    UI_Box *segments_container = ui_box(view, s);
 
-    Arr_SegSummary summaries = calc_seg_summary(arena, session);
+    Arr_SegSummary summaries = calc_seg_summary(view->curr_frame.arena, session);
     for (u64 i = 0; i < session->file.segments.count; i++) {
-        build_segment_ui(arena, segments_container, session, summaries, i);
+        build_segment_ui(view, segments_container, session, summaries, i);
     }
 
-    build_big_timer(arena, session, summaries, base);
-    build_bottom_stats(arena, session, summaries, base);
+    build_big_timer(view, session, summaries, base);
+    build_bottom_stats(view, session, summaries, base);
 }
 
-fn void build_game_info_ui(Arena *arena, UI_Box *base, Session *session) {
+fn void build_game_info_ui(UI_View *view, UI_Box *base, Session *session) {
     UI_Style b1 = {};
     UI_Style *s = &b1;
 
@@ -86,15 +80,15 @@ fn void build_game_info_ui(Arena *arena, UI_Box *base, Session *session) {
     // Game name
     ui_style(s, s_header);
     ui_text(s, session->file.game_name);
-    ui_box(arena, s);
+    ui_box(view, s);
 
     // Category name
     ui_style(s, s_header);
     ui_text(s, session->file.category_name);
-    ui_box(arena, s);
+    ui_box(view, s);
 }
 
-fn void build_segment_ui(Arena *arena,
+fn void build_segment_ui(UI_View *view,
                          UI_Box *parent,
                          Session *session,
                          Arr_SegSummary summaries,
@@ -109,28 +103,36 @@ fn void build_segment_ui(Arena *arena,
     ui_width_flex(s);
     ui_height_px(s, INFO_HEIGHT_PX);
     ui_flags(s, UI_Flag_ChildLayoutX);
+    UI_Box *row = ui_box(view, s);
+
+    // Current row background highlight
     bool show_bg =
         session->timer.mode == TimerMode_Running || session->timer.mode == TimerMode_Paused;
     bool is_live_segment = segment_idx == session->timer.live_splits.count;
     if (show_bg && is_live_segment) {
+        ui_parent(s, parent);
+        ui_width_flex(s);
+        ui_height_px(s, INFO_HEIGHT_PX);
+        ui_flags(s, UI_Flag_FloatY);
+        ui_depth(s, -3);
         ui_color_bg(s, (Color){.r = 23, .g = 40, .b = 200, .a = 127});
+        ui_float_y(s, INFO_HEIGHT_PX * (f32)segment_idx);
+        ui_box_id(view, s, "CurrSegHL");
     }
-    ui_depth(s, -3);
-    UI_Box *row = ui_box(arena, s);
 
     // Icon outer
     ui_parent(s, row);
     ui_width_px(s, SEGMENT_HEIGHT_PX);
     ui_height_flex(s);
-    UI_Box *icon_outer = ui_box(arena, s);
+    UI_Box *icon_outer = ui_box(view, s);
 
     // Icon inner
     if (segment->icon_texture.present) {
-        build_padding(arena, s, icon_outer, ICON_PADDING_PX, UI_Flag_None);
+        build_padding(view, s, icon_outer, ICON_PADDING_PX, UI_Flag_None);
         ui_texture(s, &segment->icon_texture.opt);
         ui_flags(s, UI_Flag_TextureContain);
     }
-    ui_box(arena, s);
+    ui_box(view, s);
 
     // Split name
     ui_parent(s, row);
@@ -141,12 +143,12 @@ fn void build_segment_ui(Arena *arena,
     ui_text_outline(s, SMALL_TEXT_OUTLINE_PX);
     ui_text(s, segment->name);
     ui_fg_color(s, session->layout.text_color);
-    ui_box(arena, s);
+    ui_box(view, s);
 
-    build_segment_times(arena, session, summaries, segment_idx, row);
+    build_segment_times(view, session, summaries, segment_idx, row);
 }
 
-fn void build_segment_times(Arena *arena,
+fn void build_segment_times(UI_View *view,
                             Session *session,
                             Arr_SegSummary summaries,
                             u64 segment_idx,
@@ -161,12 +163,12 @@ fn void build_segment_times(Arena *arena,
     ui_font(style_template, &session->layout.nunito_sans_bold, 27);
     ui_text_outline(style_template, SMALL_TEXT_OUTLINE_PX);
 
-    build_segment_delta_time(arena, session, summaries, segment_idx, row, style_template);
-    build_segment_seg_time(arena, session, summaries, segment_idx, row, style_template);
-    build_segment_split_time(arena, session, summaries, segment_idx, row, style_template);
+    build_segment_delta_time(view, session, summaries, segment_idx, row, style_template);
+    build_segment_seg_time(view, session, summaries, segment_idx, row, style_template);
+    build_segment_split_time(view, session, summaries, segment_idx, row, style_template);
 }
 
-fn void build_segment_seg_time(Arena *arena,
+fn void build_segment_seg_time(UI_View *view,
                                Session *session,
                                Arr_SegSummary summaries,
                                u64 segment_idx,
@@ -182,17 +184,17 @@ fn void build_segment_seg_time(Arena *arena,
     } else {
         t = summary->pb_segment;
     }
-    Str text = format_opt_duration(arena, t, 2, false);
+    Str text = format_opt_duration(view->curr_frame.arena, t, 2, false);
 
     ui_style(s, style_template);
     ui_text(s, text);
     ui_fg_color(s, session->layout.text_color);
-    ui_box(arena, s);
+    ui_box(view, s);
 
-    pad_box(arena, row, TEXT_PAD);
+    pad_box(view, row, TEXT_PAD);
 }
 
-fn void build_segment_split_time(Arena *arena,
+fn void build_segment_split_time(UI_View *view,
                                  Session *session,
                                  Arr_SegSummary summaries,
                                  u64 segment_idx,
@@ -208,17 +210,17 @@ fn void build_segment_split_time(Arena *arena,
     } else {
         t = summary->pb_split;
     }
-    Str text = format_opt_duration(arena, t, 2, false);
+    Str text = format_opt_duration(view->curr_frame.arena, t, 2, false);
 
     ui_style(s, style_template);
     ui_text(s, text);
     ui_fg_color(s, session->layout.text_color);
-    ui_box(arena, s);
+    ui_box(view, s);
 
-    pad_box(arena, row, TEXT_PAD);
+    pad_box(view, row, TEXT_PAD);
 }
 
-fn void build_segment_delta_time(Arena *arena,
+fn void build_segment_delta_time(UI_View *view,
                                  Session *session,
                                  Arr_SegSummary summaries,
                                  u64 segment_idx,
@@ -247,22 +249,22 @@ fn void build_segment_delta_time(Arena *arena,
 
     Color text_color = get_delta_color(session, summaries, segment_idx);
 
-    pad_box(arena, row, TEXT_PAD);
+    pad_box(view, row, TEXT_PAD);
 
     ui_style(s, style_template);
     ui_width_text_content(s);  // Leave as much room for split name as possible
     ui_fg_color(s, text_color);
-    Str delta = format_opt_duration(arena, none(Duration), 1, true);
+    Str delta = format_opt_duration(view->curr_frame.arena, none(Duration), 1, true);
     if (show && live_delta.present) {
-        delta = format_opt_duration(arena, live_delta, 1, true);
+        delta = format_opt_duration(view->curr_frame.arena, live_delta, 1, true);
     }
     ui_text(s, delta);
-    ui_box(arena, s);
+    ui_box(view, s);
 
-    pad_box(arena, row, TEXT_PAD);
+    pad_box(view, row, TEXT_PAD);
 }
 
-fn void pad_box(Arena *arena, UI_Box *parent, f32 pad_px) {
+fn void pad_box(UI_View *view, UI_Box *parent, f32 pad_px) {
     UI_Style style = {};
     UI_Style *s = &style;
 
@@ -274,13 +276,13 @@ fn void pad_box(Arena *arena, UI_Box *parent, f32 pad_px) {
         ui_width_flex(s);
         ui_height_px(s, pad_px);
     }
-    ui_box(arena, s);
+    ui_box(view, s);
 }
 
-fn void build_big_timer(Arena *arena, Session *session, Arr_SegSummary summaries, UI_Box *parent) {
+fn void build_big_timer(UI_View *view, Session *session, Arr_SegSummary summaries, UI_Box *parent) {
     Instant now = get_current_monotonic_time();
     Duration elapsed = timer_get_elapsed(&session->timer, now);
-    Str elapsed_str = format_duration(arena, elapsed, 2, false);
+    Str elapsed_str = format_duration(view->curr_frame.arena, elapsed, 2, false);
     Str elapsed_part1 = str_slice(elapsed_str, 0, elapsed_str.count - 3);
     Str elapsed_part2 = str_slice(elapsed_str, elapsed_str.count - 3, elapsed_str.count);
 
@@ -291,7 +293,7 @@ fn void build_big_timer(Arena *arena, Session *session, Arr_SegSummary summaries
     ui_width_flex(s);
     ui_height_px(s, (f32)BIG_TIME_FONT_SIZE_PX);
     ui_flags(s, UI_Flag_ChildLayoutX);
-    UI_Box *big_timer_row = ui_box(arena, s);
+    UI_Box *big_timer_row = ui_box(view, s);
 
     // Big timer part 1
     ui_parent(s, big_timer_row);
@@ -302,7 +304,7 @@ fn void build_big_timer(Arena *arena, Session *session, Arr_SegSummary summaries
     ui_text(s, elapsed_part1);
     ui_text_outline(s, BIG_TEXT_OUTLINE_PX);
     ui_fg_color(s, session->layout.text_color);
-    ui_box(arena, s);
+    ui_box(view, s);
 
     // Big timer part 2
     ui_parent(s, big_timer_row);
@@ -313,16 +315,16 @@ fn void build_big_timer(Arena *arena, Session *session, Arr_SegSummary summaries
     ui_text(s, elapsed_part2);
     ui_text_outline(s, BIG_TEXT_OUTLINE_PX);
     ui_fg_color(s, session->layout.text_color);
-    ui_box(arena, s);
+    ui_box(view, s);
 
     // Right Pad
-    pad_box(arena, big_timer_row, TEXT_PAD);
+    pad_box(view, big_timer_row, TEXT_PAD);
 
     // Vertical after big timer
-    pad_box(arena, parent, TEXT_PAD);
+    pad_box(view, parent, TEXT_PAD);
 }
 
-fn void build_bottom_stats(Arena *arena,
+fn void build_bottom_stats(UI_View *view,
                            Session *session,
                            Arr_SegSummary summaries,
                            UI_Box *parent) {
@@ -330,19 +332,21 @@ fn void build_bottom_stats(Arena *arena,
     if (session->timer.live_splits.count > 0) {
         gained_duration = A(summaries, session->timer.live_splits.count - 1).gained;
     }
-    Str gained = format_opt_duration(arena, gained_duration, 2, true);
+    Str gained = format_opt_duration(view->curr_frame.arena, gained_duration, 2, true);
     Color gained_color = session->layout.text_color;
     if (gained_duration.present) {
         gained_color =
             get_gained_color(session, gained_duration.opt <= 0, gained_duration.opt <= 0);
     }
 
-    Str bpt = format_opt_duration(arena, calc_best_possible_time(session, summaries), 2, false);
-    Str sob = format_opt_duration(arena, calc_sum_of_best_segments(summaries), 2, false);
+    Str bpt = format_opt_duration(view->curr_frame.arena,
+                                  calc_best_possible_time(session, summaries), 2, false);
+    Str sob =
+        format_opt_duration(view->curr_frame.arena, calc_sum_of_best_segments(summaries), 2, false);
 
-    build_bottom_stat(arena, parent, session, S("Previous Segment"), gained, gained_color);
-    build_bottom_stat(arena, parent, session, S("Best Possible Time"), bpt, COLOR_WHITE);
-    build_bottom_stat(arena, parent, session, S("Sum of Best Segments"), sob, COLOR_WHITE);
+    build_bottom_stat(view, parent, session, S("Previous Segment"), gained, gained_color);
+    build_bottom_stat(view, parent, session, S("Best Possible Time"), bpt, COLOR_WHITE);
+    build_bottom_stat(view, parent, session, S("Sum of Best Segments"), sob, COLOR_WHITE);
 }
 
 fn Color get_delta_color(Session *session, Arr_SegSummary summaries, u64 idx) {
@@ -378,7 +382,7 @@ fn Color get_gained_color(Session *session, bool ahead, bool gained) {
     return session->layout.behind_losing_time_color;
 }
 
-fn void build_bottom_stat(Arena *arena,
+fn void build_bottom_stat(UI_View *view,
                           UI_Box *parent,
                           Session *session,
                           Str label,
@@ -392,10 +396,10 @@ fn void build_bottom_stat(Arena *arena,
     ui_width_flex(s);
     ui_height_px(s, 40);
     ui_flags(s, UI_Flag_ChildLayoutX);
-    UI_Box *row = ui_box(arena, s);
+    UI_Box *row = ui_box(view, s);
 
     // Left Pad
-    pad_box(arena, row, TEXT_PAD);
+    pad_box(view, row, TEXT_PAD);
 
     // Label
     ui_parent(s, row);
@@ -406,7 +410,7 @@ fn void build_bottom_stat(Arena *arena,
     ui_flags(s, UI_Flag_TextClipEllipsis);
     ui_text_outline(s, SMALL_TEXT_OUTLINE_PX);
     ui_fg_color(s, session->layout.text_color);
-    ui_box(arena, s);
+    ui_box(view, s);
 
     // Value
     ui_parent(s, row);
@@ -417,13 +421,13 @@ fn void build_bottom_stat(Arena *arena,
     ui_text(s, value);
     ui_text_outline(s, SMALL_TEXT_OUTLINE_PX);
     ui_fg_color(s, value_color);
-    ui_box(arena, s);
+    ui_box(view, s);
 
     // Right Pad
-    pad_box(arena, row, TEXT_PAD);
+    pad_box(view, row, TEXT_PAD);
 }
 
-fn void build_padding(Arena *arena, UI_Style *s, UI_Box *parent, f32 pad_px, UI_Flag flags) {
+fn void build_padding(UI_View *view, UI_Style *s, UI_Box *parent, f32 pad_px, UI_Flag flags) {
     // Don't tell anyone we're not using UI_Style
     parent->flags |= UI_Flag_ChildLayoutY;
 
@@ -432,35 +436,35 @@ fn void build_padding(Arena *arena, UI_Style *s, UI_Box *parent, f32 pad_px, UI_
     ui_width_flex(s);
     ui_height_px(s, pad_px);
     ui_flags(s, flags);
-    ui_box(arena, s);
+    ui_box(view, s);
 
     // Middle row
     ui_parent(s, parent);
     ui_width_flex(s);
     ui_height_flex(s);
     ui_flags(s, flags | UI_Flag_ChildLayoutX);
-    UI_Box *middle_row = ui_box(arena, s);
+    UI_Box *middle_row = ui_box(view, s);
 
     // Bottom pad
     ui_parent(s, parent);
     ui_width_flex(s);
     ui_height_px(s, pad_px);
     ui_flags(s, flags);
-    ui_box(arena, s);
+    ui_box(view, s);
 
     // Left pad
     ui_parent(s, middle_row);
     ui_width_px(s, pad_px);
     ui_height_flex(s);
     ui_flags(s, flags);
-    ui_box(arena, s);
+    ui_box(view, s);
 
     // Right pad
     ui_parent(s, middle_row);
     ui_width_px(s, pad_px);
     ui_height_flex(s);
     ui_flags(s, flags);
-    ui_box(arena, s);
+    ui_box(view, s);
 
     // Middle box
     ui_parent(s, middle_row);
@@ -470,7 +474,7 @@ fn void build_padding(Arena *arena, UI_Style *s, UI_Box *parent, f32 pad_px, UI_
     // ... applied to style, so next box will be inserted in the correct position
 }
 
-fn void build_text_test_ui(Arena *arena, UI_Box *base, Session *session) {
+fn void build_text_test_ui(UI_View *view, UI_Box *base, Session *session) {
     UI_Style b1 = {};
     UI_Style *s = &b1;
 
@@ -486,33 +490,33 @@ fn void build_text_test_ui(Arena *arena, UI_Box *base, Session *session) {
     ui_font(s, &session->layout.nunito_sans_bold, 30);
     ui_text(s, S("The Legend of Zelda: Tears of the Kingdom"));
     ui_flags(s, UI_Flag_TextAlignXCenter);
-    ui_box(arena, s);
+    ui_box(view, s);
 
     ui_style(s, s_row);
     ui_font(s, &session->layout.nunito_sans_bold, 30);
     ui_text(s, S("All Main Quests 1.0.0"));
     ui_flags(s, UI_Flag_TextAlignXCenter);
-    ui_box(arena, s);
+    ui_box(view, s);
 
     ui_style(s, s_row);
     ui_font(s, &session->layout.nunito_sans_bold, 20);
     ui_text(s, S("iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii"));
     ui_flags(s, UI_Flag_TextAlignXCenter);
-    ui_box(arena, s);
+    ui_box(view, s);
 
     ui_style(s, s_row);
     ui_font(s, &session->layout.kosugi_maru_regular, 25);
     ui_text(s, S("人類社会のすべての構成員の固有の尊厳と平等で"));
-    ui_box(arena, s);
+    ui_box(view, s);
 
     ui_style(s, s_row);
     ui_font(s, &session->layout.departure_mono_regular, 22);
     ui_text(s, S("Flight 0x9428 is departing (NOW)."));
     ui_flags(s, UI_Flag_TextAlignXRight);
-    ui_box(arena, s);
+    ui_box(view, s);
 
     ui_style(s, s_row);
     ui_font(s, &session->layout.nunito_sans_bold, 22);
     ui_text(s, S("Emoji test… 🍓"));
-    ui_box(arena, s);
+    ui_box(view, s);
 }

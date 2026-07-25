@@ -346,33 +346,17 @@ fn void ensure_bitmap_set_rasterized(FontInst *inst, u32 glyph_id) {
     }
 }
 
-fn RectF get_shaped_text_bbox(FontInst *inst,
-                              Arr_ShapedGlyphPX shaped_glyphs,
-                              TextBBoxType bbox_type) {
-    switch (bbox_type) {
-    case TextBBoxType_Glyph: {
-        GlyphBitmap *left_bitmap = get_glyph_bitmap(inst, A(shaped_glyphs, 0));
-        GlyphBitmap *right_bitmap = get_glyph_bitmap(inst, arr_last(shaped_glyphs));
-        f32 x_left_rt_line = A(shaped_glyphs, 0).pos_px.x + left_bitmap->bbox.x;
-        f32 x_right_rt_line =
-            arr_last(shaped_glyphs).pos_px.x + right_bitmap->bbox.x + right_bitmap->bbox.w;
-        return (RectF){.x = x_left_rt_line, .w = x_right_rt_line - x_left_rt_line};
-    }
-    case TextBBoxType_Pen: {
-        f32 x_right_rt_line =
-            arr_last(shaped_glyphs).pos_px.x + arr_last(shaped_glyphs).x_advance_px;
-        return (RectF){.w = x_right_rt_line};
-    }
-    }
+fn RectF get_shaped_text_bbox(FontInst *inst, Arr_ShapedGlyphPX shaped_glyphs) {
+    f32 x_right_rt_line = arr_last(shaped_glyphs).pos_px.x + arr_last(shaped_glyphs).x_advance_px;
+    return (RectF){.w = x_right_rt_line};
 }
 
-fn RectF
-get_text_bbox(FontSystem *ctx, FontFile *font, u32 font_size_px, TextBBoxType bbox_type, Str text) {
+fn RectF get_text_bbox(FontSystem *ctx, FontFile *font, u32 font_size_px, Str text) {
     Arena *scratch = arena_acquire();
 
     FontInst *inst = get_or_create_font_inst(ctx, font, font_size_px, 0);
     Arr_ShapedGlyphPX shaped_glyphs = shape_text(scratch, ctx, inst, text);
-    RectF bbox = get_shaped_text_bbox(inst, shaped_glyphs, bbox_type);
+    RectF bbox = get_shaped_text_bbox(inst, shaped_glyphs);
 
     arena_release(scratch);
     return bbox;
@@ -389,9 +373,7 @@ fn Arr_ShapedGlyphPX align_text(FontSystem *ctx,
             break;
         }
 
-        TextBBoxType bbox_type =
-            (box->flags & UI_Flag_TextBBoxGlyph) ? TextBBoxType_Glyph : TextBBoxType_Pen;
-        text_bbox = get_shaped_text_bbox(inst, shaped_glyphs, bbox_type);
+        text_bbox = get_shaped_text_bbox(inst, shaped_glyphs);
 
         f32 width = text_bbox.w;
         bool clip = box->flags & UI_Flag_TextClipEllipsis;

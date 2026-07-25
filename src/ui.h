@@ -8,7 +8,8 @@
 
 fn void ui_view_begin_frame(UI_View *view);
 fn void reset_ui_frame(UI_ViewFrame *frame);
-fn UI_Box *ui_box(Arena *frame_arena, UI_Style *s);
+fn UI_Box *ui_box(UI_View *view, UI_Style *s);
+fn UI_Box *ui_box_id(UI_View *view, UI_Style *s, const char *format, ...);
 fn void ui_width_px(UI_Style *s, f32 px);
 fn void ui_height_px(UI_Style *s, f32 px);
 fn void ui_width_flex(UI_Style *s);
@@ -28,26 +29,34 @@ fn void ui_depth(UI_Style *s, i16 depth);
 fn void ui_color_bg(UI_Style *s, Color color);
 fn void ui_fg_color(UI_Style *s, Color color);
 fn void ui_bg_color(UI_Style *s, Color color);
-fn void layout_ui(FontSystem *font_system,
-                  UI_Box *root,
+fn void ui_float_x(UI_Style *s, f32 x);
+fn void ui_float_y(UI_Style *s, f32 y);
+fn void layout_ui(UI_View *view,
+                  FontSystem *font_system,
                   SizePX device_size,
                   f32 os_scale,
                   f32 user_scale);
+fn void animate_ui(UI_View *view);
+fn void animate_ui_impl(UI_View *view, UI_Box *box);
 fn void scale_dim(UI_Dim *dim, f32 scale);
 fn void scale_ui(UI_Box *box, f32 os_scale, f32 user_scale);
 fn void convert_text_content_dims_to_fixed_px(FontSystem *font_system, UI_Box *parent, Axis axis);
+fn bool is_float(UI_Box *box, Axis axis);
 fn void layout_ui_main_axis(FontSystem *font_system, UI_Box *parent, Axis axis);
 fn void layout_ui_cross_axis(FontSystem *font_system, UI_Box *parent, Axis axis);
 fn void layout_ui_impl(FontSystem *font_system, UI_Box *box);
-fn void render_ui(Arena *frame_arena,
-                  UI_Box *root,
+fn void render_ui(UI_View *view,
                   FontSystem *font_system,
+                  SizePX device_size,
+                  f32 os_scale,
+                  f32 user_scale,
+                  bool debug,
                   FVec_QuadRequest *requests);
-fn void render_ui_impl(Arena *frame_arena,
+fn void render_ui_impl(UI_View *view,
                        UI_Box *box,
                        FontSystem *font_system,
                        FVec_QuadRequest *quad_reqs);
 fn bool rectf_contains(RectF *outer, RectF *inner);
 fn RectF scale_rect_proportionally(RectF outer, f32 inner_aspect_ratio, bool zoom);
-fn void debug_render_ui(Arena *frame_arena, UI_Box *root, FVec_QuadRequest *requests);
+fn void debug_render_ui(UI_View *view, FVec_QuadRequest *requests);
 fn void debug_render_ui_impl(UI_Box *box, u64 depth, FVec_QuadRequest *reqs);

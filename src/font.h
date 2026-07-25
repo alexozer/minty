@@ -26,11 +26,8 @@ fn Arr_ShapedGlyphPX convert_shape_result_to_px(Arena *arena,
                                                 Arr_ShapedGlyph shape_result);
 fn void font_prepare_to_render(FontSystem *ctx, UI_Box *box, FVec_QuadRequest *quad_reqs);
 fn void ensure_bitmap_set_rasterized(FontInst *inst, u32 glyph_id);
-fn RectF get_shaped_text_bbox(FontInst *inst,
-                              Arr_ShapedGlyphPX shaped_glyphs,
-                              TextBBoxType bbox_type);
-fn RectF
-get_text_bbox(FontSystem *ctx, FontFile *font, u32 font_size_px, TextBBoxType bbox_type, Str text);
+fn RectF get_shaped_text_bbox(FontInst *inst, Arr_ShapedGlyphPX shaped_glyphs);
+fn RectF get_text_bbox(FontSystem *ctx, FontFile *font, u32 font_size_px, Str text);
 fn Arr_ShapedGlyphPX align_text(FontSystem *ctx,
                                 UI_Box *box,
                                 FontInst *inst,

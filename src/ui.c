@@ -25,7 +25,9 @@ fn void reset_ui_frame(UI_ViewFrame *frame) {
 }
 
 // TODO don't require ID for every box
-fn UI_Box *ui_box(Arena *frame_arena, UI_Style *s) {
+fn UI_Box *ui_box(UI_View *view, UI_Style *s) {
+    Arena *frame_arena = view->curr_frame.arena;
+
     UI_Box *box = arena_push(frame_arena, UI_Box);
     box->flags = s->flags;
     box->input_size = s->input_size;
@@ -37,6 +39,7 @@ fn UI_Box *ui_box(Arena *frame_arena, UI_Style *s) {
     box->font_size_px = s->font_size_px;
     box->font_outline_px = s->font_outline_px;
     box->depth = s->depth;
+    box->float_pos = s->float_pos;
 
     if (s->parent != nullptr) {
         box->parent = s->parent;
@@ -48,6 +51,19 @@ fn UI_Box *ui_box(Arena *frame_arena, UI_Style *s) {
     }
 
     *s = (UI_Style){};
+
+    return box;
+}
+
+fn UI_Box *ui_box_id(UI_View *view, UI_Style *s, const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    Str id = str_format_v(view->curr_frame.arena, format, args);
+    va_end(args);
+
+    UI_Box *box = ui_box(view, s);
+    box->id = id;
+    maps_set(view->curr_frame.arena, &view->curr_frame.id_box_map, id, box);
 
     return box;
 }
@@ -145,11 +161,20 @@ fn void ui_bg_color(UI_Style *s, Color color) {
     s->bg_color = color;
 }
 
-fn void layout_ui(FontSystem *font_system,
-                  UI_Box *root,
+fn void ui_float_x(UI_Style *s, f32 x) {
+    s->float_pos.x = x;
+}
+
+fn void ui_float_y(UI_Style *s, f32 y) {
+    s->float_pos.y = y;
+}
+
+fn void layout_ui(UI_View *view,
+                  FontSystem *font_system,
                   SizePX device_size,
                   f32 os_scale,
                   f32 user_scale) {
+    UI_Box *root = view->curr_frame.root;
     root->input_size.w.type = UI_DimType_FixedPX;
     root->input_size.w.value = device_size.w;
     root->input_size.h.type = UI_DimType_FixedPX;
@@ -164,7 +189,33 @@ fn void layout_ui(FontSystem *font_system,
         scale_ui(child, os_scale, user_scale);
     }
 
+    animate_ui(view);
     layout_ui_impl(font_system, root);
+}
+
+fn void animate_ui(UI_View *view) {
+    animate_ui_impl(view, view->curr_frame.root);
+}
+
+fn void animate_ui_impl(UI_View *view, UI_Box *box) {
+    if (!is_empty(box->id)) {
+        UI_Box *prev_box = maps_get(&view->prev_frame.id_box_map, box->id);
+        if (prev_box != nullptr) {
+            // Time to animate!
+            // TODO: framerate-independent lerp
+            if (box->flags & UI_Flag_FloatX) {
+                box->float_pos.x = lerp(prev_box->float_pos.x, box->float_pos.x, 0.7f);
+            }
+            if (box->flags & UI_Flag_FloatY) {
+                box->float_pos.y = lerp(prev_box->float_pos.y, box->float_pos.y, 0.7f);
+            }
+        }
+    }
+
+    for (u64 i = 0; i < box->childs.count; i++) {
+        UI_Box *child = A(box->childs, i);
+        animate_ui_impl(view, child);
+    }
 }
 
 fn void scale_dim(UI_Dim *dim, f32 scale) {
@@ -205,11 +256,17 @@ fn void convert_text_content_dims_to_fixed_px(FontSystem *font_system, UI_Box *p
 
         if (child_input->type == UI_DimType_TextContent) {
             RectF text_bbox = get_text_bbox(font_system, child->font_file, child->font_size_px,
-                                            TextBBoxType_Pen, child->text_content);
+                                            child->text_content);
             child_input->type = UI_DimType_FixedPX;
             child_input->value = text_bbox.w;
         }
     }
+}
+
+fn bool is_float(UI_Box *box, Axis axis) {
+    bool x_float = box->flags & UI_Flag_FloatX && axis == Axis_X;
+    bool y_float = box->flags & UI_Flag_FloatY && axis == Axis_Y;
+    return x_float || y_float;
 }
 
 fn void layout_ui_main_axis(FontSystem *font_system, UI_Box *parent, Axis axis) {
@@ -222,9 +279,10 @@ fn void layout_ui_main_axis(FontSystem *font_system, UI_Box *parent, Axis axis) 
     f32 parent_size = parent->bbox.size.dims[axis];
     f32 total_fixed_px = 0;
     for (u64 i = 0; i < parent->childs.count; i++) {
-        UI_Dim *child_input = &A(parent->childs, i)->input_size.dims[axis];
+        UI_Box *child = A(parent->childs, i);
+        UI_Dim *child_input = &child->input_size.dims[axis];
 
-        if (child_input->type == UI_DimType_FixedPX) {
+        if (!is_float(child, axis) && child_input->type == UI_DimType_FixedPX) {
             total_fixed_px += child_input->value;
         }
     }
@@ -232,9 +290,10 @@ fn void layout_ui_main_axis(FontSystem *font_system, UI_Box *parent, Axis axis) 
     // Compute total flex units
     f32 total_flex_units = 0;
     for (u64 i = 0; i < parent->childs.count; i++) {
-        UI_Dim *in_size = &A(parent->childs, i)->input_size.dims[axis];
+        UI_Box *child = A(parent->childs, i);
+        UI_Dim *in_size = &child->input_size.dims[axis];
 
-        if (in_size->type == UI_DimType_Flex) {
+        if (!is_float(child, axis) && in_size->type == UI_DimType_Flex) {
             total_flex_units += in_size->value;
         }
     }
@@ -247,8 +306,6 @@ fn void layout_ui_main_axis(FontSystem *font_system, UI_Box *parent, Axis axis) 
         UI_Dim *in_size = &child->input_size.dims[axis];
         f32 *out_size = &child->bbox.size.dims[axis];
         f32 *out_pos = &child->bbox.pos.dims[axis];
-
-        *out_pos = current_pos_px + parent_pos;
 
         switch (in_size->type) {
         case UI_DimType_FixedPX: {
@@ -265,7 +322,13 @@ fn void layout_ui_main_axis(FontSystem *font_system, UI_Box *parent, Axis axis) 
         }
         }
 
-        current_pos_px += *out_size;
+        // Floating children should have their output position set manually
+        if (is_float(child, axis)) {
+            *out_pos = parent_pos + child->float_pos.dims[axis];
+        } else {
+            *out_pos = current_pos_px + parent_pos;
+            current_pos_px += *out_size;
+        }
     }
 }
 
@@ -283,8 +346,6 @@ fn void layout_ui_cross_axis(FontSystem *font_system, UI_Box *parent, Axis axis)
         f32 *out_size = &child->bbox.size.dims[axis];
         f32 *out_pos = &child->bbox.pos.dims[axis];
 
-        *out_pos = parent->bbox.pos.dims[axis];
-
         switch (in_size->type) {
         case UI_DimType_FixedPX: {
             *out_size = in_size->value;
@@ -298,6 +359,12 @@ fn void layout_ui_cross_axis(FontSystem *font_system, UI_Box *parent, Axis axis)
             // Converted these to FixedPX
             log_unreachable();
         }
+        }
+
+        if (is_float(child, axis)) {
+            *out_pos = parent->bbox.pos.dims[axis] + child->float_pos.dims[axis];
+        } else {
+            *out_pos = parent->bbox.pos.dims[axis];
         }
     }
 }
@@ -337,14 +404,23 @@ fn void layout_ui_impl(FontSystem *font_system, UI_Box *box) {
     }
 }
 
-fn void render_ui(Arena *frame_arena,
-                  UI_Box *root,
+fn void render_ui(UI_View *view,
                   FontSystem *font_system,
+                  SizePX device_size,
+                  f32 os_scale,
+                  f32 user_scale,
+                  bool debug,
                   FVec_QuadRequest *requests) {
-    render_ui_impl(frame_arena, root, font_system, requests);
+    layout_ui(view, font_system, device_size, os_scale, user_scale);
+
+    UI_Box *box = view->curr_frame.root;
+    render_ui_impl(view, box, font_system, requests);
+    if (debug) {
+        debug_render_ui_impl(box, 0, requests);
+    }
 }
 
-fn void render_ui_impl(Arena *frame_arena,
+fn void render_ui_impl(UI_View *view,
                        UI_Box *box,
                        FontSystem *font_system,
                        FVec_QuadRequest *quad_reqs) {
@@ -399,7 +475,7 @@ fn void render_ui_impl(Arena *frame_arena,
     for (u64 i = 0; i < box->childs.count; i++) {
         UI_Box *child = A(box->childs, i);
         if (!clip_rect.present || rectf_contains(clip_rect.opt, &child->bbox)) {
-            render_ui_impl(frame_arena, child, font_system, quad_reqs);
+            render_ui_impl(view, child, font_system, quad_reqs);
         }
     }
 }
@@ -430,7 +506,8 @@ fn RectF scale_rect_proportionally(RectF outer, f32 inner_aspect_ratio, bool zoo
     return inner;
 }
 
-fn void debug_render_ui(Arena *frame_arena, UI_Box *root, FVec_QuadRequest *requests) {
+fn void debug_render_ui(UI_View *view, FVec_QuadRequest *requests) {
+    UI_Box *root = view->curr_frame.root;
     debug_render_ui_impl(root, 0, requests);
 }
 
