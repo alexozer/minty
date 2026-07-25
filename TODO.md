@@ -36,9 +36,9 @@ New ellipsis bug
 Deltas not showing up at correct time
 <!-- Must color deltas -->
 <!-- Gained/loss time incorrect -->
+<!-- BPT/SOB not showing after completing first run on blank splits -->
 Time jitter when pausing
     Can we get "event time" of render call?
-BPT/SOB not showing after completing first run on blank splits
 
 ## Research
 

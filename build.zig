@@ -179,7 +179,7 @@ const ShaderTarget = enum {
 
 fn addShadercrossDep(
     b: *std.Build,
-    blitter: *std.Build.Step.Compile,
+    mintybreeze: *std.Build.Step.Compile,
     xxd: *std.Build.Step.Compile,
     shader_source_path: []const u8,
     stage: ShaderStage,
@@ -215,17 +215,17 @@ fn addShadercrossDep(
         "os_shader_{s}",
         .{std.fs.path.stem(shader_source_path)},
     );
-    addXxdDep(b, blitter, xxd, compiled_shader_path, embed_var_name);
+    addXxdDep(b, mintybreeze, xxd, compiled_shader_path, embed_var_name);
 
     // Output compiled shader for inspection
     const shader_install = b.addInstallFile(compiled_shader_path, out_path);
-    blitter.step.dependOn(&shader_install.step);
+    mintybreeze.step.dependOn(&shader_install.step);
 }
 
 // TODO avoid system xxd dependency
 fn addXxdDep(
     b: *std.Build,
-    blitter: *std.Build.Step.Compile,
+    mintybreeze: *std.Build.Step.Compile,
     xxd: *std.Build.Step.Compile,
     source: std.Build.LazyPath,
     var_name: []const u8,
@@ -235,7 +235,7 @@ fn addXxdDep(
     run_xxd.addFileArg(source);
     const output = run_xxd.captureStdOut(.{});
 
-    blitter.root_module.addCSourceFile(.{
+    mintybreeze.root_module.addCSourceFile(.{
         .file = output,
         .language = .c,
         .flags = c_flags_strict,
@@ -293,7 +293,7 @@ fn buildMainTarget(
     main.root_module.linkLibrary(sdl.artifact("SDL3"));
     main.root_module.linkLibrary(freetype.artifact("freetype"));
 
-    // Make Blitter depend on codegen
+    // Make mintybreeze depend on codegen
     const codegen_step = b.addRunArtifact(codegen);
     for (sources) |source| {
         if (std.mem.endsWith(u8, source, "base.c")) continue;
@@ -334,27 +334,27 @@ pub fn build(b: *std.Build) !void {
     b.installArtifact(xxd);
 
     //
-    // blitter
+    // mintybreeze
     //
 
-    const blitter_sources = try getSourceFiles(b, "src", ".c", "test.c");
-    const blitter = try buildMainTarget(
+    const mintybreeze_sources = try getSourceFiles(b, "src", ".c", "test.c");
+    const mintybreeze = try buildMainTarget(
         b,
-        "blitter",
-        blitter_sources,
+        "mintybreeze",
+        mintybreeze_sources,
         specified_target,
         specified_optimize,
         codegen,
         xxd,
     );
-    b.installArtifact(blitter);
+    b.installArtifact(mintybreeze);
 
-    const run_blitter = b.addRunArtifact(blitter);
+    const run_mintybreeze = b.addRunArtifact(mintybreeze);
     if (b.args) |args| {
-        run_blitter.addArgs(args);
+        run_mintybreeze.addArgs(args);
     }
-    const run_blitter_step = b.step("run", "Run the application");
-    run_blitter_step.dependOn(&run_blitter.step);
+    const run_mintybreeze_step = b.step("run", "Run the application");
+    run_mintybreeze_step.dependOn(&run_mintybreeze.step);
 
     //
     // Tests
@@ -363,7 +363,7 @@ pub fn build(b: *std.Build) !void {
     const test_sources = try getSourceFiles(b, "src", ".c", "main.c");
     const test_exe = try buildMainTarget(
         b,
-        "blitter-tests",
+        "mintybreeze-tests",
         test_sources,
         host_target,
         specified_optimize,
@@ -381,10 +381,10 @@ pub fn build(b: *std.Build) !void {
     //
 
     var cdb_targets: std.ArrayList(*std.Build.Step.Compile) = .empty;
-    try cdb_targets.append(b.allocator, blitter);
+    try cdb_targets.append(b.allocator, mintybreeze);
     try cdb_targets.append(b.allocator, codegen);
     try cdb_targets.append(b.allocator, xxd);
     const cdb_step = zcc.createStep(b, "cdb", try cdb_targets.toOwnedSlice(b.allocator));
     // Ideally this should depend on every target it's generating the cdb for I suppose
-    cdb_step.dependOn(&blitter.step);
+    cdb_step.dependOn(&mintybreeze.step);
 }

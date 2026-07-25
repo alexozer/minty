@@ -47,13 +47,13 @@ fn SDL_Window *sdl_create_window(ErrorContext *err,
 fn SDL_Window *init_window(ErrorContext *err) {
     Scope scope = scope_open(err);
 
-    if (!SDL_SetAppMetadata("Blitter", "0.0.1", nullptr)) {
+    if (!SDL_SetAppMetadata("MintyBreeze", "0.0.1", nullptr)) {
         err_report(err, "%s", SDL_GetError());
     }
 
     SDL_WindowFlags window_flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
-    SDL_Window *window =
-        sdl_create_window(err, S("Blitter"), DEFAULT_WINDOW_SIZE, MIN_WINDOW_SIZE, window_flags);
+    SDL_Window *window = sdl_create_window(err, S("MintyBreeze"), DEFAULT_WINDOW_SIZE,
+                                           MIN_WINDOW_SIZE, window_flags);
 
     scope_close(scope, "Initialize window");
     return window;
@@ -78,7 +78,7 @@ fn App *init_app(ErrorContext *err, Str path) {
 fn SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     thread_init();
     if (argc < 2) {
-        log_info("Usage: blitter <path-to-splits-file>");
+        log_info("Usage: mintybreeze <path-to-splits-file>");
         return SDL_APP_FAILURE;
     }
 

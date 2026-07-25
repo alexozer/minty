@@ -1,6 +1,6 @@
 .{
-    .name = .blitter,
-    .version = "0.16.0",
+    .name = .mintybreeze,
+    .version = "0.0.1",
     .dependencies = .{
         .compile_commands = .{
             .path = "3rdparty/zig-compile-commands",
@@ -13,5 +13,5 @@
         },
     },
     .paths = .{""},
-    .fingerprint = 0x7b75201a23cd3e18,
+    .fingerprint = 0x74bc02627ff6c0b0,
 }
