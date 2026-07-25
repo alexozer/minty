@@ -108,10 +108,10 @@ fn FontInst *add_font_inst(ErrorContext *err,
 
             // Prefetch the glyph ID of ellipsis, if the font has it
             Arr_ShapedGlyphPX shaped_glyphs = shape_text(scratch, ctx, inst, S("…"));
-            u32 ellipsis_glyph_id = A(shaped_glyphs, 0).glyph_id;
-            if (ellipsis_glyph_id != 0) {
-                inst->ellipsis_glyph_id = some(ellipsis_glyph_id, u32);
-                rasterize_glyph(inst, ellipsis_glyph_id);
+            ShapedGlyphPX glyph = A(shaped_glyphs, 0);
+            if (glyph.glyph_id != 0) {
+                inst->ellipsis = some(glyph, ShapedGlyphPX);
+                rasterize_glyph(inst, glyph.glyph_id);
             }
         }
     }
@@ -403,19 +403,22 @@ fn Arr_ShapedGlyphPX align_text(FontSystem *ctx,
         box->flags &= ~(UI_Flag_TextAlignXCenter | UI_Flag_TextAlignXRight);
         box->flags |= UI_Flag_TextAlignXLeft;
 
-        if (inst->ellipsis_glyph_id.present) {
-            u32 ellipsis_id = inst->ellipsis_glyph_id.opt;
+        if (inst->ellipsis.present) {
+            ShapedGlyphPX ellipsis = inst->ellipsis.opt;
+
             // Add ellipsis and try again
             if (shaped_glyphs.count == 1) {
                 // Chop off final glyph :(
                 shaped_glyphs = (Arr_ShapedGlyphPX){};
-            } else if (arr_last(shaped_glyphs).glyph_id == ellipsis_id) {
+            } else if (arr_last(shaped_glyphs).glyph_id == ellipsis.glyph_id) {
                 // We already have an ellipsis, so chop off two glyphs
                 shaped_glyphs = arr_slice(shaped_glyphs, 0, shaped_glyphs.count - 1);
-                arr_last(shaped_glyphs).glyph_id = ellipsis_id;
+                arr_last(shaped_glyphs).glyph_id = ellipsis.glyph_id;
+                arr_last(shaped_glyphs).x_advance_px = ellipsis.x_advance_px;
             } else {
                 // Just make the final glyph an ellipsis
-                arr_last(shaped_glyphs).glyph_id = ellipsis_id;
+                arr_last(shaped_glyphs).glyph_id = ellipsis.glyph_id;
+                arr_last(shaped_glyphs).x_advance_px = ellipsis.x_advance_px;
             }
         } else {
             // Just chop off a glyph and try again
