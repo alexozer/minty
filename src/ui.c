@@ -4,6 +4,26 @@
 
 constexpr i16 MIN_DEPTH = -4;
 
+fn void ui_view_begin_frame(UI_View *view) {
+    if (view->curr_frame.arena == nullptr) {
+        reset_ui_frame(&view->curr_frame);
+    }
+    if (view->prev_frame.arena == nullptr) {
+        reset_ui_frame(&view->prev_frame);
+    }
+    swap(view->curr_frame, view->prev_frame);
+    reset_ui_frame(&view->curr_frame);
+}
+
+fn void reset_ui_frame(UI_ViewFrame *frame) {
+    if (frame->arena != nullptr) {
+        arena_release(frame->arena);
+    }
+    *frame = (UI_ViewFrame){};
+    frame->arena = arena_acquire();
+    frame->ui_scale = 1;
+}
+
 // TODO don't require ID for every box
 fn UI_Box *ui_box(Arena *frame_arena, UI_Style *s) {
     UI_Box *box = arena_push(frame_arena, UI_Box);

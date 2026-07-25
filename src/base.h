@@ -137,6 +137,13 @@ static inline u64 pos_mod(i64 v, u64 m) {
     return (u64)(((v % (i64)m) + (i64)m) % (i64)m);
 }
 
+#define swap(a, b)           \
+    ({                       \
+        typeof(a) _a_ = (a); \
+        a = b;               \
+        b = _a_;             \
+    })
+
 //
 // Arenas
 //

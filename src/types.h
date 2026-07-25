@@ -481,10 +481,21 @@ struct UI_Style {
 };
 derive_struct(UI_Style);
 
-struct UI_System {
+derive_maps(P_UI_Box);
+
+struct UI_ViewFrame {
+    Arena *arena;
     f32 ui_scale;
+    UI_Box *root;
+    Maps_P_UI_Box id_box_map;
 };
-derive_struct(UI_System);
+derive_struct(UI_ViewFrame);
+
+struct UI_View {
+    UI_ViewFrame curr_frame;
+    UI_ViewFrame prev_frame;
+};
+derive_struct(UI_View);
 
 enum RenderInstType : u8 {
     RenderInstType_ClearTexture,

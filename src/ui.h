@@ -6,6 +6,8 @@
 
 #include "types.h"
 
+fn void ui_view_begin_frame(UI_View *view);
+fn void reset_ui_frame(UI_ViewFrame *frame);
 fn UI_Box *ui_box(Arena *frame_arena, UI_Style *s);
 fn void ui_width_px(UI_Style *s, f32 px);
 fn void ui_height_px(UI_Style *s, f32 px);

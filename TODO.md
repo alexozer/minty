@@ -31,8 +31,8 @@
 
 ## BUGS
 
-New ellipsis bug
-    Probably related to new text bbox calculation
+<!-- New ellipsis bug -->
+<!--     Probably related to new text bbox calculation -->
 Deltas not showing up at correct time
 <!-- Must color deltas -->
 <!-- Gained/loss time incorrect -->
@@ -447,3 +447,13 @@ LSS colors / ahead / behind colors
 BUGS:
     <!-- - Shape cache not accounting for font size -->
     - Right-aligned numbers jitter
+
+# Animation
+
+New state:
+
+UI_Frame
+    Arena
+    UI_Box root
+UI_System
+    Maybe?
