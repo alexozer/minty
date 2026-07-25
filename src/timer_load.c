@@ -215,6 +215,12 @@ fn Opt_Duration parse_opt_duration(ErrorContext *err, Str s) {
     Opt_Duration duration = {};
 
     if (s.count > 0) {
+        bool negative = false;
+        if (str_starts_with(s, S("-"))) {
+            negative = true;
+            s = str_slice(s, 1, s.count);
+        }
+
         // Hours
         StrPair pair = str_split2_err(err, s, ':');
         Str hours_str = pair.left;
@@ -240,6 +246,9 @@ fn Opt_Duration parse_opt_duration(ErrorContext *err, Str s) {
         Duration total = ((i64)hours * DURATION_HOUR) + ((i64)minutes * DURATION_MINUTE) +
                          ((i64)seconds * DURATION_SECOND) +
                          ((i64)milliseconds * DURATION_MILLISECOND);
+        if (negative) {
+            total = -total;
+        }
         duration = some(total, Duration);
     }
 
