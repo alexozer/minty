@@ -283,7 +283,6 @@ fn void build_big_timer(Arena *arena, Session *session, Arr_SegSummary summaries
     Str elapsed_str = format_duration(arena, elapsed, 2, false);
     Str elapsed_part1 = str_slice(elapsed_str, 0, elapsed_str.count - 3);
     Str elapsed_part2 = str_slice(elapsed_str, elapsed_str.count - 3, elapsed_str.count);
-    // Color = get_delta_color(session, summaries,
 
     UI_Style style = {};
     UI_Style *s = &style;
@@ -350,7 +349,10 @@ fn Color get_delta_color(Session *session, Arr_SegSummary summaries, u64 idx) {
     Color color = session->layout.text_color;
 
     SegSummary *summary = &A(summaries, idx);
-    if (summary->gained.present && summary->live_delta.present) {
+    if (summary->is_new_gold) {
+        return session->layout.best_segment_color;
+
+    } else if (summary->gained.present && summary->live_delta.present) {
         bool ahead = summary->live_delta.opt <= 0;
         bool gained = summary->gained.opt <= 0;
         color = get_gained_color(session, ahead, gained);
