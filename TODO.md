@@ -457,3 +457,28 @@ UI_Frame
     UI_Box root
 UI_System
     Maybe?
+
+## Split scroll animation
+
+Issue is we need to specify behavior without knowing the height of the area in advance.
+    Or do we? Can we do two layout passes?
+    Callback that's invoked once layout is determined?
+    Callbacks are a bit yucky... can we find a way to do two passes in a simpler way?
+
+Maybe each pass consists of:
+
+do:
+    Build UI
+    Layout UI
+    Emit UI_Box's flagged for deferred building
+while remaining boxes to build from > 0
+
+Should read Ryan's posts on panes and stuff... this might be a case of "it's a separate pane so
+should be built separately"
+
+<!-- Scroll childs flag -->
+<!-- Clip childs flag -->
+<!-- Scroll to include points -->
+<!--     But how to handle ambiguity? -->
+<!-- Nah -->
+

@@ -482,7 +482,10 @@ derive_maps(P_UI_Box);
 
 struct UI_ViewFrame {
     Arena *arena;
-    f32 ui_scale;
+    SizePX window_size;
+    f32 os_scale;
+    f32 user_scale;
+    bool debug_draw;
     UI_Box *root;
     Maps_P_UI_Box id_box_map;
 };
@@ -491,6 +494,7 @@ derive_struct(UI_ViewFrame);
 struct UI_View {
     UI_ViewFrame curr_frame;
     UI_ViewFrame prev_frame;
+    FontSystem *font_system;
 };
 derive_struct(UI_View);
 

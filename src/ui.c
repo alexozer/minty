@@ -4,24 +4,35 @@
 
 constexpr i16 MIN_DEPTH = -4;
 
-fn void ui_view_begin_frame(UI_View *view) {
-    if (view->curr_frame.arena == nullptr) {
-        reset_ui_frame(&view->curr_frame);
-    }
-    if (view->prev_frame.arena == nullptr) {
-        reset_ui_frame(&view->prev_frame);
-    }
+fn UI_View ui_view_init(FontSystem *font_system) {
+    return (UI_View){
+        .font_system = font_system,
+        .curr_frame.arena = arena_acquire(),
+        .prev_frame.arena = arena_acquire(),
+    };
+}
+
+fn void ui_view_begin_frame(UI_View *view,
+                            SizePX window_size,
+                            f32 os_scale,
+                            f32 user_scale,
+                            bool debug_draw) {
     swap(view->curr_frame, view->prev_frame);
     reset_ui_frame(&view->curr_frame);
+    view->curr_frame.window_size = window_size;
+    view->curr_frame.os_scale = os_scale;
+    view->curr_frame.user_scale = user_scale;
+    view->curr_frame.debug_draw = debug_draw;
+}
+
+fn void ui_view_end_frame(UI_View *view, FVec_QuadRequest *quad_requests) {
+    ui_render(view, quad_requests);
 }
 
 fn void reset_ui_frame(UI_ViewFrame *frame) {
-    if (frame->arena != nullptr) {
-        arena_release(frame->arena);
-    }
+    arena_release(frame->arena);
     *frame = (UI_ViewFrame){};
     frame->arena = arena_acquire();
-    frame->ui_scale = 1;
 }
 
 // TODO don't require ID for every box
@@ -169,32 +180,27 @@ fn void ui_float_y(UI_Style *s, f32 y) {
     s->float_pos.y = y;
 }
 
-fn void layout_ui(UI_View *view,
-                  FontSystem *font_system,
-                  SizePX device_size,
-                  f32 os_scale,
-                  f32 user_scale) {
-    UI_Box *root = view->curr_frame.root;
-    root->input_size.w.type = UI_DimType_FixedPX;
-    root->input_size.w.value = device_size.w;
-    root->input_size.h.type = UI_DimType_FixedPX;
-    root->input_size.h.value = device_size.h;
-    root->bbox.x = 0;
-    root->bbox.y = 0;
-    root->bbox.w = device_size.w;
-    root->bbox.h = device_size.h;
+fn void ui_layout(UI_View *view, UI_Box *box, SizePX size) {
+    box->input_size.w.type = UI_DimType_FixedPX;
+    box->input_size.w.value = size.w;
+    box->input_size.h.type = UI_DimType_FixedPX;
+    box->input_size.h.value = size.h;
+    box->bbox.x = 0;
+    box->bbox.y = 0;
+    box->bbox.w = size.w;
+    box->bbox.h = size.h;
 
-    for (u64 i = 0; i < root->childs.count; i++) {
-        UI_Box *child = A(root->childs, i);
-        scale_ui(child, os_scale, user_scale);
+    for (u64 i = 0; i < box->childs.count; i++) {
+        UI_Box *child = A(box->childs, i);
+        scale_ui(view, child);
     }
 
-    animate_ui(view);
-    layout_ui_impl(font_system, root);
+    animate_ui(view, box);
+    layout_ui_impl(view, box);
 }
 
-fn void animate_ui(UI_View *view) {
-    animate_ui_impl(view, view->curr_frame.root);
+fn void animate_ui(UI_View *view, UI_Box *box) {
+    animate_ui_impl(view, box);
 }
 
 fn void animate_ui_impl(UI_View *view, UI_Box *box) {
@@ -235,7 +241,9 @@ fn void scale_dim(UI_Dim *dim, f32 scale) {
     }
 }
 
-fn void scale_ui(UI_Box *box, f32 os_scale, f32 user_scale) {
+fn void scale_ui(UI_View *view, UI_Box *box) {
+    f32 os_scale = view->curr_frame.os_scale;
+    f32 user_scale = view->curr_frame.user_scale;
     f32 scale = (box->flags & UI_Flag_IgnoreUserScale) ? os_scale : os_scale * user_scale;
     scale_dim(&box->input_size.w, scale);
     scale_dim(&box->input_size.h, scale);
@@ -244,19 +252,19 @@ fn void scale_ui(UI_Box *box, f32 os_scale, f32 user_scale) {
 
     for (u64 i = 0; i < box->childs.count; i++) {
         UI_Box *child = A(box->childs, i);
-        scale_ui(child, os_scale, user_scale);
+        scale_ui(view, child);
     }
 }
 
-fn void convert_text_content_dims_to_fixed_px(FontSystem *font_system, UI_Box *parent, Axis axis) {
+fn void convert_text_content_dims_to_fixed_px(UI_View *view, UI_Box *parent, Axis axis) {
     // Convert text content size constraints to fixed pixel size constraints
     for (u64 i = 0; i < parent->childs.count; i++) {
         UI_Box *child = A(parent->childs, i);
         UI_Dim *child_input = &child->input_size.dims[axis];
 
         if (child_input->type == UI_DimType_TextContent) {
-            RectF text_bbox = get_text_bbox(font_system, child->font_file, child->font_size_px,
-                                            child->text_content);
+            RectF text_bbox = get_text_bbox(view->font_system, child->font_file,
+                                            child->font_size_px, child->text_content);
             child_input->type = UI_DimType_FixedPX;
             child_input->value = text_bbox.w;
         }
@@ -269,11 +277,11 @@ fn bool is_float(UI_Box *box, Axis axis) {
     return x_float || y_float;
 }
 
-fn void layout_ui_main_axis(FontSystem *font_system, UI_Box *parent, Axis axis) {
+fn void layout_ui_main_axis(UI_View *view, UI_Box *parent, Axis axis) {
     // Uh oh, unbounded array access?!? Call the safety police
     log_assert(axis < c_arr_count(parent->bbox.size.dims));
 
-    convert_text_content_dims_to_fixed_px(font_system, parent, axis);
+    convert_text_content_dims_to_fixed_px(view, parent, axis);
 
     f32 parent_pos = parent->bbox.pos.dims[axis];
     f32 parent_size = parent->bbox.size.dims[axis];
@@ -332,11 +340,11 @@ fn void layout_ui_main_axis(FontSystem *font_system, UI_Box *parent, Axis axis) 
     }
 }
 
-fn void layout_ui_cross_axis(FontSystem *font_system, UI_Box *parent, Axis axis) {
+fn void layout_ui_cross_axis(UI_View *view, UI_Box *parent, Axis axis) {
     // Uh oh, unbounded array access?!? Call the safety police
     log_assert(axis < c_arr_count(parent->bbox.size.dims));
 
-    convert_text_content_dims_to_fixed_px(font_system, parent, axis);
+    convert_text_content_dims_to_fixed_px(view, parent, axis);
 
     f32 parent_size = parent->bbox.size.dims[axis];
 
@@ -370,7 +378,7 @@ fn void layout_ui_cross_axis(FontSystem *font_system, UI_Box *parent, Axis axis)
 }
 
 // Compute layout of children, assuming root pos/size is computed
-fn void layout_ui_impl(FontSystem *font_system, UI_Box *box) {
+fn void layout_ui_impl(UI_View *view, UI_Box *box) {
     if (box->input_size.w.type != UI_DimType_TextContent) {
         log_assert(box->input_size.w.value > 0);
     }
@@ -382,11 +390,11 @@ fn void layout_ui_impl(FontSystem *font_system, UI_Box *box) {
     box->depth -= MIN_DEPTH;
 
     if (box->flags & UI_Flag_ChildLayoutX) {
-        layout_ui_main_axis(font_system, box, Axis_X);
-        layout_ui_cross_axis(font_system, box, Axis_Y);
+        layout_ui_main_axis(view, box, Axis_X);
+        layout_ui_cross_axis(view, box, Axis_Y);
     } else if (box->flags & UI_Flag_ChildLayoutY) {
-        layout_ui_main_axis(font_system, box, Axis_Y);
-        layout_ui_cross_axis(font_system, box, Axis_X);
+        layout_ui_main_axis(view, box, Axis_Y);
+        layout_ui_cross_axis(view, box, Axis_X);
     } else if (box->flags & UI_Flag_ChildLayoutZ) {
         // Simple stack
         for (u64 i = 0; i < box->childs.count; i++) {
@@ -400,30 +408,19 @@ fn void layout_ui_impl(FontSystem *font_system, UI_Box *box) {
     // Recursively compute child layouts
     for (u64 i = 0; i < box->childs.count; i++) {
         UI_Box *child = A(box->childs, i);
-        layout_ui_impl(font_system, child);
+        layout_ui_impl(view, child);
     }
 }
 
-fn void render_ui(UI_View *view,
-                  FontSystem *font_system,
-                  SizePX device_size,
-                  f32 os_scale,
-                  f32 user_scale,
-                  bool debug,
-                  FVec_QuadRequest *requests) {
-    layout_ui(view, font_system, device_size, os_scale, user_scale);
-
+fn void ui_render(UI_View *view, FVec_QuadRequest *requests) {
     UI_Box *box = view->curr_frame.root;
-    render_ui_impl(view, box, font_system, requests);
-    if (debug) {
+    ui_render_impl(view, box, requests);
+    if (view->curr_frame.debug_draw) {
         debug_render_ui_impl(box, 0, requests);
     }
 }
 
-fn void render_ui_impl(UI_View *view,
-                       UI_Box *box,
-                       FontSystem *font_system,
-                       FVec_QuadRequest *quad_reqs) {
+fn void ui_render_impl(UI_View *view, UI_Box *box, FVec_QuadRequest *quad_reqs) {
     Opt_P_RectF clip_rect = {};
     if (box->flags & UI_Flag_ClipChilds) {
         clip_rect = some(&box->bbox, P_RectF);
@@ -459,7 +456,7 @@ fn void render_ui_impl(UI_View *view,
     }
 
     if (box->flags & UI_Flag_DrawText) {
-        font_prepare_to_render(font_system, box, quad_reqs);
+        font_prepare_to_render(view->font_system, box, quad_reqs);
     }
 
     if (box->flags & UI_Flag_DrawColoredBG) {
@@ -475,7 +472,7 @@ fn void render_ui_impl(UI_View *view,
     for (u64 i = 0; i < box->childs.count; i++) {
         UI_Box *child = A(box->childs, i);
         if (!clip_rect.present || rectf_contains(clip_rect.opt, &child->bbox)) {
-            render_ui_impl(view, child, font_system, quad_reqs);
+            ui_render_impl(view, child, quad_reqs);
         }
     }
 }

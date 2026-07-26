@@ -6,7 +6,13 @@
 
 #include "types.h"
 
-fn void ui_view_begin_frame(UI_View *view);
+fn UI_View ui_view_init(FontSystem *font_system);
+fn void ui_view_begin_frame(UI_View *view,
+                            SizePX window_size,
+                            f32 os_scale,
+                            f32 user_scale,
+                            bool debug_draw);
+fn void ui_view_end_frame(UI_View *view, FVec_QuadRequest *quad_requests);
 fn void reset_ui_frame(UI_ViewFrame *frame);
 fn UI_Box *ui_box(UI_View *view, UI_Style *s);
 fn UI_Box *ui_box_id(UI_View *view, UI_Style *s, const char *format, ...);
@@ -31,31 +37,18 @@ fn void ui_fg_color(UI_Style *s, Color color);
 fn void ui_bg_color(UI_Style *s, Color color);
 fn void ui_float_x(UI_Style *s, f32 x);
 fn void ui_float_y(UI_Style *s, f32 y);
-fn void layout_ui(UI_View *view,
-                  FontSystem *font_system,
-                  SizePX device_size,
-                  f32 os_scale,
-                  f32 user_scale);
-fn void animate_ui(UI_View *view);
+fn void ui_layout(UI_View *view, UI_Box *box, SizePX size);
+fn void animate_ui(UI_View *view, UI_Box *box);
 fn void animate_ui_impl(UI_View *view, UI_Box *box);
 fn void scale_dim(UI_Dim *dim, f32 scale);
-fn void scale_ui(UI_Box *box, f32 os_scale, f32 user_scale);
-fn void convert_text_content_dims_to_fixed_px(FontSystem *font_system, UI_Box *parent, Axis axis);
+fn void scale_ui(UI_View *view, UI_Box *box);
+fn void convert_text_content_dims_to_fixed_px(UI_View *view, UI_Box *parent, Axis axis);
 fn bool is_float(UI_Box *box, Axis axis);
-fn void layout_ui_main_axis(FontSystem *font_system, UI_Box *parent, Axis axis);
-fn void layout_ui_cross_axis(FontSystem *font_system, UI_Box *parent, Axis axis);
-fn void layout_ui_impl(FontSystem *font_system, UI_Box *box);
-fn void render_ui(UI_View *view,
-                  FontSystem *font_system,
-                  SizePX device_size,
-                  f32 os_scale,
-                  f32 user_scale,
-                  bool debug,
-                  FVec_QuadRequest *requests);
-fn void render_ui_impl(UI_View *view,
-                       UI_Box *box,
-                       FontSystem *font_system,
-                       FVec_QuadRequest *quad_reqs);
+fn void layout_ui_main_axis(UI_View *view, UI_Box *parent, Axis axis);
+fn void layout_ui_cross_axis(UI_View *view, UI_Box *parent, Axis axis);
+fn void layout_ui_impl(UI_View *view, UI_Box *box);
+fn void ui_render(UI_View *view, FVec_QuadRequest *requests);
+fn void ui_render_impl(UI_View *view, UI_Box *box, FVec_QuadRequest *quad_reqs);
 fn bool rectf_contains(RectF *outer, RectF *inner);
 fn RectF scale_rect_proportionally(RectF outer, f32 inner_aspect_ratio, bool zoom);
 fn void debug_render_ui(UI_View *view, FVec_QuadRequest *requests);

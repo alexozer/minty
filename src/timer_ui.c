@@ -37,6 +37,7 @@ fn void build_timer_ui(UI_View *view, Session *session) {
     build_timer_ui_impl(view, base, session);
     // build_text_test_ui(view, base, session);
 
+    ui_layout(view, root, view->curr_frame.window_size);
     view->curr_frame.root = root;
 }
 

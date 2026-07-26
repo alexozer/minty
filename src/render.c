@@ -28,6 +28,7 @@ fn void render_init(ErrorContext *err, App *app) {
     }
     app->texture_system = tex_init(err, app->app_arena, render_state->device,
                                    render_state->vertex_shader, render_state->glyph_frag_shader);
+    app->main_view = ui_view_init(&app->font_system);
 
     scope_close(scope, "Initialize renderer");
 }
@@ -111,15 +112,14 @@ fn void render(App *app) {
         FVec_QuadRequest *quad_requests = &render_state->quad_requests;
         fvec_reset(quad_requests);
 
-        ui_view_begin_frame(&app->main_view);
-
-        build_timer_ui(&app->main_view, app->session);
-
         // 0.5f is just remnant of originally building the UI at 1X scale
         f32 os_scale = SDL_GetWindowDisplayScale(app->window) * 0.5f;
         f32 user_scale = SDL_powf(1.1f, (f32)app->zoom);
-        render_ui(&app->main_view, &app->font_system, window_size, os_scale, user_scale,
-                  app->debug_draw, quad_requests);
+        ui_view_begin_frame(&app->main_view, window_size, os_scale, user_scale, app->debug_draw);
+
+        build_timer_ui(&app->main_view, app->session);
+
+        ui_view_end_frame(&app->main_view, quad_requests);
 
         Arr_RenderInst render_insts = tex_prepare_to_render(
             frame_arena, app->texture_system, render_state, window_size, fvec_arr(quad_requests));
