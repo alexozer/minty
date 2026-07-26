@@ -12,8 +12,18 @@ constexpr u32 BIG_TIME_FONT_SIZE_PX = 100;
 constexpr f32 SMALL_TEXT_OUTLINE_PX = 1.5;
 constexpr f32 BIG_TEXT_OUTLINE_PX = 3;
 constexpr f32 TEXT_PAD = 10.f;  // ??
+const Str SEGMENTS_CONTAINER_ID = S("SegmentsContainer");
 
 fn void build_timer_ui(UI_View *view, Session *session) {
+    Arr_SegSummary summaries = calc_seg_summary(view->curr_frame.arena, session);
+    UI_Box *root = build_outer_timer_ui(view, session, summaries);
+    build_segments_ui(view, session, summaries);
+    // build_text_test_ui(view, base, session);
+
+    view->curr_frame.root = root;
+}
+
+fn UI_Box *build_outer_timer_ui(UI_View *view, Session *session, Arr_SegSummary summaries) {
     constexpr f32 OUTER_PADDING = 12.f;
 
     UI_Style style = {};
@@ -34,36 +44,33 @@ fn void build_timer_ui(UI_View *view, Session *session) {
     ui_flags(s, UI_Flag_ChildLayoutY);
     UI_Box *base = ui_box(view, s);
 
-    build_timer_ui_impl(view, base, session);
-    // build_text_test_ui(view, base, session);
-
-    ui_layout(view, root, view->curr_frame.window_size);
-    view->curr_frame.root = root;
-}
-
-fn void build_timer_ui_impl(UI_View *view, UI_Box *base, Session *session) {
-    UI_Style style = {};
-    UI_Style *s = &style;
-
-    build_game_info_ui(view, base, session);
+    build_game_info_ui(view, base, session, summaries);
 
     // Segments container
     ui_parent(s, base);
     ui_width_flex(s);
     ui_height_flex(s);
-    ui_flags(s, UI_Flag_ChildLayoutY | UI_Flag_ClipChilds);
-    UI_Box *segments_container = ui_box(view, s);
-
-    Arr_SegSummary summaries = calc_seg_summary(view->curr_frame.arena, session);
-    for (u64 i = 0; i < session->file.segments.count; i++) {
-        build_segment_ui(view, segments_container, session, summaries, i);
-    }
+    ui_flags(s, UI_Flag_ChildLayoutY);
+    ui_box_id(view, s, "%.*s", SF(SEGMENTS_CONTAINER_ID));
 
     build_big_timer(view, session, summaries, base);
     build_bottom_stats(view, session, summaries, base);
+
+    RectF bbox = {
+        .x = 0,
+        .y = 0,
+        .w = (f32)view->curr_frame.window_size.w,
+        .h = (f32)view->curr_frame.window_size.h,
+    };
+    ui_layout(view, root, bbox);
+
+    return root;
 }
 
-fn void build_game_info_ui(UI_View *view, UI_Box *base, Session *session) {
+fn void build_game_info_ui(UI_View *view,
+                           UI_Box *base,
+                           Session *session,
+                           Arr_SegSummary summaries) {
     UI_Style b1 = {};
     UI_Style *s = &b1;
 
@@ -87,6 +94,15 @@ fn void build_game_info_ui(UI_View *view, UI_Box *base, Session *session) {
     ui_style(s, s_header);
     ui_text(s, session->file.category_name);
     ui_box(view, s);
+}
+
+fn void build_segments_ui(UI_View *view, Session *session, Arr_SegSummary summaries) {
+    UI_Box *segments_container = ui_find_box(view, SEGMENTS_CONTAINER_ID);
+    for (u64 i = 0; i < session->file.segments.count; i++) {
+        build_segment_ui(view, segments_container, session, summaries, i);
+    }
+    RectF container_bbox = ui_get_unscaled_bbox(view, segments_container);
+    ui_layout(view, segments_container, container_bbox);
 }
 
 fn void build_segment_ui(UI_View *view,

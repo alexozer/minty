@@ -15,7 +15,10 @@ fn void ui_view_begin_frame(UI_View *view,
 fn void ui_view_end_frame(UI_View *view, FVec_QuadRequest *quad_requests);
 fn void reset_ui_frame(UI_ViewFrame *frame);
 fn UI_Box *ui_box(UI_View *view, UI_Style *s);
-fn UI_Box *ui_box_id(UI_View *view, UI_Style *s, const char *format, ...);
+fn __attribute__((format(printf, 3, 4))) UI_Box *ui_box_id(UI_View *view,
+                                                           UI_Style *s,
+                                                           const char *format,
+                                                           ...);
 fn void ui_width_px(UI_Style *s, f32 px);
 fn void ui_height_px(UI_Style *s, f32 px);
 fn void ui_width_flex(UI_Style *s);
@@ -37,7 +40,7 @@ fn void ui_fg_color(UI_Style *s, Color color);
 fn void ui_bg_color(UI_Style *s, Color color);
 fn void ui_float_x(UI_Style *s, f32 x);
 fn void ui_float_y(UI_Style *s, f32 y);
-fn void ui_layout(UI_View *view, UI_Box *box, SizePX size);
+fn void ui_layout(UI_View *view, UI_Box *box, RectF bbox);
 fn void animate_ui(UI_View *view, UI_Box *box);
 fn void animate_ui_impl(UI_View *view, UI_Box *box);
 fn void scale_dim(UI_Dim *dim, f32 scale);
@@ -53,3 +56,5 @@ fn bool rectf_contains(RectF *outer, RectF *inner);
 fn RectF scale_rect_proportionally(RectF outer, f32 inner_aspect_ratio, bool zoom);
 fn void debug_render_ui(UI_View *view, FVec_QuadRequest *requests);
 fn void debug_render_ui_impl(UI_Box *box, u64 depth, FVec_QuadRequest *reqs);
+fn UI_Box *ui_find_box(UI_View *view, Str id);
+fn RectF ui_get_unscaled_bbox(UI_View *view, UI_Box *box);

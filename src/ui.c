@@ -66,7 +66,10 @@ fn UI_Box *ui_box(UI_View *view, UI_Style *s) {
     return box;
 }
 
-fn UI_Box *ui_box_id(UI_View *view, UI_Style *s, const char *format, ...) {
+fn __attribute__((format(printf, 3, 4))) UI_Box *ui_box_id(UI_View *view,
+                                                           UI_Style *s,
+                                                           const char *format,
+                                                           ...) {
     va_list args;
     va_start(args, format);
     Str id = str_format_v(view->curr_frame.arena, format, args);
@@ -180,15 +183,12 @@ fn void ui_float_y(UI_Style *s, f32 y) {
     s->float_pos.y = y;
 }
 
-fn void ui_layout(UI_View *view, UI_Box *box, SizePX size) {
+fn void ui_layout(UI_View *view, UI_Box *box, RectF bbox) {
     box->input_size.w.type = UI_DimType_FixedPX;
-    box->input_size.w.value = size.w;
+    box->input_size.w.value = bbox.w;
     box->input_size.h.type = UI_DimType_FixedPX;
-    box->input_size.h.value = size.h;
-    box->bbox.x = 0;
-    box->bbox.y = 0;
-    box->bbox.w = size.w;
-    box->bbox.h = size.h;
+    box->input_size.h.value = bbox.h;
+    box->bbox = bbox;
 
     for (u64 i = 0; i < box->childs.count; i++) {
         UI_Box *child = A(box->childs, i);
@@ -562,4 +562,18 @@ fn void debug_render_ui_impl(UI_Box *box, u64 depth, FVec_QuadRequest *reqs) {
     for (u64 i = 0; i < box->childs.count; i++) {
         debug_render_ui_impl(A(box->childs, i), depth + 1, reqs);
     }
+}
+
+fn UI_Box *ui_find_box(UI_View *view, Str id) {
+    return maps_get(&view->curr_frame.id_box_map, id);
+}
+
+fn RectF ui_get_unscaled_bbox(UI_View *view, UI_Box *box) {
+    f32 scale = view->curr_frame.os_scale * view->curr_frame.user_scale;
+    return (RectF){
+        .x = box->bbox.x / scale,
+        .y = box->bbox.y / scale,
+        .w = box->bbox.w / scale,
+        .h = box->bbox.h / scale,
+    };
 }
