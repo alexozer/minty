@@ -54,5 +54,9 @@ fn void push_atlas_quad(SizePX window_size,
                         MeshBuilder *mesh,
                         RectPX src,
                         QuadRequest *req);
-fn RectF clip_rect(RectF *rect, RectF *clip);
+fn void clip_quad(Vertex *top_left,
+                  Vertex *top_right,
+                  Vertex *bottom_left,
+                  Vertex *bottom_right,
+                  RectF *clip);
 fn void window_to_ndc(Vertex *vertex, SizePX window_size);

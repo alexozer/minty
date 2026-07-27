@@ -415,9 +415,6 @@ fn void push_atlas_quad(SizePX window_size,
     // animations...
 
     RectF dst = req->transform;
-    if (req->clip_rect.w > 0) {
-        dst = clip_rect(&req->transform, &req->clip_rect);
-    }
 
     Arr_u16 indices = fvec_extend_zero(&mesh->indices, 6);
     A(indices, 0) = (u16)(mesh->vertices.count + 0);
@@ -427,9 +424,8 @@ fn void push_atlas_quad(SizePX window_size,
     A(indices, 4) = (u16)(mesh->vertices.count + 1);
     A(indices, 5) = (u16)(mesh->vertices.count + 3);
 
-    Arr_Vertex vertices = fvec_extend_zero(&mesh->vertices, 4);
-    // Top left
-    A(vertices, 0) = (Vertex){
+    Vertex *top_left = fvec_push_zero(&mesh->vertices);
+    *top_left = (Vertex){
         .x = dst.x,
         .y = dst.y,
         .z = 0,
@@ -440,8 +436,9 @@ fn void push_atlas_quad(SizePX window_size,
         .b = req->top_left_color.b,
         .a = req->top_left_color.a,
     };
-    // Top right
-    A(vertices, 1) = (Vertex){
+
+    Vertex *top_right = fvec_push_zero(&mesh->vertices);
+    *top_right = (Vertex){
         .x = dst.x + dst.w,
         .y = dst.y,
         .z = 0,
@@ -452,8 +449,9 @@ fn void push_atlas_quad(SizePX window_size,
         .b = req->top_right_color.b,
         .a = req->top_right_color.a,
     };
-    // Bottom left
-    A(vertices, 2) = (Vertex){
+
+    Vertex *bottom_left = fvec_push_zero(&mesh->vertices);
+    *bottom_left = (Vertex){
         .x = dst.x,
         .y = dst.y + dst.h,
         .z = 0,
@@ -464,8 +462,9 @@ fn void push_atlas_quad(SizePX window_size,
         .b = req->bottom_left_color.b,
         .a = req->bottom_left_color.a,
     };
-    // Bottom right
-    A(vertices, 3) = (Vertex){
+
+    Vertex *bottom_right = fvec_push_zero(&mesh->vertices);
+    *bottom_right = (Vertex){
         .x = dst.x + dst.w,
         .y = dst.y + dst.h,
         .z = 0,
@@ -477,31 +476,59 @@ fn void push_atlas_quad(SizePX window_size,
         .a = req->bottom_right_color.a,
     };
 
+    if (req->clip_rect.w > 0) {
+        clip_quad(top_left, top_right, bottom_left, bottom_right, &req->clip_rect);
+    }
+
     // Kinda awkward but whatever
-    window_to_ndc(&A(vertices, 0), window_size);
-    window_to_ndc(&A(vertices, 1), window_size);
-    window_to_ndc(&A(vertices, 2), window_size);
-    window_to_ndc(&A(vertices, 3), window_size);
+    window_to_ndc(top_left, window_size);
+    window_to_ndc(top_right, window_size);
+    window_to_ndc(bottom_left, window_size);
+    window_to_ndc(bottom_right, window_size);
 }
 
 // Assumes clip rect clips out a single resultant rectangle
-fn RectF clip_rect(RectF *rect, RectF *clip) {
+fn void clip_quad(Vertex *top_left,
+                  Vertex *top_right,
+                  Vertex *bottom_left,
+                  Vertex *bottom_right,
+                  RectF *clip) {
     // TODO: lerp vertex colors
-    f32 s1 = clamp(inv_lerp(rect->x, rect->x + rect->w, clip->x), 0, 1);
-    f32 s2 = clamp(inv_lerp(rect->x, rect->x + rect->w, clip->x + clip->w), 0, 1);
-    f32 t1 = clamp(inv_lerp(rect->y, rect->y + rect->h, clip->y), 0, 1);
-    f32 t2 = clamp(inv_lerp(rect->y, rect->y + rect->h, clip->y + clip->h), 0, 1);
 
-    f32 x1 = lerp(rect->x, rect->x + rect->w, s1);
-    f32 x2 = lerp(rect->x, rect->x + rect->w, s2);
-    f32 y1 = lerp(rect->y, rect->y + rect->h, t1);
-    f32 y2 = lerp(rect->y, rect->y + rect->h, t2);
-    return (RectF){
-        .x = x1,
-        .y = y1,
-        .w = x2 - x1,
-        .h = y2 - y1,
-    };
+    f32 s1 = clamp(inv_lerp(top_left->x, top_right->x, clip->x), 0, 1);
+    f32 s2 = clamp(inv_lerp(top_left->x, top_right->x, clip->x + clip->w), 0, 1);
+    f32 t1 = clamp(inv_lerp(top_left->y, bottom_left->y, clip->y), 0, 1);
+    f32 t2 = clamp(inv_lerp(top_left->y, bottom_left->y, clip->y + clip->h), 0, 1);
+
+    f32 x1 = lerp(top_left->x, top_right->x, s1);
+    f32 x2 = lerp(top_left->x, top_right->x, s2);
+    f32 y1 = lerp(top_left->y, bottom_left->y, t1);
+    f32 y2 = lerp(top_left->y, bottom_left->y, t2);
+
+    f32 u1 = lerp(top_left->u, top_right->u, s1);
+    f32 u2 = lerp(top_left->u, top_right->u, s2);
+    f32 v1 = lerp(top_left->v, bottom_left->v, t1);
+    f32 v2 = lerp(top_left->v, bottom_left->v, t2);
+
+    top_left->x = x1;
+    top_left->y = y1;
+    top_left->u = u1;
+    top_left->v = v1;
+
+    top_right->x = x2;
+    top_right->y = y1;
+    top_right->u = u2;
+    top_right->v = v1;
+
+    bottom_left->x = x1;
+    bottom_left->y = y2;
+    bottom_left->u = u1;
+    bottom_left->v = v2;
+
+    bottom_right->x = x2;
+    bottom_right->y = y2;
+    bottom_right->u = u2;
+    bottom_right->v = v2;
 }
 
 fn void window_to_ndc(Vertex *vertex, SizePX window_size) {
