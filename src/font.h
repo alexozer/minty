@@ -24,7 +24,10 @@ fn Arr_ShapedGlyph shape_text_uncached(Arena *arena, FontInst *inst, Str text);
 fn Arr_ShapedGlyphPX convert_shape_result_to_px(Arena *arena,
                                                 FontInst *inst,
                                                 Arr_ShapedGlyph shape_result);
-fn void font_prepare_to_render(FontSystem *ctx, UI_Box *box, FVec_QuadRequest *quad_reqs);
+fn void font_prepare_to_render(FontSystem *ctx,
+                               UI_Box *box,
+                               Opt_P_RectF clip_rect,
+                               FVec_QuadRequest *quad_reqs);
 fn void ensure_bitmap_set_rasterized(FontInst *inst, u32 glyph_id);
 fn RectF get_shaped_text_bbox(FontInst *inst, Arr_ShapedGlyphPX shaped_glyphs);
 fn RectF get_text_bbox(FontSystem *ctx, FontFile *font, u32 font_size_px, Str text);
@@ -37,6 +40,7 @@ fn void emit_glyph_quads(FontSystem *ctx,
                          FontInst *non_outline_inst,
                          FontInst *outline_inst,
                          Arr_ShapedGlyphPX shaped_glyphs,
+                         Opt_P_RectF clip_rect,
                          FVec_QuadRequest *quad_reqs);
 fn void emit_glyph_quad(UI_Box *box,
                         GlyphBitmap *bitmap,
@@ -44,5 +48,6 @@ fn void emit_glyph_quad(UI_Box *box,
                         Color color,
                         u16 depth,
                         f32 center_y_px,
+                        Opt_P_RectF clip_rect,
                         FVec_QuadRequest *quad_reqs);
 fn GlyphBitmap *get_glyph_bitmap(FontInst *inst, ShapedGlyphPX shaped_glyph);

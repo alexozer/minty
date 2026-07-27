@@ -1,10 +1,11 @@
 # TODO
 
-<!-- Next: -->
+Next:
 
-<!-- Make timer actually do something to increase motivation -->
-<!--     Load real splits -->
-<!--     Run and display the timer state machine -->
+Clipping
+    <!-- Broad-phase clip in main ui render code -->
+    Narrow-phase clip in atlas_push_quad()
+<!-- Text line height size constraint (apply to big timer) -->
 
 ## Prototyping
 

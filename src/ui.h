@@ -53,8 +53,13 @@ fn void layout_ui_main_axis(UI_View *view, UI_Box *parent, Axis axis);
 fn void layout_ui_cross_axis(UI_View *view, UI_Box *parent, Axis axis);
 fn void layout_ui_impl(UI_View *view, UI_Box *box);
 fn void ui_render(UI_View *view, FVec_QuadRequest *requests);
-fn void ui_render_impl(UI_View *view, UI_Box *box, FVec_QuadRequest *quad_reqs);
+fn void ui_render_impl(UI_View *view,
+                       UI_Box *box,
+                       Opt_P_RectF clip_rect,
+                       FVec_QuadRequest *quad_reqs);
 fn bool rectf_contains(RectF *outer, RectF *inner);
+fn bool range_overlaps(f32 a1, f32 a2, f32 b1, f32 b2);
+fn bool rectf_overlaps(RectF *a, RectF *b);
 fn RectF scale_rect_proportionally(RectF outer, f32 inner_aspect_ratio, bool zoom);
 fn void debug_render_ui(UI_View *view, FVec_QuadRequest *requests);
 fn void debug_render_ui_impl(UI_Box *box, u64 depth, FVec_QuadRequest *reqs);

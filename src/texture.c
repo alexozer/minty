@@ -413,7 +413,11 @@ fn void push_atlas_quad(SizePX window_size,
     // with a stretched glyph!
     // We also may not want to round non-glyph things to pixels, or may not want to during
     // animations...
+
     RectF dst = req->transform;
+    if (req->clip_rect.w > 0) {
+        dst = clip_rect(&req->transform, &req->clip_rect);
+    }
 
     Arr_u16 indices = fvec_extend_zero(&mesh->indices, 6);
     A(indices, 0) = (u16)(mesh->vertices.count + 0);
@@ -426,8 +430,8 @@ fn void push_atlas_quad(SizePX window_size,
     Arr_Vertex vertices = fvec_extend_zero(&mesh->vertices, 4);
     // Top left
     A(vertices, 0) = (Vertex){
-        .x = (f32)dst.x,
-        .y = (f32)dst.y,
+        .x = dst.x,
+        .y = dst.y,
         .z = 0,
         .u = (f32)src.x / (f32)atlas->size.w,
         .v = (f32)src.y / (f32)atlas->size.h,
@@ -438,8 +442,8 @@ fn void push_atlas_quad(SizePX window_size,
     };
     // Top right
     A(vertices, 1) = (Vertex){
-        .x = (f32)(dst.x + dst.w),
-        .y = (f32)dst.y,
+        .x = dst.x + dst.w,
+        .y = dst.y,
         .z = 0,
         .u = (f32)(src.x + src.w) / (f32)atlas->size.w,
         .v = (f32)src.y / (f32)atlas->size.h,
@@ -450,8 +454,8 @@ fn void push_atlas_quad(SizePX window_size,
     };
     // Bottom left
     A(vertices, 2) = (Vertex){
-        .x = (f32)dst.x,
-        .y = (f32)(dst.y + dst.h),
+        .x = dst.x,
+        .y = dst.y + dst.h,
         .z = 0,
         .u = (f32)src.x / (f32)atlas->size.w,
         .v = (f32)(src.y + src.h) / (f32)atlas->size.h,
@@ -462,8 +466,8 @@ fn void push_atlas_quad(SizePX window_size,
     };
     // Bottom right
     A(vertices, 3) = (Vertex){
-        .x = (f32)(dst.x + dst.w),
-        .y = (f32)(dst.y + dst.h),
+        .x = dst.x + dst.w,
+        .y = dst.y + dst.h,
         .z = 0,
         .u = (f32)(src.x + src.w) / (f32)atlas->size.w,
         .v = (f32)(src.y + src.h) / (f32)atlas->size.h,
@@ -478,6 +482,26 @@ fn void push_atlas_quad(SizePX window_size,
     window_to_ndc(&A(vertices, 1), window_size);
     window_to_ndc(&A(vertices, 2), window_size);
     window_to_ndc(&A(vertices, 3), window_size);
+}
+
+// Assumes clip rect clips out a single resultant rectangle
+fn RectF clip_rect(RectF *rect, RectF *clip) {
+    // TODO: lerp vertex colors
+    f32 s1 = clamp(inv_lerp(rect->x, rect->x + rect->w, clip->x), 0, 1);
+    f32 s2 = clamp(inv_lerp(rect->x, rect->x + rect->w, clip->x + clip->w), 0, 1);
+    f32 t1 = clamp(inv_lerp(rect->y, rect->y + rect->h, clip->y), 0, 1);
+    f32 t2 = clamp(inv_lerp(rect->y, rect->y + rect->h, clip->y + clip->h), 0, 1);
+
+    f32 x1 = lerp(rect->x, rect->x + rect->w, s1);
+    f32 x2 = lerp(rect->x, rect->x + rect->w, s2);
+    f32 y1 = lerp(rect->y, rect->y + rect->h, t1);
+    f32 y2 = lerp(rect->y, rect->y + rect->h, t2);
+    return (RectF){
+        .x = x1,
+        .y = y1,
+        .w = x2 - x1,
+        .h = y2 - y1,
+    };
 }
 
 fn void window_to_ndc(Vertex *vertex, SizePX window_size) {

@@ -119,7 +119,7 @@ fn void build_segments_ui(UI_View *view, Session *session, Arr_SegSummary summar
     ui_width_flex(s);
     ui_height_px(s, height_px);
     ui_scroll_y(s, scroll);
-    ui_flags(s, UI_Flag_ChildLayoutY | UI_Flag_ScrollY);
+    ui_flags(s, UI_Flag_ChildLayoutY | UI_Flag_ScrollY | UI_Flag_ClipChilds);
     UI_Box *segments_cropped = ui_box(view, s);
 
     for (u64 i = 0; i < session->file.segments.count; i++) {

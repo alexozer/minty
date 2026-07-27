@@ -376,6 +376,7 @@ struct QuadRequest {
     // TODO: make optional pointer types use nullptr as None (simple with union?)
     Opt_P_Texture texture;
     RectF transform;
+    RectF clip_rect;  // Active if width > 0
     Color top_left_color;
     Color top_right_color;
     Color bottom_left_color;

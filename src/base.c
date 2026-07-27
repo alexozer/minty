@@ -41,6 +41,10 @@ f32 lerp(f32 a, f32 b, f32 t) {
     return (a * (1.f - t)) + (b * t);
 }
 
+f32 inv_lerp(f32 a, f32 b, f32 x) {
+    return (x - a) / (b - a);
+}
+
 // TODO compile out file/line info in release builds
 // ... and in non-release / non-profile builds, also print the failed assertion
 [[noreturn]] void crash(const char *file, i32 line, const char *why) {

@@ -436,14 +436,16 @@ fn void layout_ui_impl(UI_View *view, UI_Box *box) {
 
 fn void ui_render(UI_View *view, FVec_QuadRequest *requests) {
     UI_Box *box = view->curr_frame.root;
-    ui_render_impl(view, box, requests);
+    ui_render_impl(view, box, none(P_RectF), requests);
     if (view->curr_frame.debug_draw) {
         debug_render_ui_impl(box, 0, requests);
     }
 }
 
-fn void ui_render_impl(UI_View *view, UI_Box *box, FVec_QuadRequest *quad_reqs) {
-    Opt_P_RectF clip_rect = {};
+fn void ui_render_impl(UI_View *view,
+                       UI_Box *box,
+                       Opt_P_RectF clip_rect,
+                       FVec_QuadRequest *quad_reqs) {
     if (box->flags & UI_Flag_ClipChilds) {
         clip_rect = some(&box->bbox, P_RectF);
     }
@@ -470,6 +472,9 @@ fn void ui_render_impl(UI_View *view, UI_Box *box, FVec_QuadRequest *quad_reqs) 
         QuadRequest *quad_req = fvec_push_zero(quad_reqs);
         quad_req->texture = some(box->texture, P_Texture);
         quad_req->transform = transform;
+        if (clip_rect.present) {
+            quad_req->clip_rect = *clip_rect.opt;
+        }
         quad_req->top_left_color = color;
         quad_req->top_right_color = color;
         quad_req->bottom_left_color = color;
@@ -478,12 +483,15 @@ fn void ui_render_impl(UI_View *view, UI_Box *box, FVec_QuadRequest *quad_reqs) 
     }
 
     if (box->flags & UI_Flag_DrawText) {
-        font_prepare_to_render(view->font_system, box, quad_reqs);
+        font_prepare_to_render(view->font_system, box, clip_rect, quad_reqs);
     }
 
     if (box->flags & UI_Flag_DrawColoredBG) {
         QuadRequest *quad_req = fvec_push_zero(quad_reqs);
         quad_req->transform = box->bbox;
+        if (clip_rect.present) {
+            quad_req->clip_rect = *clip_rect.opt;
+        }
         quad_req->top_left_color = box->bg_color;
         quad_req->top_right_color = box->bg_color;
         quad_req->bottom_left_color = box->bg_color;
@@ -493,8 +501,8 @@ fn void ui_render_impl(UI_View *view, UI_Box *box, FVec_QuadRequest *quad_reqs) 
 
     for (u64 i = 0; i < box->childs.count; i++) {
         UI_Box *child = A(box->childs, i);
-        if (!clip_rect.present || rectf_contains(clip_rect.opt, &child->bbox)) {
-            ui_render_impl(view, child, quad_reqs);
+        if (!clip_rect.present || rectf_overlaps(clip_rect.opt, &child->bbox)) {
+            ui_render_impl(view, child, clip_rect, quad_reqs);
         }
     }
 }
@@ -505,6 +513,16 @@ fn bool rectf_contains(RectF *outer, RectF *inner) {
     bool top = inner->y + TOLERANCE_BIG >= outer->y;
     bool bottom = (inner->y + inner->h) <= (outer->y + outer->h) + TOLERANCE_BIG;
     return left && right && top && bottom;
+}
+
+fn bool range_overlaps(f32 a1, f32 a2, f32 b1, f32 b2) {
+    return (a2 > b1) && (b2 > a1);
+}
+
+fn bool rectf_overlaps(RectF *a, RectF *b) {
+    bool x_overlaps = range_overlaps(a->x, a->x + a->w, b->x, b->x + b->w);
+    bool y_overlaps = range_overlaps(a->y, a->y + a->h, b->y, b->y + b->h);
+    return x_overlaps && y_overlaps;
 }
 
 // Scale and center a rectangle inside of another, preserving aspect ratio.

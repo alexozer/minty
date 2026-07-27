@@ -314,7 +314,10 @@ fn Arr_ShapedGlyphPX convert_shape_result_to_px(Arena *arena,
     return shape_result_px;
 }
 
-fn void font_prepare_to_render(FontSystem *ctx, UI_Box *box, FVec_QuadRequest *quad_reqs) {
+fn void font_prepare_to_render(FontSystem *ctx,
+                               UI_Box *box,
+                               Opt_P_RectF clip_rect,
+                               FVec_QuadRequest *quad_reqs) {
     Arena *scratch = arena_acquire();
 
     FontInst *non_outline_inst = get_or_create_font_inst(ctx, box->font_file, box->font_size_px, 0);
@@ -333,7 +336,8 @@ fn void font_prepare_to_render(FontSystem *ctx, UI_Box *box, FVec_QuadRequest *q
         }
 
         shaped_glyphs = align_text(ctx, box, non_outline_inst, shaped_glyphs);
-        emit_glyph_quads(ctx, box, non_outline_inst, outline_inst, shaped_glyphs, quad_reqs);
+        emit_glyph_quads(ctx, box, non_outline_inst, outline_inst, shaped_glyphs, clip_rect,
+                         quad_reqs);
     }
 
     arena_release(scratch);
@@ -437,6 +441,7 @@ fn void emit_glyph_quads(FontSystem *ctx,
                          FontInst *non_outline_inst,
                          FontInst *outline_inst,
                          Arr_ShapedGlyphPX shaped_glyphs,
+                         Opt_P_RectF clip_rect,
                          FVec_QuadRequest *quad_reqs) {
     for (u64 i = 0; i < shaped_glyphs.count; i++) {
         ShapedGlyphPX shaped_glyph = A(shaped_glyphs, i);
@@ -445,11 +450,11 @@ fn void emit_glyph_quads(FontSystem *ctx,
             // Draw outline glyphs at same positions as non-outline glyphs
             GlyphBitmap *bitmap = get_glyph_bitmap(outline_inst, A(shaped_glyphs, i));
             emit_glyph_quad(box, bitmap, shaped_glyph, COLOR_BLACK, (u16)box->depth,
-                            non_outline_inst->center_y_px, quad_reqs);
+                            non_outline_inst->center_y_px, clip_rect, quad_reqs);
         }
         GlyphBitmap *bitmap = get_glyph_bitmap(non_outline_inst, A(shaped_glyphs, i));
         emit_glyph_quad(box, bitmap, shaped_glyph, box->fg_color, (u16)(box->depth + 1),
-                        non_outline_inst->center_y_px, quad_reqs);
+                        non_outline_inst->center_y_px, clip_rect, quad_reqs);
     }
 }
 
@@ -459,6 +464,7 @@ fn void emit_glyph_quad(UI_Box *box,
                         Color color,
                         u16 depth,
                         f32 center_y_px,
+                        Opt_P_RectF clip_rect,
                         FVec_QuadRequest *quad_reqs) {
     if (bitmap->texture.dims.w > 0 && bitmap->texture.dims.h > 0) {
         QuadRequest *quad_req = fvec_push_zero(quad_reqs);
@@ -496,6 +502,10 @@ fn void emit_glyph_quad(UI_Box *box,
             .w = (f32)bitmap->texture.dims.w,
             .h = (f32)bitmap->texture.dims.h,
         };
+
+        if (clip_rect.present) {
+            quad_req->clip_rect = *clip_rect.opt;
+        }
     }
 }
 
