@@ -51,6 +51,7 @@ fn UI_Box *ui_box(UI_View *view, UI_Style *s) {
     box->font_outline_px = s->font_outline_px;
     box->depth = s->depth;
     box->float_pos = s->float_pos;
+    box->scroll = s->scroll;
 
     if (s->parent != nullptr) {
         box->parent = s->parent;
@@ -183,6 +184,14 @@ fn void ui_float_y(UI_Style *s, f32 y) {
     s->float_pos.y = y;
 }
 
+fn void ui_scroll_x(UI_Style *s, f32 x) {
+    s->scroll.x = x;
+}
+
+fn void ui_scroll_y(UI_Style *s, f32 y) {
+    s->scroll.y = y;
+}
+
 fn void ui_layout(UI_View *view, UI_Box *box, RectF bbox) {
     box->input_size.w.type = UI_DimType_FixedPX;
     box->input_size.w.value = bbox.w;
@@ -251,6 +260,8 @@ fn void scale_ui(UI_View *view, UI_Box *box) {
     box->font_outline_px *= scale;
     box->float_pos.x *= scale;
     box->float_pos.y *= scale;
+    box->scroll.x *= scale;
+    box->scroll.y *= scale;
 
     for (u64 i = 0; i < box->childs.count; i++) {
         UI_Box *child = A(box->childs, i);
@@ -404,12 +415,21 @@ fn void layout_ui_impl(UI_View *view, UI_Box *box) {
             child->bbox = box->bbox;
         }
     } else if (box->childs.count > 0) {
-        log_fatal("No child layout direciton provided");
+        log_fatal("No child layout direction provided");
     }
 
     // Recursively compute child layouts
     for (u64 i = 0; i < box->childs.count; i++) {
         UI_Box *child = A(box->childs, i);
+
+        // Scroll child widgets
+        if (box->flags & UI_Flag_ScrollX) {
+            child->bbox.x -= box->scroll.x;
+        }
+        if (box->flags & UI_Flag_ScrollY) {
+            child->bbox.y -= box->scroll.y;
+        }
+
         layout_ui_impl(view, child);
     }
 }

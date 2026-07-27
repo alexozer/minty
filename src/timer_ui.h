@@ -13,6 +13,8 @@ fn void build_game_info_ui(UI_View *view,
                            Session *session,
                            Arr_SegSummary summaries);
 fn void build_segments_ui(UI_View *view, Session *session, Arr_SegSummary summaries);
+fn void update_segments_ui_state(Session *session);
+fn void build_segment_highlight(UI_View *view, UI_Box *parent, Session *session);
 fn void build_segment_ui(UI_View *view,
                          UI_Box *parent,
                          Session *session,

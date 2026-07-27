@@ -306,10 +306,18 @@ struct Layout {
 };
 derive_struct(Layout);
 
+// Purely visual state
+struct SessionUI {
+    f32 hl_active;
+    f32 hl_pos_y;
+};
+derive_struct(SessionUI);
+
 struct Session {
     FileDef file;
     Layout layout;
     Timer timer;
+    SessionUI ui;
 };
 derive_struct(Session);
 
@@ -431,11 +439,12 @@ enum UI_Flag : u32 {
     UI_Flag_TextClipEllipsis = bit(13),
     UI_Flag_IgnoreUserScale = bit(14),
     UI_Flag_DrawColoredBG = bit(15),
-    // Useful for placing two text blocks next to each other
     UI_Flag_TextAlignYBottom = bit(16),
     UI_Flag_TextAlignYCenter = bit(17),
     UI_Flag_FloatX = bit(18),
     UI_Flag_FloatY = bit(19),
+    UI_Flag_ScrollX = bit(20),
+    UI_Flag_ScrollY = bit(21),
 };
 derive_enum(UI_Flag);
 
@@ -453,6 +462,7 @@ struct UI_Box {
     f32 font_outline_px;
     i16 depth;
     PosF float_pos;
+    PosF scroll;
 
     UI_Box *parent;
     Vec_P_UI_Box childs;
@@ -475,6 +485,7 @@ struct UI_Style {
     f32 font_outline_px;
     i16 depth;
     PosF float_pos;
+    PosF scroll;
 };
 derive_struct(UI_Style);
 

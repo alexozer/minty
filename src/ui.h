@@ -40,6 +40,8 @@ fn void ui_fg_color(UI_Style *s, Color color);
 fn void ui_bg_color(UI_Style *s, Color color);
 fn void ui_float_x(UI_Style *s, f32 x);
 fn void ui_float_y(UI_Style *s, f32 y);
+fn void ui_scroll_x(UI_Style *s, f32 x);
+fn void ui_scroll_y(UI_Style *s, f32 y);
 fn void ui_layout(UI_View *view, UI_Box *box, RectF bbox);
 fn void animate_ui(UI_View *view, UI_Box *box);
 fn void animate_ui_impl(UI_View *view, UI_Box *box);

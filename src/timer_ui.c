@@ -93,11 +93,16 @@ fn void build_game_info_ui(UI_View *view,
     ui_style(s, s_header);
     ui_text(s, session->file.category_name);
     ui_box(view, s);
+
+    // Spacer
+    pad_box(view, base, TEXT_PAD);
 }
 
 fn void build_segments_ui(UI_View *view, Session *session, Arr_SegSummary summaries) {
     UI_Style style = {};
     UI_Style *s = &style;
+
+    update_segments_ui_state(session);
 
     UI_Box *segments_container = ui_find_box(view, SEGMENTS_CONTAINER_ID);
     RectF container_bbox = ui_get_unscaled_bbox(view, segments_container);
@@ -105,18 +110,55 @@ fn void build_segments_ui(UI_View *view, Session *session, Arr_SegSummary summar
     u32 visual_segment_count = (u32)SDL_floorf(container_bbox.h / SEGMENT_HEIGHT_PX);
     f32 height_px = (f32)visual_segment_count * SEGMENT_HEIGHT_PX;
 
+    f32 scroll = 0;
+    if ((session->ui.hl_pos_y + SEGMENT_HEIGHT_PX) > height_px) {
+        scroll = (session->ui.hl_pos_y + SEGMENT_HEIGHT_PX) - height_px;
+    }
+
+    ui_parent(s, segments_container);
     ui_width_flex(s);
     ui_height_px(s, height_px);
-    ui_flags(s, UI_Flag_ChildLayoutY);
-    ui_parent(s, segments_container);
+    ui_scroll_y(s, scroll);
+    ui_flags(s, UI_Flag_ChildLayoutY | UI_Flag_ScrollY);
     UI_Box *segments_cropped = ui_box(view, s);
 
     for (u64 i = 0; i < session->file.segments.count; i++) {
         build_segment_ui(view, segments_cropped, session, summaries, i);
     }
+
+    build_segment_highlight(view, segments_cropped, session);
+
     // TODO find a cleaner API.
     // Confusing dealing with scaled/unscaled box sizes for sublayouts
     ui_layout(view, segments_container, segments_container->bbox);
+}
+
+fn void update_segments_ui_state(Session *session) {
+    SessionUI *ui = &session->ui;
+    bool show_bg =
+        session->timer.mode == TimerMode_Running || session->timer.mode == TimerMode_Paused;
+    f32 hl_active_desired = show_bg ? 1 : 0;
+    ui->hl_active = lerp(ui->hl_active, hl_active_desired, 0.7f);
+
+    u64 segment_idx = min(session->timer.live_splits.count, session->file.segments.count - 1);
+    f32 hl_pos_y_desired = SEGMENT_HEIGHT_PX * (f32)segment_idx;
+    ui->hl_pos_y = lerp(ui->hl_pos_y, hl_pos_y_desired, 0.6f);
+}
+
+fn void build_segment_highlight(UI_View *view, UI_Box *parent, Session *session) {
+    UI_Style style = {};
+    UI_Style *s = &style;
+
+    u8 alpha = (u8)SDL_lroundf(127.f * session->ui.hl_active);
+
+    ui_parent(s, parent);
+    ui_width_flex(s);
+    ui_height_px(s, SEGMENT_HEIGHT_PX);
+    ui_flags(s, UI_Flag_FloatY);
+    ui_depth(s, -3);
+    ui_color_bg(s, (Color){.r = 23, .g = 40, .b = 200, .a = alpha});
+    ui_float_y(s, session->ui.hl_pos_y);
+    ui_box(view, s);
 }
 
 fn void build_segment_ui(UI_View *view,
@@ -135,21 +177,6 @@ fn void build_segment_ui(UI_View *view,
     ui_height_px(s, SEGMENT_HEIGHT_PX);
     ui_flags(s, UI_Flag_ChildLayoutX);
     UI_Box *row = ui_box(view, s);
-
-    // Current row background highlight
-    bool show_bg =
-        session->timer.mode == TimerMode_Running || session->timer.mode == TimerMode_Paused;
-    bool is_live_segment = segment_idx == session->timer.live_splits.count;
-    if (show_bg && is_live_segment) {
-        ui_parent(s, parent);
-        ui_width_flex(s);
-        ui_height_px(s, SEGMENT_HEIGHT_PX);
-        ui_flags(s, UI_Flag_FloatY);
-        ui_depth(s, -3);
-        ui_color_bg(s, (Color){.r = 23, .g = 40, .b = 200, .a = 127});
-        ui_float_y(s, SEGMENT_HEIGHT_PX * (f32)segment_idx);
-        ui_box_id(view, s, "CurrSegHL");
-    }
 
     // Icon outer
     ui_parent(s, row);
