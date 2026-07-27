@@ -352,7 +352,7 @@ fn void build_big_timer(UI_View *view, Session *session, Arr_SegSummary summarie
 
     ui_parent(s, parent);
     ui_width_flex(s);
-    ui_height_px(s, (f32)BIG_TIME_FONT_SIZE_PX);
+    ui_height_px(s, (f32)BIG_TIME_FONT_SIZE_PX * 0.8f);
     ui_flags(s, UI_Flag_ChildLayoutX);
     UI_Box *big_timer_row = ui_box(view, s);
 
