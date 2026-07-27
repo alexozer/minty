@@ -52,8 +52,8 @@ fn SDL_Window *init_window(ErrorContext *err) {
     }
 
     SDL_WindowFlags window_flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
-    SDL_Window *window = sdl_create_window(err, S("Minty"), DEFAULT_WINDOW_SIZE,
-                                           MIN_WINDOW_SIZE, window_flags);
+    SDL_Window *window =
+        sdl_create_window(err, S("Minty"), DEFAULT_WINDOW_SIZE, MIN_WINDOW_SIZE, window_flags);
 
     scope_close(scope, "Initialize window");
     return window;
@@ -191,9 +191,8 @@ fn SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
         }
     }
 
-    if (event->common.type == SDL_EVENT_MOUSE_WHEEL) {
-        app->scroll += event->wheel.y;
-    }
+    // if (event->common.type == SDL_EVENT_MOUSE_WHEEL) {
+    // }
 
     return SDL_APP_CONTINUE;
 }

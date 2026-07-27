@@ -146,14 +146,6 @@ fn void render(App *app) {
             }
         }
 
-        // Hacky scroll
-        for (u64 inst_idx = 0; inst_idx < draw_insts.count; inst_idx++) {
-            Arr_Vertex vertices = A(draw_insts, inst_idx).mesh.vertices;
-            for (u64 i = 0; i < vertices.count; i++) {
-                A(vertices, i).y -= app->scroll * 0.1f;
-            }
-        }
-
         if (clear_texture_insts.count > 0) {
             do_clear_texture_passes(render_state, command_buffer, fvec_arr(&clear_texture_insts));
         }

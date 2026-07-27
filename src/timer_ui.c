@@ -4,8 +4,7 @@
 #include "ui.h"
 
 // TODO not a lot of principles behind these constants atm
-constexpr f32 INFO_HEIGHT_PX = 80.f;
-constexpr f32 SEGMENT_HEIGHT_PX = 100.f;
+constexpr f32 SEGMENT_HEIGHT_PX = 80.f;
 constexpr f32 ICON_PADDING_PX = 8.f;
 constexpr f32 SMALL_TIME_WIDTH_PX = 150.f;
 constexpr u32 BIG_TIME_FONT_SIZE_PX = 100;
@@ -97,12 +96,27 @@ fn void build_game_info_ui(UI_View *view,
 }
 
 fn void build_segments_ui(UI_View *view, Session *session, Arr_SegSummary summaries) {
+    UI_Style style = {};
+    UI_Style *s = &style;
+
     UI_Box *segments_container = ui_find_box(view, SEGMENTS_CONTAINER_ID);
-    for (u64 i = 0; i < session->file.segments.count; i++) {
-        build_segment_ui(view, segments_container, session, summaries, i);
-    }
     RectF container_bbox = ui_get_unscaled_bbox(view, segments_container);
-    ui_layout(view, segments_container, container_bbox);
+
+    u32 visual_segment_count = (u32)SDL_floorf(container_bbox.h / SEGMENT_HEIGHT_PX);
+    f32 height_px = (f32)visual_segment_count * SEGMENT_HEIGHT_PX;
+
+    ui_width_flex(s);
+    ui_height_px(s, height_px);
+    ui_flags(s, UI_Flag_ChildLayoutY);
+    ui_parent(s, segments_container);
+    UI_Box *segments_cropped = ui_box(view, s);
+
+    for (u64 i = 0; i < session->file.segments.count; i++) {
+        build_segment_ui(view, segments_cropped, session, summaries, i);
+    }
+    // TODO find a cleaner API.
+    // Confusing dealing with scaled/unscaled box sizes for sublayouts
+    ui_layout(view, segments_container, segments_container->bbox);
 }
 
 fn void build_segment_ui(UI_View *view,
@@ -118,7 +132,7 @@ fn void build_segment_ui(UI_View *view,
     // Row
     ui_parent(s, parent);
     ui_width_flex(s);
-    ui_height_px(s, INFO_HEIGHT_PX);
+    ui_height_px(s, SEGMENT_HEIGHT_PX);
     ui_flags(s, UI_Flag_ChildLayoutX);
     UI_Box *row = ui_box(view, s);
 
@@ -129,11 +143,11 @@ fn void build_segment_ui(UI_View *view,
     if (show_bg && is_live_segment) {
         ui_parent(s, parent);
         ui_width_flex(s);
-        ui_height_px(s, INFO_HEIGHT_PX);
+        ui_height_px(s, SEGMENT_HEIGHT_PX);
         ui_flags(s, UI_Flag_FloatY);
         ui_depth(s, -3);
         ui_color_bg(s, (Color){.r = 23, .g = 40, .b = 200, .a = 127});
-        ui_float_y(s, INFO_HEIGHT_PX * (f32)segment_idx);
+        ui_float_y(s, SEGMENT_HEIGHT_PX * (f32)segment_idx);
         ui_box_id(view, s, "CurrSegHL");
     }
 
@@ -150,6 +164,9 @@ fn void build_segment_ui(UI_View *view,
         ui_flags(s, UI_Flag_TextureContain);
     }
     ui_box(view, s);
+
+    // Pad
+    pad_box(view, row, TEXT_PAD);
 
     // Split name
     ui_parent(s, row);

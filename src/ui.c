@@ -249,6 +249,8 @@ fn void scale_ui(UI_View *view, UI_Box *box) {
     scale_dim(&box->input_size.h, scale);
     box->font_size_px = (u16)SDL_lroundf(box->font_size_px * scale);
     box->font_outline_px *= scale;
+    box->float_pos.x *= scale;
+    box->float_pos.y *= scale;
 
     for (u64 i = 0; i < box->childs.count; i++) {
         UI_Box *child = A(box->childs, i);

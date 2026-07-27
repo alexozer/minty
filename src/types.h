@@ -563,8 +563,6 @@ struct App {
     SDL_Window *window;
 
     SDL_Keycode prev_keys;
-    // TODO: float-based scrolling on NDC could mess with pixel-perfect alignment
-    f32 scroll;
     bool debug_draw;
     i32 zoom;
 
