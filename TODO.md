@@ -2,7 +2,7 @@
 
 Next:
 
-Clipping
+<!-- Clipping -->
     <!-- Broad-phase clip in main ui render code -->
     Narrow-phase clip in atlas_push_quad()
 <!-- Text line height size constraint (apply to big timer) -->
@@ -110,7 +110,7 @@ Split up types.h
     Use `pub` to codegen structs/includes/derives in header
     Generate a public/private header
     Move generated files out of repo
-Cache shaping
+<!-- Cache shaping -->
 <!-- Try enabling LTO again -->
 <!--     Not available on macos, I think -->
 <!-- Do depth normalization during layout -->
