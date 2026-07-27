@@ -502,7 +502,13 @@ fn void ui_render_impl(UI_View *view,
     for (u64 i = 0; i < box->childs.count; i++) {
         UI_Box *child = A(box->childs, i);
         if (!clip_rect.present || rectf_overlaps(clip_rect.opt, &child->bbox)) {
-            ui_render_impl(view, child, clip_rect, quad_reqs);
+            // Don't apply clip rect if child completely contained in clip rect
+            Opt_P_RectF child_clip_rect = clip_rect;
+            if (clip_rect.present && rectf_contains(clip_rect.opt, &child->bbox)) {
+                child_clip_rect = none(P_RectF);
+            }
+
+            ui_render_impl(view, child, child_clip_rect, quad_reqs);
         }
     }
 }
