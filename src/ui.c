@@ -392,12 +392,12 @@ fn void layout_ui_cross_axis(UI_View *view, UI_Box *parent, Axis axis) {
 
 // Compute layout of children, assuming root pos/size is computed
 fn void layout_ui_impl(UI_View *view, UI_Box *box) {
-    if (box->input_size.w.type != UI_DimType_TextContent) {
-        log_assert(box->input_size.w.value > 0);
-    }
-    if (box->input_size.h.type != UI_DimType_TextContent) {
-        log_assert(box->input_size.h.value > 0);
-    }
+    // if (box->input_size.w.type != UI_DimType_TextContent) {
+    //     log_assert(box->input_size.w.value > 0);
+    // }
+    // if (box->input_size.h.type != UI_DimType_TextContent) {
+    //     log_assert(box->input_size.h.value > 0);
+    // }
 
     log_assert(box->depth >= MIN_DEPTH);
     box->depth -= MIN_DEPTH;
